@@ -16,9 +16,17 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
+	float Health;
+	float MaxHealth;
+	FVector Location;
+	FRotator Rotation;
 
+	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+	void Move(FVector Direction);
+	void Jump();
+	void Sprint();
+	void TakeDamage(float Damage);
+	void Die();
 };

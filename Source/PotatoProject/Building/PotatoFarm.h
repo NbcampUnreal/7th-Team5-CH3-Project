@@ -9,4 +9,8 @@ class POTATOPROJECT_API APotatoFarm : public APotatoBuilding
 {
 	GENERATED_BODY()
 	
+public:
+	float CropProductionRate;
+
+	int ProduceCrop();
 };

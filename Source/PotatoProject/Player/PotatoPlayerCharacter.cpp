@@ -24,3 +24,27 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 
 }
 
+void APotatoPlayerCharacter::Move(FVector Direction)
+{
+
+}
+
+void APotatoPlayerCharacter::Jump()
+{
+
+}
+
+void APotatoPlayerCharacter::Sprint()
+{
+
+}
+
+void APotatoPlayerCharacter::TakeDamage(float Damage)
+{
+
+}
+
+void APotatoPlayerCharacter::Die()
+{
+
+}

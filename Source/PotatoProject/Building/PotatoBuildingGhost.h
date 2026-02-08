@@ -16,6 +16,14 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
+	UStaticMeshComponent* GhostMesh;
+	bool IsValidPlacement;
+	FVector Location;
+	FRotator Rotation;
+
 	virtual void Tick(float DeltaTime) override;
 
+	void UpdateLocation(FVector NewLocation);
+	bool CheckValidPlacement();
+	void SetGhostColor(bool IsValid);
 };

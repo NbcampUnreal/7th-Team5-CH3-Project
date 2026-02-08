@@ -15,3 +15,20 @@ void APotatoBuilding::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
+void APotatoBuilding::Construct()
+{
+}
+
+void APotatoBuilding::TakeDamage(float Damage)
+{
+
+}
+
+void APotatoBuilding::Repair()
+{
+}
+
+void APotatoBuilding::Destroy()
+{
+
+}
