@@ -37,7 +37,7 @@ void APotatoMonster::Die()
 
 }
 
-AActor APotatoMonster::FindTarget()
+AActor* APotatoMonster::FindTarget()
 {
-
+	return nullptr;
 }

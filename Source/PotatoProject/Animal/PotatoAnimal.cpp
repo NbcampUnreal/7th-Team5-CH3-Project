@@ -17,3 +17,7 @@ void APotatoAnimal::Tick(float DeltaTime)
 
 }
 
+void APotatoAnimal::Produce()
+{
+
+}

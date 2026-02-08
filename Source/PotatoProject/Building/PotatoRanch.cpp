@@ -1,6 +1,6 @@
 #include "PotatoRanch.h"
 
-bool APotatoRanch::PlaceAnimal(EAnimalType Type)
+bool APotatoRanch::PlaceAnimal(EAnimalType InType)
 {
 	return false;
 }

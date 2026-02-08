@@ -18,3 +18,17 @@ void APotatoNPC::Tick(float DeltaTime)
 
 }
 
+void APotatoNPC::Work()
+{
+
+}
+
+bool APotatoNPC::PayMaintenance()
+{
+
+}
+
+void APotatoNPC::Retire()
+{
+
+}

@@ -36,3 +36,10 @@ enum class EAnimalType : uint8
     Pig     UMETA(DisplayName = "돼지"),
     Chicken   UMETA(DisplayName = "닭")
 };
+
+UENUM(BlueprintType)
+enum class ENPCType : uint8
+{
+    Lumberjack        UMETA(DisplayName = "벌목꾼"),
+    Miner     UMETA(DisplayName = "광부")
+};

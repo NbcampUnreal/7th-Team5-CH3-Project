@@ -8,5 +8,6 @@ UCLASS()
 class POTATOPROJECT_API APotatoChicken : public APotatoAnimal
 {
 	GENERATED_BODY()
-	
+public:
+	void Produce();
 };

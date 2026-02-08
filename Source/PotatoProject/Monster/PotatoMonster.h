@@ -31,5 +31,5 @@ public:
 	void Attack(AActor* Target);
 	void TakeDamage(float Damage);
 	void Die();
-	AActor FindTarget();
+	AActor* FindTarget();
 };
