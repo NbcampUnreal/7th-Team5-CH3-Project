@@ -4,21 +4,37 @@
 #include "GameFramework/PlayerController.h"
 #include "PotatoPlayerController.generated.h"
 
-class APotatoPlayerCharacter;
-class PotatoBuildingSystem;
-class PotatoWeaponSystem;
+class UInputMappingContext;
+class UInputAction;
 
 UCLASS()
 class POTATOPROJECT_API APotatoPlayerController : public APlayerController
 {
 	GENERATED_BODY()
+	
+	// Input
 public:
-	APotatoPlayerCharacter* ControlledCharacter;
-	PotatoBuildingSystem* BuildingSystem;
-	PotatoWeaponSystem* WeaponSystem;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input")
+	UInputMappingContext* InputMappingContext;
 
-	void HandleMovementInput();
-	void HandleCombatInput();
-	void HandleBuildingInput();
-	void HandleInteractionInput();
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input")
+	UInputAction* JumpAction;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input")
+	UInputAction* MoveAction;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input")
+	UInputAction* LookAction;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input")
+	UInputAction* SprintAction;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Input")
+	UInputAction* CameraZoomAction;
+	
+	// functions
+public:
+	APotatoPlayerController();
+	
+	virtual void BeginPlay() override;
 };

@@ -1,12 +1,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Actor.h"
-#include "../Core/PotatoTypes.h"
+#include "GameFramework/Character.h"
 #include "PotatoMonster.generated.h"
 
 UCLASS()
-class POTATOPROJECT_API APotatoMonster : public AActor
+class POTATOPROJECT_API APotatoMonster : public ACharacter
 {
 	GENERATED_BODY()
 	

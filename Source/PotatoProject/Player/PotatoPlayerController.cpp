@@ -1,21 +1,28 @@
 #include "PotatoPlayerController.h"
+#include "EnhancedInputSubsystems.h"
 
-void APotatoPlayerController::HandleMovementInput()
+APotatoPlayerController::APotatoPlayerController()
+	: InputMappingContext(nullptr),
+	  MoveAction(nullptr),
+	  JumpAction(nullptr),
+	  LookAction(nullptr),
+	  SprintAction(nullptr),
+	  CameraZoomAction(nullptr)
 {
-
 }
 
-void APotatoPlayerController::HandleCombatInput()
+void APotatoPlayerController::BeginPlay()
 {
-
-}
-
-void APotatoPlayerController::HandleBuildingInput()
-{
-
-}
-
-void APotatoPlayerController::HandleInteractionInput()
-{
-
+	Super::BeginPlay();
+	
+	if (ULocalPlayer* LocalPlayer = GetLocalPlayer())
+	{
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>())
+		{
+			if (InputMappingContext)
+			{
+				Subsystem->AddMappingContext(InputMappingContext, 0);
+			}
+		}
+	}
 }
