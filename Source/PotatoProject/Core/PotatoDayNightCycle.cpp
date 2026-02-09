@@ -1,34 +1,26 @@
 #include "PotatoDayNightCycle.h"
 
-PotatoDayNightCycle::PotatoDayNightCycle()
-{
-}
-
-PotatoDayNightCycle::~PotatoDayNightCycle()
-{
-}
-
-void PotatoDayNightCycle::StartDay()
+void UPotatoDayNightCycle::StartDay()
 {
 
 }
 
-void PotatoDayNightCycle::StartNight()
+void UPotatoDayNightCycle::StartNight()
 {
 
 }
 
-void PotatoDayNightCycle::UpdateTimer(float DeltaTime)
+void UPotatoDayNightCycle::UpdateTimer(float DeltaTime)
 {
 
 }
 
-float PotatoDayNightCycle::GetRemainingTime()
+float UPotatoDayNightCycle::GetRemainingTime()
 {
 	return 0;
 }
 
-void PotatoDayNightCycle::TriggerWarning()
+void UPotatoDayNightCycle::TriggerWarning()
 {
 
 }

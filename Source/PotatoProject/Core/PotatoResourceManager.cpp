@@ -1,28 +1,21 @@
- #include "PotatoResourceManager.h"
+#include "PotatoResourceManager.h"
 
-PotatoResourceManager::PotatoResourceManager()
-{
-}
-
-PotatoResourceManager::~PotatoResourceManager()
-{
-}
-void PotatoResourceManager::AddResource(EResourceType Type, int Amount)
+void UPotatoResourceManager::AddResource(EResourceType Type, int Amount)
 {
 
 }
 
-bool PotatoResourceManager::RemoveResource(EResourceType Type, int Amount)
+bool UPotatoResourceManager::RemoveResource(EResourceType Type, int Amount)
 {
 	return false;
 }
 
-int PotatoResourceManager::GetResource(EResourceType Type)
+int UPotatoResourceManager::GetResource(EResourceType Type)
 {
 	return 0;
 }
 
-bool PotatoResourceManager::HasEnoughResource(EResourceType Type, int Amount)
+bool UPotatoResourceManager::HasEnoughResource(EResourceType Type, int Amount)
 {
 	return false;
 }
