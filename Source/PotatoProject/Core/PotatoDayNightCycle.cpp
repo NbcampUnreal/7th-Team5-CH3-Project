@@ -24,3 +24,8 @@ void UPotatoDayNightCycle::TriggerWarning()
 {
 
 }
+
+bool UPotatoDayNightCycle::GetIsDay()
+{
+	return IsDay;
+}

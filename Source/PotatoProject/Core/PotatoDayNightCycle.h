@@ -19,4 +19,5 @@ public:
 	void UpdateTimer(float DeltaTime);
 	float GetRemainingTime();
 	void TriggerWarning();
+	bool GetIsDay();
 };
