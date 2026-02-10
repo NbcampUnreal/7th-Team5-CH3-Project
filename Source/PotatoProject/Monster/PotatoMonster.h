@@ -6,11 +6,10 @@
 #include "BehaviorTree/BehaviorTree.h"
 
 #include "../Core/PotatoEnums.h"
-#include "PotatoMonsterRankPreset.h"    // RankPreset row
-#include "PotatoMonsterTypePreset.h"    // TypePreset row
+#include "PotatoMonsterRankPresetRow.h"    // FPotatoMonsterRankPresetRow
+#include "PotatoMonsterTypePresetRow.h"    // FPotatoMonsterTypePresetRow
 
 #include "PotatoMonster.generated.h"
-
 
 UCLASS()
 class POTATOPROJECT_API APotatoMonster : public ACharacter
@@ -25,19 +24,16 @@ protected:
 
 public:
 	// =========================
-	// Rank: BP 자식 3개에서 고정
+	// Rank / Type (BP 자식에서 고정)
 	// =========================
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Monster|Rank")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Monster|Config")
 	EMonsterRank Rank = EMonsterRank::Normal;
 
-	// =========================
-	// Type: 너가 원하는 Enum 방식
-	// =========================
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Monster|Type")
-	EMonsterType MonsterType = EMonsterType::Zombie;
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Monster|Config")
+	EMonsterType MonsterType = EMonsterType::None;
 
 	// =========================
-	// Tables
+	// DataTables
 	// =========================
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Monster|Data")
 	TObjectPtr<UDataTable> RankPresetTable = nullptr;
@@ -45,10 +41,18 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Monster|Data")
 	TObjectPtr<UDataTable> TypePresetTable = nullptr;
 
+	// 특수 스킬 프리셋(행 RowName = SkillId)
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Monster|Data")
+	TObjectPtr<UDataTable> SpecialSkillPresetTable = nullptr;
+
+	// =========================
+	// Wave / Balance Inject
+	// =========================
 	// 웨이브 기본 HP(있으면 TypePreset BaseHP 대신 이걸 베이스로 사용)
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monster|Wave")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monster|Wave", meta = (ExposeOnSpawn = true))
 	float WaveBaseHP = 0.0f;
 
+	// 이동속도 산정 기준(플레이어 기준값)
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monster|Balance")
 	float PlayerReferenceSpeed = 600.0f;
 
@@ -82,6 +86,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Monster|Combat")
 	float StructureDamageMultiplier = 1.0f;
 
+	// =========================
+	// Applied (Preset 결과)
+	// =========================
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Monster|Applied")
 	float AppliedHpMultiplier = 1.0f;
 
@@ -92,9 +99,21 @@ public:
 	EMonsterSpecialLogic AppliedSpecialLogic = EMonsterSpecialLogic::None;
 
 	// =========================
-	// Target / State
+	// Special (Resolve 결과)
 	// =========================
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monster|Target")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Monster|Special")
+	FName ResolvedSpecialSkillId = NAME_None;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Monster|Special")
+	float ResolvedSpecialCooldown = 0.f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Monster|Special")
+	float ResolvedSpecialDamageMultiplier = 1.f;
+
+	// =========================
+	// Target / State (Spawner 주입)
+	// =========================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Monster|Target", meta = (ExposeOnSpawn = true))
 	TObjectPtr<AActor> WarehouseActor = nullptr;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Monster|Target")
@@ -107,7 +126,7 @@ public:
 	// Preset Apply
 	// =========================
 	UFUNCTION(BlueprintCallable, Category = "Monster|Preset")
-	void ApplyPresets(); // TypePreset -> RankPreset
+	void ApplyPresets(); // TypePreset -> RankPreset -> SpecialSkillPreset
 
 	UFUNCTION(BlueprintCallable, Category = "Monster|AI")
 	UBehaviorTree* GetBehaviorTreeToRun() const
@@ -115,7 +134,9 @@ public:
 		return ResolvedBehaviorTree ? ResolvedBehaviorTree : DefaultBehaviorTree;
 	}
 
-	// 기존 API
+	// =========================
+	// Combat / State
+	// =========================
 	UFUNCTION(BlueprintCallable, Category = "Monster|Combat")
 	void Attack(AActor* Target);
 

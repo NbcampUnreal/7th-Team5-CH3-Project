@@ -1,20 +1,93 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
-#include "../Core/PotatoTypes.h"
+#include "GameFramework/Actor.h"
+#include "Engine/DataTable.h"
 
+#include "PotatoWaveMetaRow.h"
+#include "PotatoWaveSpawnRow.h"
+#include "../Core/PotatoEnums.h"
 
+#include "PotatoMonsterSpawner.generated.h"
 
-class POTATOPROJECT_API PotatoMonsterSpawner
+class APotatoMonster;
+
+USTRUCT()
+struct FPendingSpawn
 {
+    GENERATED_BODY()
+
+    FName WaveId;
+    EMonsterRank Rank = EMonsterRank::Normal;
+    EMonsterType Type = EMonsterType::None;
+    int32 Remaining = 0;
+
+    float EntryDelay = 0.f;
+    FName SpawnGroup;
+
+    // 내부용
+    bool bEntryDelayConsumed = false;
+};
+
+UCLASS()
+class POTATOPROJECT_API APotatoMonsterSpawner : public AActor
+{
+    GENERATED_BODY()
+
 public:
-	TArray<FWaveData> Waves;
-	int CurrentWaveIndex;
-	float SpawnTimer;
+    APotatoMonsterSpawner();
 
-	PotatoMonsterSpawner();
-	~PotatoMonsterSpawner();
+    UFUNCTION(BlueprintCallable, Category = "Wave")
+    void StartWave(FName WaveId);
 
-	void SpawnWave();
-	void SpawnMonster(EMonsterType Type, FVector Location);
+    UFUNCTION(BlueprintCallable, Category = "Wave")
+    void StopWave();
+
+protected:
+    // ==== Wave Tables ====
+    UPROPERTY(EditAnywhere, Category = "Wave|Data")
+    TObjectPtr<UDataTable> WaveMetaTable = nullptr;
+
+    UPROPERTY(EditAnywhere, Category = "Wave|Data")
+    TObjectPtr<UDataTable> WaveSpawnTable = nullptr;
+
+    // ==== Monster preset tables (주입용) ====
+    UPROPERTY(EditAnywhere, Category = "Monster|Data")
+    TObjectPtr<UDataTable> TypePresetTable = nullptr;
+
+    UPROPERTY(EditAnywhere, Category = "Monster|Data")
+    TObjectPtr<UDataTable> RankPresetTable = nullptr;
+
+    UPROPERTY(EditAnywhere, Category = "Monster|Data")
+    TObjectPtr<UDataTable> SpecialSkillPresetTable = nullptr;
+
+    // ==== Warehouse (직접 지정) ====
+    UPROPERTY(EditAnywhere, Category = "Warehouse")
+    TObjectPtr<AActor> DefaultWarehouseActor = nullptr;
+
+    // ==== Spawn class mapping ====
+    // Type별 몬스터 클래스를 지정 (가장 현실적인 방식)
+    UPROPERTY(EditAnywhere, Category = "Monster|Classes")
+    TMap<EMonsterType, TSubclassOf<APotatoMonster>> MonsterClassByType;
+
+    // ==== Spawn settings ====
+    UPROPERTY(EditAnywhere, Category = "Wave|Settings")
+    float DefaultSpawnInterval = 0.5f;
+
+    UPROPERTY(EditAnywhere, Category = "Wave|Settings")
+    float DefaultWaveBaseHP = 0.f;
+
+    // ==== Runtime ====
+    FName CurrentWaveId = NAME_None;
+    float CurrentSpawnInterval = 0.5f;
+
+    TArray<FPendingSpawn> PendingQueue;
+
+    FTimerHandle SpawnTickHandle;
+
+    void BuildQueueForWave(FName WaveId, const FPotatoWaveMetaRow& Meta);
+    void TickSpawn();
+
+    APotatoMonster* SpawnOne(EMonsterType Type, EMonsterRank Rank, FName SpawnGroup);
+    FVector GetSpawnLocationByGroup(FName SpawnGroup) const;
 };

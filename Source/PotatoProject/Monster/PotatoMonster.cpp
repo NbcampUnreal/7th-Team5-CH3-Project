@@ -2,6 +2,9 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 
+// SpecialSkill row struct 헤더가 cpp에서 필요함 (FindRow 템플릿)
+#include "PotatoMonsterSpecialSkillPresetRow.h" // 너의 파일명에 맞춰 수정
+
 FName APotatoMonster::GetRankRowName(EMonsterRank InRank)
 {
 	switch (InRank)
@@ -15,11 +18,12 @@ FName APotatoMonster::GetRankRowName(EMonsterRank InRank)
 
 FName APotatoMonster::GetTypeRowName(EMonsterType InType)
 {
-	// DataTable RowName을 Enum 항목 이름
 	const UEnum* Enum = StaticEnum<EMonsterType>();
 	if (!Enum) return NAME_None;
 
-	return Enum->GetNameByValue((int64)InType);
+	// DataTable RowName을 enum 항목 이름("Zombie", "Slime"...)로 맞춤
+	const FString Name = Enum->GetNameStringByValue((int64)InType);
+	return FName(*Name);
 }
 
 APotatoMonster::APotatoMonster()
@@ -31,7 +35,10 @@ APotatoMonster::APotatoMonster()
 void APotatoMonster::BeginPlay()
 {
 	Super::BeginPlay();
-	ApplyPresets();
+
+	// 스폰 직후 Spawner에서 ApplyPresets 호출하는 흐름이면 여기서 굳이 안 불러도 됨.
+	// 테스트 단계에서 자동 적용하고 싶으면 주석 해제:
+	// ApplyPresets();
 }
 
 void APotatoMonster::ApplyPresetsFallback()
@@ -47,9 +54,6 @@ void APotatoMonster::ApplyPresetsFallback()
 	StructureDamageMultiplier = (Rank == EMonsterRank::Elite) ? 1.5f :
 		(Rank == EMonsterRank::Boss) ? 3.0f : 1.0f;
 
-	AppliedSpecialLogic = (Rank == EMonsterRank::Elite) ? EMonsterSpecialLogic::EliteAOE :
-		(Rank == EMonsterRank::Boss) ? EMonsterSpecialLogic::BossCustom : EMonsterSpecialLogic::None;
-
 	const float BaseHP = (WaveBaseHP > 0.f) ? WaveBaseHP : 100.0f;
 	MaxHealth = BaseHP * AppliedHpMultiplier;
 	Health = MaxHealth;
@@ -61,24 +65,36 @@ void APotatoMonster::ApplyPresetsFallback()
 	}
 
 	ResolvedBehaviorTree = DefaultBehaviorTree;
+
+	// --- Special (fallback) ---
+	ResolvedSpecialSkillId = NAME_None;
+	AppliedSpecialLogic = EMonsterSpecialLogic::None;
+	ResolvedSpecialCooldown = 0.f;
+	ResolvedSpecialDamageMultiplier = 1.f;
 }
 
 void APotatoMonster::ApplyPresets()
 {
 	// -------------------------
-	// 1) TypePreset 적용 (Enum -> RowName)
+	// 기본값
 	// -------------------------
-	const FPotatoMonsterTypePresetRow* TypeRow = nullptr;
-
 	float TypeBaseHP = 100.0f;
 	float TypeBaseAttackDamage = 10.0f;
 	float TypeBaseAttackRange = 150.0f;
 	float TypeMoveSpeedMul = 1.0f;
 
+	FName TypeDefaultSkillId = NAME_None;
+
+	ResolvedBehaviorTree = DefaultBehaviorTree;
+
+	// -------------------------
+	// 1) TypePreset
+	// -------------------------
+	const FPotatoMonsterTypePresetRow* TypeRow = nullptr;
+
 	if (TypePresetTable)
 	{
 		const FName TypeRowName = GetTypeRowName(MonsterType);
-
 		if (TypeRowName != NAME_None)
 		{
 			TypeRow = TypePresetTable->FindRow<FPotatoMonsterTypePresetRow>(
@@ -94,7 +110,21 @@ void APotatoMonster::ApplyPresets()
 		TypeBaseAttackRange = TypeRow->BaseAttackRange;
 		TypeMoveSpeedMul = TypeRow->MoveSpeedMultiplier;
 
-		ResolvedBehaviorTree = TypeRow->OverrideBehaviorTree ? TypeRow->OverrideBehaviorTree : DefaultBehaviorTree;
+		TypeDefaultSkillId = TypeRow->DefaultSpecialSkillId;
+
+		// SoftObject BT 로드
+		if (TypeRow->OverrideBehaviorTree.IsValid())
+		{
+			ResolvedBehaviorTree = TypeRow->OverrideBehaviorTree.Get();
+		}
+		else if (!TypeRow->OverrideBehaviorTree.IsNull())
+		{
+			ResolvedBehaviorTree = TypeRow->OverrideBehaviorTree.LoadSynchronous();
+		}
+		else
+		{
+			ResolvedBehaviorTree = DefaultBehaviorTree;
+		}
 	}
 	else
 	{
@@ -107,9 +137,13 @@ void APotatoMonster::ApplyPresets()
 	const float BaseHP = (WaveBaseHP > 0.f) ? WaveBaseHP : TypeBaseHP;
 
 	// -------------------------
-	// 2) RankPreset 적용
+	// 2) RankPreset
 	// -------------------------
 	const FPotatoMonsterRankPresetRow* RankRow = nullptr;
+
+	float RankCooldownMul = 1.0f;
+	float RankSpecialDmgMul = 1.0f;
+	FName RankDefaultSkillId = NAME_None;
 
 	if (RankPresetTable)
 	{
@@ -125,6 +159,7 @@ void APotatoMonster::ApplyPresets()
 		return;
 	}
 
+	// HP multiplier
 	float HpMul = RankRow->HpMultiplierMin;
 	if (RankRow->HpMultiplierMax > RankRow->HpMultiplierMin + KINDA_SMALL_NUMBER)
 	{
@@ -144,7 +179,60 @@ void APotatoMonster::ApplyPresets()
 	}
 
 	StructureDamageMultiplier = RankRow->StructureDamageMultiplier;
-	AppliedSpecialLogic = RankRow->SpecialLogic;
+
+	// Rank special knobs
+	RankDefaultSkillId = RankRow->DefaultSpecialSkillId;
+	RankCooldownMul = RankRow->SpecialCooldownMultiplier;
+	RankSpecialDmgMul = RankRow->SpecialDamageMultiplier;
+
+	// -------------------------
+	// 3) 최종 SpecialSkillId 선택 (Type > Rank)  // Theme 제거됨
+	// -------------------------
+	ResolvedSpecialSkillId =
+		(TypeDefaultSkillId != NAME_None) ? TypeDefaultSkillId :
+		(RankDefaultSkillId != NAME_None) ? RankDefaultSkillId :
+		NAME_None;
+
+	// 기본값
+	AppliedSpecialLogic = EMonsterSpecialLogic::None;
+	ResolvedSpecialCooldown = 0.f;
+
+	// 스킬이 없더라도 Rank 보정은 의미 없으니 기본 1로 두는 편이 안전
+	ResolvedSpecialDamageMultiplier = 1.f;
+
+	// -------------------------
+	// 4) SpecialSkillPreset 적용 (있으면)
+	// -------------------------
+	if (ResolvedSpecialSkillId != NAME_None && SpecialSkillPresetTable)
+	{
+		const FPotatoMonsterSpecialSkillPresetRow* SkillRow =
+			SpecialSkillPresetTable->FindRow<FPotatoMonsterSpecialSkillPresetRow>(
+				ResolvedSpecialSkillId, TEXT("APotatoMonster::ApplyPresets(SkillPreset)")
+			);
+
+		if (SkillRow)
+		{
+			AppliedSpecialLogic = SkillRow->Logic;
+
+			// 쿨다운: Skill 기본 * Rank 보정
+			ResolvedSpecialCooldown = SkillRow->Cooldown * RankCooldownMul;
+
+			// 대미지 배수: Skill 기본 * Rank 보정
+			ResolvedSpecialDamageMultiplier = SkillRow->DamageMultiplier * RankSpecialDmgMul;
+
+			// NOTE: 범위/각도/도트/투사체 등은
+			// 여기서 멤버로 캐싱하거나, SpecialComponent로 넘기는 구조 추천.
+			// 예) ResolvedSkillRadius = SkillRow->Radius;
+		}
+		else
+		{
+			// 스킬ID는 있는데 행이 없으면 비활성화
+			ResolvedSpecialSkillId = NAME_None;
+			AppliedSpecialLogic = EMonsterSpecialLogic::None;
+			ResolvedSpecialCooldown = 0.f;
+			ResolvedSpecialDamageMultiplier = 1.f;
+		}
+	}
 }
 
 void APotatoMonster::Attack(AActor* Target)
@@ -156,7 +244,7 @@ void APotatoMonster::Attack(AActor* Target)
 
 	float FinalDamage = AttackDamage;
 
-	// 구조물 배율 적용은 이후 태그/캐스트 확정 시 적용
+	// TODO: 구조물 배율 적용은 대상 태그/클래스 확정 시 적용
 	UGameplayStatics::ApplyDamage(Target, FinalDamage, GetController(), this, nullptr);
 }
 
@@ -172,6 +260,9 @@ void APotatoMonster::Die()
 {
 	if (bIsDead) return;
 	bIsDead = true;
+
+	// TODO: OnDeath 트리거 스킬 처리 (Split 등)
+	// - SkillRow.Trigger == OnDeath일 때 실행하도록 SpecialComponent로 빼는 걸 추천
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
