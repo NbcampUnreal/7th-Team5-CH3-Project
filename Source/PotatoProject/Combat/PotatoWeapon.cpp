@@ -48,22 +48,24 @@ void APotatoWeapon::Fire()
 
 		if (WeaponSystem)
 		{
-			FTransform WeaponTransform = GetActorTransform();
-			FVector RelativeOffset = GetActorLocation().ForwardVector * -90.0f;
-			FVector SpawnLocation = WeaponTransform.TransformPosition(RelativeOffset);
-			FRotator SpawnRotation = FRotator::ZeroRotator;
-			FActorSpawnParameters SpawnParams;
-			APotatoProjectile* NewProjectile = GetWorld()->SpawnActor<APotatoProjectile>(
-				ProjectileOrigin,
-				SpawnLocation,
-				SpawnRotation,
-				SpawnParams
-			);
-			WeaponSystem->ProjectileLimit.Add(NewProjectile);
-			FVector Direction = SpawnLocation - GetActorLocation();
-			UE_LOG(LogTemp, Log, TEXT("Direction %s"), *Direction.ToString());
-			NewProjectile->Launch(Direction);
-			WeaponSystem->LimitBullets();
+			if (Type != EWeaponType::Carrot) {
+				FTransform WeaponTransform = GetActorTransform();
+				FVector RelativeOffset = GetActorLocation().ForwardVector * -90.0f;
+				FVector SpawnLocation = WeaponTransform.TransformPosition(RelativeOffset);
+				FRotator SpawnRotation = FRotator::ZeroRotator;
+				FActorSpawnParameters SpawnParams;
+				APotatoProjectile* NewProjectile = GetWorld()->SpawnActor<APotatoProjectile>(
+					ProjectileOrigins[(int)Type],
+					SpawnLocation,
+					SpawnRotation,
+					SpawnParams
+				);
+				WeaponSystem->ProjectileLimit.Add(NewProjectile);
+				FVector Direction = SpawnLocation - GetActorLocation();
+				UE_LOG(LogTemp, Log, TEXT("Direction %s"), *Direction.ToString());
+				NewProjectile->Launch(Direction);
+				WeaponSystem->LimitBullets();
+			}
 		}	
 	
 }
@@ -87,5 +89,46 @@ bool APotatoWeapon::CanFire()
 
 void APotatoWeapon::ChangeWeapon(int index)
 {
-	
+	int typeindex = index - 1;
+	Type = EWeaponType(typeindex);
+	if (index != 4) {
+		APotatoProjectile* DefaultProjectile = ProjectileOrigins[typeindex]->GetDefaultObject <APotatoProjectile>();
+		SetProjectileType(DefaultProjectile);
+	}
+	switch (typeindex)
+	{
+	case 1:
+		Damage = 10;
+		MagazineSize = 30;
+		CurrentAmmo = 30;
+		CropCostPerShot = 1;
+		FireRate = 0.5f;
+		break;
+	case 2:
+		Damage = 8;
+		MagazineSize = 30;
+		CurrentAmmo = 30;
+		CropCostPerShot = 1;
+		FireRate = 0.5f;
+		break;
+	case 3:
+		Damage = 30;
+		MagazineSize = 10;
+		CurrentAmmo = 30;
+		CropCostPerShot = 3;
+		FireRate = 1.0f;
+		break;
+	case 4:
+		Damage = 5;
+		MagazineSize = 30;
+		CurrentAmmo = 50;
+		CropCostPerShot = 1;
+		FireRate = 0;
+		break;
+	}
+}
+
+void APotatoWeapon::SetProjectileType(APotatoProjectile* aProjectile)
+{
+	Damage = aProjectile->Damage;
 }

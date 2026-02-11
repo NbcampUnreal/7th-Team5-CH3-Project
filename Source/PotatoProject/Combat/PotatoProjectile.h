@@ -26,6 +26,8 @@ public:
 	bool IsExplosive;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	float ExplosionRadius;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
+	float Gravity;
 	UPROPERTY(VisibleAnywhere)
 	UStaticMeshComponent* Mesh;
 

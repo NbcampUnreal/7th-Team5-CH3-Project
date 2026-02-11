@@ -43,7 +43,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	APotatoProjectile* Projectile;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
-	TSubclassOf<APotatoProjectile> ProjectileOrigin;
+	TArray<TSubclassOf<APotatoProjectile>> ProjectileOrigins;
 	UPROPERTY()
 	UPotatoWeaponSystem* WeaponSystem;
 
@@ -53,4 +53,5 @@ public:
 	bool Reload();
 	bool CanFire();
 	void ChangeWeapon(int index);
+	void SetProjectileType(APotatoProjectile* Projectile);
 };

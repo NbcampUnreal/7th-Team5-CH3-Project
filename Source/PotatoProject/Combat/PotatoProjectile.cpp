@@ -1,4 +1,5 @@
 #include "PotatoProjectile.h"
+#include "Components/StaticMeshComponent.h"
 
 APotatoProjectile::APotatoProjectile()
 {
@@ -15,7 +16,14 @@ void APotatoProjectile::BeginPlay()
 void APotatoProjectile::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+	FVector Location = GetActorLocation();
 
+	//float Gravity = -980.f; // UE 기본 중력 (cm/s^2)
+	Velocity.Z += -980.f * Gravity * DeltaTime;
+
+	Location += Velocity * DeltaTime;
+
+	SetActorLocation(Location);
 }
 
 void APotatoProjectile::Launch(FVector Direction)
@@ -26,6 +34,8 @@ void APotatoProjectile::Launch(FVector Direction)
 		//FVector LaunchDirection = GetActorLocation() - GetActorLocation().RightVector;
 		Direction.Normalize();
 		Mesh->AddImpulse(Direction * Speed , NAME_None, true);
+		//Mesh->SetLinearDamping(10.0f* Gravity);
+
 	}
 }
 
