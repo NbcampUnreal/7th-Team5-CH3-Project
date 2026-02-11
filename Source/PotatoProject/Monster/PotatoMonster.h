@@ -134,6 +134,24 @@ public:
 		return ResolvedBehaviorTree ? ResolvedBehaviorTree : DefaultBehaviorTree;
 	}
 
+	// === Lane Path System ===
+
+/** 현재 레인이 가진 Waypoint 배열 */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Category = "Lane")
+	TArray<TObjectPtr<AActor>> LanePoints;
+
+	/** 현재 진행 중인 Lane 인덱스 */
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadWrite, Category = "Lane")
+	int32 LaneIndex = 0;
+
+	/** 현재 이동해야 할 타겟 반환 (Lane → Warehouse 순서) */
+	UFUNCTION(BlueprintCallable, Category = "Lane")
+	AActor* GetCurrentLaneTarget() const;
+
+	/** 다음 Lane 타겟으로 인덱스 증가 */
+	UFUNCTION(BlueprintCallable, Category = "Lane")
+	void AdvanceLaneIndex();
+
 	// =========================
 	// Combat / State
 	// =========================
@@ -148,9 +166,15 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Monster|Target")
 	AActor* FindTarget();
-
+	UPROPERTY(VisibleAnywhere, Category = "Preset")
+	bool bPresetsApplied = false;
 protected:
 	void ApplyPresetsFallback();
 	static FName GetRankRowName(EMonsterRank InRank);
 	static FName GetTypeRowName(EMonsterType InType);
+private:
+	int32 CurrentLaneIndex = 0;
+	UPROPERTY()
+	TArray<TObjectPtr<AActor>> LaneTargets;
+
 };

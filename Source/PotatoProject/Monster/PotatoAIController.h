@@ -27,4 +27,5 @@ public:
 	static const FName Key_CurrentTarget;
 	static const FName Key_bIsDead;
 	static const FName Key_SpecialLogic; // int로 저장
+	static const FName Key_MoveTarget;
 };
