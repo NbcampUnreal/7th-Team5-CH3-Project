@@ -1,7 +1,8 @@
 #include "PotatoWeapon.h"
 #include "PotatoProjectile.h"
 #include "PotatoWeaponSystem.h"
-
+#include "../Monster/PotatoMonster.h"
+#include "DrawDebugHelpers.h"
 
 APotatoWeapon::APotatoWeapon()
 {
@@ -48,11 +49,12 @@ void APotatoWeapon::Fire()
 
 		if (WeaponSystem)
 		{
-			if (Type != EWeaponType::Carrot) {
 				FTransform WeaponTransform = GetActorTransform();
 				FVector RelativeOffset = GetActorLocation().ForwardVector * -90.0f;
 				FVector SpawnLocation = WeaponTransform.TransformPosition(RelativeOffset);
 				FRotator SpawnRotation = FRotator::ZeroRotator;
+				FVector Direction = SpawnLocation - GetActorLocation();
+			if (Type != EWeaponType::Carrot) {
 				FActorSpawnParameters SpawnParams;
 				APotatoProjectile* NewProjectile = GetWorld()->SpawnActor<APotatoProjectile>(
 					ProjectileOrigins[(int)Type],
@@ -61,10 +63,41 @@ void APotatoWeapon::Fire()
 					SpawnParams
 				);
 				WeaponSystem->ProjectileLimit.Add(NewProjectile);
-				FVector Direction = SpawnLocation - GetActorLocation();
 				UE_LOG(LogTemp, Log, TEXT("Direction %s"), *Direction.ToString());
 				NewProjectile->Launch(Direction);
 				WeaponSystem->LimitBullets();
+			}
+			else {
+				FHitResult HitResult;
+				FVector End = SpawnLocation + Direction * ValidDistance;//유효사거리
+				FCollisionQueryParams Params;
+				Params.AddIgnoredActor(this);
+				bool bHit = GetWorld()->LineTraceSingleByChannel(
+					HitResult,
+					SpawnLocation,
+					End,
+					ECC_Visibility,
+					Params
+				);
+				UE_LOG(LogTemp, Warning, TEXT("맞냐?"));
+				if (bHit && HitResult.GetActor())
+				{
+					// 1. 부딪힌 액터 가져오기
+					AActor* HitActor = HitResult.GetActor();
+					FString a = HitActor->GetFName().ToString();
+					UE_LOG(LogTemp, Warning, TEXT("뭔가 맞았다! %s"),*a);
+
+					// 3. 특정 클래스인지 확인 (Cast 이용)
+					APotatoMonster* Monster = Cast<APotatoMonster>(HitActor);
+					if (Monster)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("몬스터 맞았다!"));
+					}
+				}
+				else {
+				
+				UE_LOG(LogTemp, Warning, TEXT("안 맞음 ? "));
+				}
 			}
 		}	
 	

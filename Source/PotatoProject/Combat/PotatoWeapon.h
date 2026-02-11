@@ -47,6 +47,9 @@ public:
 	UPROPERTY()
 	UPotatoWeaponSystem* WeaponSystem;
 
+	//유효사거리
+	float ValidDistance = 5000.0f;
+
 	virtual void Tick(float DeltaTime) override;
 
 	void Fire();
