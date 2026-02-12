@@ -41,5 +41,8 @@ public:
 	bool IsDestructible() const;
 	
 	UFUNCTION(BlueprintCallable, Category = "Combat")
-	void TakeDamage(float Amount);
+	virtual float TakeDamage(float DamageAmount, 
+						struct FDamageEvent const& DamageEvent,
+						AController* EventInstigator, 
+						AActor* DamageCauser) override;
 };

@@ -55,14 +55,21 @@ bool APotatoPlaceableStructure::IsDestructible() const
 	return false;
 }
 
-void APotatoPlaceableStructure::TakeDamage(float Amount)
+float APotatoPlaceableStructure::TakeDamage(float DamageAmount, 
+											FDamageEvent const& DamageEvent,
+											AController* EventInstigator, 
+											AActor* DamageCauser)
 {
+	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+    
 	if (!IsDestructible() || CurrentHealth <= 0.0f)
 	{
-		return;
+		return 0.0f;
 	}
 	
-	CurrentHealth = FMath::Clamp(CurrentHealth - Amount, 0.0f, StructureData->MaxHealth);
+	const float DamageToApply = FMath::Min(ActualDamage, CurrentHealth);
+    
+	CurrentHealth = FMath::Clamp(CurrentHealth - DamageToApply, 0.0f, StructureData->MaxHealth);
 
 	if (CurrentHealth <= 0.0f)
 	{
@@ -70,4 +77,5 @@ void APotatoPlaceableStructure::TakeDamage(float Amount)
 		// OnStructureDestroyed.Broadcast();
 		Destroy();
 	}
+	return DamageToApply;
 }
