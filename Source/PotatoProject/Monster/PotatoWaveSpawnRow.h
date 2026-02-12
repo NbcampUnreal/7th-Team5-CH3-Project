@@ -7,7 +7,6 @@
 
 /**
  * WaveSpawnTable
- * - RowName 추천: "WaveId_###" 또는 "WaveId_Rank_Type"
  * - WaveId로 같은 웨이브 엔트리들을 모아서 사용
  */
 USTRUCT(BlueprintType)

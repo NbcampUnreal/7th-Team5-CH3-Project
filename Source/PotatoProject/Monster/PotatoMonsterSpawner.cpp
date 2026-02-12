@@ -1,5 +1,7 @@
 ﻿#include "PotatoMonsterSpawner.h"
 #include "PotatoMonster.h"
+#include "BPI_LanePathProvider.h"
+
 #include "Kismet/GameplayStatics.h"
 
 APotatoMonsterSpawner::APotatoMonsterSpawner()
@@ -32,7 +34,6 @@ void APotatoMonsterSpawner::StartWave(FName WaveId)
 
     BuildQueueForWave(WaveId, *Meta);
 
-    // PreDelay 처리
     const float PreDelay = FMath::Max(0.f, Meta->PreDelay);
     GetWorldTimerManager().SetTimer(
         SpawnTickHandle, this, &APotatoMonsterSpawner::TickSpawn,
@@ -47,11 +48,10 @@ void APotatoMonsterSpawner::StopWave()
     CurrentWaveId = NAME_None;
 }
 
-void APotatoMonsterSpawner::BuildQueueForWave(FName WaveId, const FPotatoWaveMetaRow& Meta)
+void APotatoMonsterSpawner::BuildQueueForWave(FName WaveId, const FPotatoWaveMetaRow& /*Meta*/)
 {
     PendingQueue.Reset();
 
-    // WaveSpawnTable 전체를 훑고 WaveId 매칭되는 행만 큐로
     const TArray<FName> RowNames = WaveSpawnTable->GetRowNames();
     for (const FName& RowName : RowNames)
     {
@@ -69,29 +69,24 @@ void APotatoMonsterSpawner::BuildQueueForWave(FName WaveId, const FPotatoWaveMet
         Item.SpawnGroup = Row->SpawnGroup;
         PendingQueue.Add(Item);
     }
-
-    // (선택) 특정 규칙으로 정렬하고 싶으면 여기서 sort
-    // 예) Elite 먼저/나중, Type별 섞기 등
 }
 
 void APotatoMonsterSpawner::TickSpawn()
 {
     if (PendingQueue.Num() == 0)
     {
+        const FName FinishedWave = CurrentWaveId;
         StopWave();
-        UE_LOG(LogTemp, Warning, TEXT("[Spawner] Wave %s finished"), *CurrentWaveId.ToString());
+        UE_LOG(LogTemp, Warning, TEXT("[Spawner] Wave %s finished"), *FinishedWave.ToString());
         return;
     }
 
     FPendingSpawn& Cur = PendingQueue[0];
 
-    // 엔트리 시작 지연(1회)
     if (!Cur.bEntryDelayConsumed && Cur.EntryDelay > 0.f)
     {
         Cur.bEntryDelayConsumed = true;
 
-        // 이번 Tick은 소비하고 다음 Tick부터 스폰하도록 “한 번만 지연” 처리
-        // 더 정확히 하려면 별도의 타이머로 Cur.EntryDelay를 반영해도 됨.
         GetWorldTimerManager().ClearTimer(SpawnTickHandle);
         GetWorldTimerManager().SetTimer(
             SpawnTickHandle, this, &APotatoMonsterSpawner::TickSpawn,
@@ -100,7 +95,6 @@ void APotatoMonsterSpawner::TickSpawn()
         return;
     }
 
-    // 하나 스폰
     SpawnOne(Cur.Type, Cur.Rank, Cur.SpawnGroup);
 
     Cur.Remaining--;
@@ -108,7 +102,6 @@ void APotatoMonsterSpawner::TickSpawn()
     {
         PendingQueue.RemoveAt(0);
 
-        // 지연 타이머를 다시 기본 tick으로 복구
         GetWorldTimerManager().ClearTimer(SpawnTickHandle);
         GetWorldTimerManager().SetTimer(
             SpawnTickHandle, this, &APotatoMonsterSpawner::TickSpawn,
@@ -122,48 +115,116 @@ APotatoMonster* APotatoMonsterSpawner::SpawnOne(EMonsterType Type, EMonsterRank 
     TSubclassOf<APotatoMonster>* ClassPtr = MonsterClassByType.Find(Type);
     if (!ClassPtr || !(*ClassPtr))
     {
-        UE_LOG(LogTemp, Warning, TEXT("[Spawner] No monster class for Type"));
+        UE_LOG(LogTemp, Warning, TEXT("[Spawner] No monster class for Type=%s (%d)"),
+            *UEnum::GetValueAsString(Type), (int32)Type);
         return nullptr;
     }
 
-    const FVector Loc = GetSpawnLocationByGroup(SpawnGroup);
-    const FRotator Rot = FRotator::ZeroRotator;
-    const FTransform Xform(Rot, Loc);
+    if (!DefaultWarehouseActor)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Spawner] DefaultWarehouseActor is NULL (Wave=%s)"), *CurrentWaveId.ToString());
+    }
 
-    // ✅ 주입-타이밍 안정화를 위해 Deferred Spawn 추천
+    TArray<AActor*> LanePointsRaw;
+    bool bHasLane = false;
+
+    if (!LanePathManager)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Spawner] LanePathManager is NULL"));
+    }
+    else if (!LanePathManager->GetClass()->ImplementsInterface(UBPI_LanePathProvider::StaticClass()))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[Spawner] LanePathManager '%s' does NOT implement BPI_LanePathProvider"),
+            *LanePathManager->GetName());
+    }
+    else
+    {
+        // BP에서 구현한 인터페이스 함수를 안전하게 호출
+        IBPI_LanePathProvider::Execute_GetLanePoints(LanePathManager, SpawnGroup, LanePointsRaw);
+        bHasLane = (LanePointsRaw.Num() > 0);
+
+        UE_LOG(LogTemp, Log, TEXT("[Spawner] GetLanePoints OK | Group=%s | RawPoints=%d"),
+            *SpawnGroup.ToString(), LanePointsRaw.Num());
+    }
+
+    FVector SpawnLoc = GetActorLocation(); // fallback
+    if (bHasLane && IsValid(LanePointsRaw[0]))
+    {
+        SpawnLoc = LanePointsRaw[0]->GetActorLocation();
+    }
+    else
+    {
+        // fallback이 계속 뜬다면 LanePointsRaw[0]이 NULL/Invalid인 상태
+        UE_LOG(LogTemp, Warning, TEXT("[Spawner] SpawnLoc fallback -> Spawner location | Group=%s | bHasLane=%d | RawNum=%d | FirstValid=%d"),
+            *SpawnGroup.ToString(),
+            bHasLane ? 1 : 0,
+            LanePointsRaw.Num(),
+            (LanePointsRaw.Num() > 0 && IsValid(LanePointsRaw[0])) ? 1 : 0);
+        SpawnLoc = GetActorLocation();
+    }
+
+    const FTransform Xform(FRotator::ZeroRotator, SpawnLoc);
+
     APotatoMonster* Monster = GetWorld()->SpawnActorDeferred<APotatoMonster>(
-        *ClassPtr, Xform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn
+        *ClassPtr, Xform, nullptr, nullptr,
+        ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn
     );
 
     if (!Monster) return nullptr;
 
-    // ---- 필수 주입: WarehouseActor (월드 검색 X, BP 지정 액터) ----
+    // =========================================================
+    // Spawner 책임: "데이터 주입"만 (AI/BB/MoveTarget 금지)
+    // =========================================================
     Monster->WarehouseActor = DefaultWarehouseActor;
-
-    // ---- 웨이브/프리셋 테이블 주입 ----
-    Monster->Rank = Rank;                 // BP 자식 고정이라면 생략 가능하지만, 웨이브가 바꾸는 구조면 유지
-    Monster->MonsterType = Type;          // 웨이브 타입에 따라 바뀌는 구조면 필요
-
-    Monster->WaveBaseHP = DefaultWaveBaseHP; // 또는 메타 기반/난이도 기반 계산 가능
+    Monster->Rank = Rank;
+    Monster->MonsterType = Type;
+    Monster->WaveBaseHP = DefaultWaveBaseHP;
 
     Monster->TypePresetTable = TypePresetTable;
     Monster->RankPresetTable = RankPresetTable;
     Monster->SpecialSkillPresetTable = SpecialSkillPresetTable;
 
-    // ApplyPresets는 FinishSpawning 이후 BeginPlay/컴포넌트 준비가 끝난 뒤 호출해도 되고,
-    // 지금처럼 테이블만 쓰는 순수 로직이면 여기서 호출해도 됨.
-    // 안정적으로는 FinishSpawning 직후 호출 추천.
+    // =========================================================
+    // 2) LanePoints 주입 + LaneIndex 시작값
+    //    - Entry(0)에서 스폰했으면, 첫 이동 목표는 1번부터
+    // =========================================================
+    Monster->LanePoints.Reset();
+    Monster->LaneIndex = 0;
 
-    UGameplayStatics::FinishSpawningActor(Monster, Xform);
+    if (bHasLane)
+    {
+        for (AActor* P : LanePointsRaw)
+        {
+            if (IsValid(P))
+            {
+                Monster->LanePoints.Add(P);
+            }
+        }
 
-    Monster->ApplyPresets();
+        if (Monster->LanePoints.Num() >= 2)
+        {
+            Monster->LaneIndex = 1; // 0번은 스폰 위치, 1번부터 이동
+        }
+
+        UE_LOG(LogTemp, Log, TEXT("[Spawner] Lane injected | Group=%s | Points=%d | StartIndex=%d"),
+            *SpawnGroup.ToString(), Monster->LanePoints.Num(), Monster->LaneIndex);
+    }
+
+    // FinishSpawning (AutoPossessAI 설정이면 여기서 컨트롤러가 붙고 OnPossess에서 BB 세팅)
+    Monster->FinishSpawning(Xform);
 
     return Monster;
 }
 
-FVector APotatoMonsterSpawner::GetSpawnLocationByGroup(FName SpawnGroup) const
+FVector APotatoMonsterSpawner::GetSpawnLocationByGroup(FName /*SpawnGroup*/) const
 {
-    // TODO: SpawnGroup별 SpawnPoint 배열/볼륨/소켓 등을 붙일 수 있음.
-    // 테스트 단계: 스포너 위치 기반으로 단순 스폰
-    return GetActorLocation();
+    const FVector Origin = GetActorLocation();
+    const float Radius = 300.f;
+
+    const FVector2D Rand2D = FVector2D(FMath::FRandRange(-1.f, 1.f), FMath::FRandRange(-1.f, 1.f)).GetSafeNormal();
+    const float Dist = FMath::FRandRange(0.f, Radius);
+
+    FVector Loc = Origin + FVector(Rand2D.X, Rand2D.Y, 0.f) * Dist;
+    Loc.Z += 20.f;
+    return Loc;
 }

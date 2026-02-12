@@ -24,8 +24,6 @@ struct FPendingSpawn
 
     float EntryDelay = 0.f;
     FName SpawnGroup;
-
-    // 내부용
     bool bEntryDelayConsumed = false;
 };
 
@@ -66,7 +64,6 @@ protected:
     TObjectPtr<AActor> DefaultWarehouseActor = nullptr;
 
     // ==== Spawn class mapping ====
-    // Type별 몬스터 클래스를 지정 (가장 현실적인 방식)
     UPROPERTY(EditAnywhere, Category = "Monster|Classes")
     TMap<EMonsterType, TSubclassOf<APotatoMonster>> MonsterClassByType;
 
@@ -76,6 +73,13 @@ protected:
 
     UPROPERTY(EditAnywhere, Category = "Wave|Settings")
     float DefaultWaveBaseHP = 0.f;
+
+    UPROPERTY(EditInstanceOnly, Category = "Lane")
+    TObjectPtr<AActor> LanePathManager = nullptr;
+
+    // Blackboard Key Name (MoveTo가 바라볼 키)
+    UPROPERTY(EditDefaultsOnly, Category = "Lane")
+    FName MoveTargetKeyName = TEXT("MoveTarget");
 
     // ==== Runtime ====
     FName CurrentWaveId = NAME_None;
@@ -90,4 +94,5 @@ protected:
 
     APotatoMonster* SpawnOne(EMonsterType Type, EMonsterRank Rank, FName SpawnGroup);
     FVector GetSpawnLocationByGroup(FName SpawnGroup) const;
+
 };
