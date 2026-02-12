@@ -108,10 +108,47 @@ void UBuildingSystemComponent::OnPlaceStructure(const FInputActionValue& Value)
 
 void UBuildingSystemComponent::OnRotateStructure(const FInputActionValue& Value)
 {
+	if (!bIsBuildMode)
+	{
+		return;
+	}
+	
+	float Input = Value.Get<float>();
+	
+	if (Input > 0)
+	{
+		CurrentRotationIndex = (CurrentRotationIndex + 1) % 4;
+	}
+	else
+	{
+		CurrentRotationIndex = (CurrentRotationIndex - 1 + 4) % 4;
+	}
+	
+	if (GhostActor)
+	{
+		UpdateGhostActorTransform();
+	}
 }
 
 void UBuildingSystemComponent::OnCycleStructure(const FInputActionValue& Value)
 {
+	if (!bIsBuildMode || StructureSlots.Num() == 0)
+	{
+		return;
+	}
+	
+	float Input = Value.Get<float>();
+	
+	if (Input > 0)
+	{
+		CurrentSlotIndex = (CurrentSlotIndex + 1) % StructureSlots.Num();
+	}
+	else
+	{
+		CurrentSlotIndex = (CurrentSlotIndex - 1 + StructureSlots.Num()) % StructureSlots.Num();
+	}
+	
+	RefreshGhostActorModel();
 }
 
 FVector UBuildingSystemComponent::CalculateSnappedLocation(const FVector& HitLocation) const
@@ -121,10 +158,78 @@ FVector UBuildingSystemComponent::CalculateSnappedLocation(const FVector& HitLoc
 
 void UBuildingSystemComponent::UpdateGhostActorTransform()
 {
+	APlayerController* PlayerController = Cast<APlayerController>(GetOwner()->GetInstigatorController());
+	if (!PlayerController || !PlayerController->PlayerCameraManager)
+	{
+		return;
+	}
+	
+	FVector CamLoc = PlayerController->PlayerCameraManager->GetCameraLocation();
+	FVector CamRot = PlayerController->PlayerCameraManager->GetCameraRotation().Vector();
+	
+	FVector TraceEnd = CamLoc + (CamRot * MaxBuildDistance);
+	
+	FHitResult Hit;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(GetOwner());
+	QueryParams.AddIgnoredActor(GhostActor);
+	
+	bool bIsTraceHit = GetWorld()->LineTraceSingleByChannel(Hit, CamLoc, TraceEnd, ECC_WorldStatic, QueryParams);
+	
+	if (bIsTraceHit)
+	{
+		FVector TargetLocation = Hit.Location;
+		FRotator TargetRotation = FRotator(0.0f, CurrentRotationIndex * 90.0f, 0.0f);
+		
+		GhostActor->SetActorLocationAndRotation(TargetLocation, TargetRotation);
+		GhostActor->SetActorHiddenInGame(false);
+	}
+	else
+	{
+		GhostActor->SetActorHiddenInGame(true);
+	}
+	
 }
 
 void UBuildingSystemComponent::RefreshGhostActorModel()
 {
+	if (GhostActor)
+	{
+		GhostActor->Destroy();
+		GhostActor = nullptr;
+	}
+	
+	const UPotatoStructureData* SelectedData = GetSelectedData();
+	
+	if (!SelectedData || !SelectedData->StructureClass)
+	{
+		return;
+	}
+	
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	
+	GhostActor = GetWorld()->SpawnActor<APotatoPlaceableStructure>(SelectedData->StructureClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+	
+	if (GhostActor)
+	{
+		GhostActor->StructureData = SelectedData;
+		GhostActor->SetActorEnableCollision(false);
+		UpdateGhostActorTransform();
+		// TODO: 머티리얼 변경
+		
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("GhostActor %s Created"),*SelectedData->DisplayName.ToString()));
+	}
+
+}
+
+const UPotatoStructureData* UBuildingSystemComponent::GetSelectedData() const
+{
+	if (StructureSlots.IsValidIndex(CurrentSlotIndex))
+	{
+		return StructureSlots[CurrentSlotIndex];
+	}
+	return nullptr;
 }
 
 void UBuildingSystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -135,5 +240,4 @@ void UBuildingSystemComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	{
 		UpdateGhostActorTransform();
 	}
-
 }
