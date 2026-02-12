@@ -19,44 +19,52 @@ void UPotatoCombatComponent::InitFromStats(const FPotatoMonsterFinalStats& InSta
 
 bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 {
-	if (!GetWorld() || !Target || !GetOwner()) return false;
 
-	const double Now = GetWorld()->GetTimeSeconds();
-	if (Now < NextAttackTime) return false;
-	if (bIsAttacking) return false;
+    if (!GetWorld() || !Target || !GetOwner())
+    {
+        return false;
+    }
 
-	if (!IsTargetInRange(Target)) return false;
+    const double Now = GetWorld()->GetTimeSeconds();
 
-	// 타겟 저장(Notify에서 사용)
-	PendingBasicTarget = Target;
+    if (Now < NextAttackTime)
+    {
+        return false;
+    }
 
-	// 공격 시작 상태
-	bIsAttacking = true;
+    if (bIsAttacking)
+    {
+        return false;
+    }
 
-	//  몽타주 재생 (Owner가 APotatoMonster라고 가정)
-	APotatoMonster* Monster = Cast<APotatoMonster>(GetOwner());
-	if (!Monster)
-	{
-		bIsAttacking = false;
-		PendingBasicTarget.Reset();
-		return false;
-	}
 
-	USkeletalMeshComponent* Mesh = Monster->GetMesh();
-	UAnimInstance* AnimInst = Mesh ? Mesh->GetAnimInstance() : nullptr;
-	if (!AnimInst || !Monster->BasicAttackMontage) //  몽타주 변수는 네 Monster에 맞게
-	{
-		bIsAttacking = false;
-		PendingBasicTarget.Reset();
-		return false;
-	}
+    PendingBasicTarget = Target;
+    bIsAttacking = true;
 
-	AnimInst->Montage_Play(Monster->BasicAttackMontage, 1.f);
+    APotatoMonster* Monster = Cast<APotatoMonster>(GetOwner());
+    if (!Monster)
+    {
+        bIsAttacking = false;
+        return false;
+    }
 
-	//  기본공격 쿨다운(임시 1초) - 나중에 AnimSet으로 옮길 값
-	NextAttackTime = Now + 1.0;
+    USkeletalMeshComponent* Mesh = Monster->GetMesh();
+    UAnimInstance* AnimInst = Mesh ? Mesh->GetAnimInstance() : nullptr;
 
-	return true;
+    if (!AnimInst)
+    {
+        bIsAttacking = false;
+        return false;
+    }
+
+    if (!Monster->BasicAttackMontage)
+    {
+        bIsAttacking = false;
+        return false;
+    }
+
+    NextAttackTime = Now + 1.0;
+    return true;
 }
 
 void UPotatoCombatComponent::ApplyPendingBasicDamage()

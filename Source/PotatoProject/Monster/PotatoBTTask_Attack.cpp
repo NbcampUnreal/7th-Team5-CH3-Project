@@ -13,16 +13,37 @@ UPotatoBTTask_Attack::UPotatoBTTask_Attack()
 
 EBTNodeResult::Type UPotatoBTTask_Attack::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
-	AAIController* AIC = OwnerComp.GetAIOwner();
-	UBlackboardComponent* BB = OwnerComp.GetBlackboardComponent();
-	if (!AIC || !BB) return EBTNodeResult::Failed;
 
-	APotatoMonster* M = Cast<APotatoMonster>(AIC->GetPawn());
-	if (!M || M->bIsDead || !M->CombatComp) return EBTNodeResult::Failed;
+    AAIController* AIC = OwnerComp.GetAIOwner();
+    UBlackboardComponent* BB = OwnerComp.GetBlackboardComponent();
+    if (!AIC || !BB)
+    {
+        return EBTNodeResult::Failed;
+    }
 
-	AActor* Target = Cast<AActor>(BB->GetValueAsObject(AttackTargetKey.SelectedKeyName));
-	if (!Target) return EBTNodeResult::Failed;
+    APotatoMonster* M = Cast<APotatoMonster>(AIC->GetPawn());
+    if (!M)
+    {
+        return EBTNodeResult::Failed;
+    }
 
-	const bool bOk = M->CombatComp->RequestBasicAttack(Target);
-	return bOk ? EBTNodeResult::Succeeded : EBTNodeResult::Failed;
+    if (M->bIsDead)
+    {
+        return EBTNodeResult::Failed;
+    }
+
+    if (!M->CombatComp)
+    {
+        return EBTNodeResult::Failed;
+    }
+
+    AActor* Target = Cast<AActor>(BB->GetValueAsObject(AttackTargetKey.SelectedKeyName));
+    if (!Target)
+    {
+        return EBTNodeResult::Failed;
+    }
+
+    const bool bOk = M->CombatComp->RequestBasicAttack(Target);
+
+    return bOk ? EBTNodeResult::Succeeded : EBTNodeResult::Failed;
 }
