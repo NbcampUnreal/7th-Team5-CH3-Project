@@ -93,4 +93,6 @@ protected:
 	void WeaponChange(const FInputActionValue& Value);
 
 	void WeaponEqiup(bool isEquip);
+
+	void WeaponRotate();
 	};

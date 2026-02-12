@@ -56,6 +56,8 @@ void APotatoPlayerCharacter::Tick(float DeltaTime)
 		
 		CameraBoom->TargetArmLength = NewDistance;
 	}
+
+	WeaponRotate();
 }
 
 void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -311,4 +313,13 @@ void APotatoPlayerCharacter::WeaponEqiup(bool isEquip)
 			Weapon->Destroy();
 		}
 	}
+}
+
+void APotatoPlayerCharacter::WeaponRotate()
+{
+	if (Weapon && FollowCamera)
+	{
+		Weapon->SetActorRotation(FollowCamera->GetComponentRotation());
+	}
+	//
 }
