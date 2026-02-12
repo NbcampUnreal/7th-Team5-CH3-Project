@@ -4,7 +4,8 @@
 #include "Camera/CameraComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "../Combat/PotatoWeapon.h"
+#include "Building/BuildingSystemComponent.h"
+#include "Combat/PotatoWeapon.h"
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
 {
@@ -29,9 +30,9 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
-
-	//
 	
+	// create build system component
+	BuildingComponent = CreateDefaultSubobject<UBuildingSystemComponent>(TEXT("BuildingComponent"));
 }
 
 void APotatoPlayerCharacter::BeginPlay()
@@ -159,6 +160,16 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					this,
 					&APotatoPlayerCharacter::WeaponChange
 				);
+			}
+			
+			if (PlayerController->ToggleBuildAction)
+			{
+				EnhancedInput->BindAction(
+					PlayerController->ToggleBuildAction,
+					ETriggerEvent::Started,
+					this,
+					&APotatoPlayerCharacter::OnToggleBuildMode
+					);
 			}
 		}
 	}
@@ -322,4 +333,12 @@ void APotatoPlayerCharacter::WeaponRotate()
 		Weapon->SetActorRotation(FollowCamera->GetComponentRotation());
 	}
 	//
+}
+
+void APotatoPlayerCharacter::OnToggleBuildMode(const FInputActionValue& Value)
+{
+	if (BuildingComponent)
+	{
+		BuildingComponent->ToggleBuildMode();
+	}
 }
