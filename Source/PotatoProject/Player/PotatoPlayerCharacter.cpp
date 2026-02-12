@@ -292,8 +292,16 @@ void APotatoPlayerCharacter::WeaponEqiup(bool isEquip)
 			FActorSpawnParameters SpawnParams;
 			SpawnParams.Owner = this;
 			SpawnParams.Instigator = GetInstigator();
+			//SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 			if (!Weapon) {
 				Weapon = GetWorld()->SpawnActor<APotatoWeapon>(WeaponOrigin, GetActorLocation(), GetActorRotation(), SpawnParams);
+				FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, // 위치는 소켓에 붙임
+					EAttachmentRule::KeepWorld,    // 회전은 방금 설정한 월드값 유지
+					EAttachmentRule::KeepWorld,    // 스케일 유지
+					true);
+				Weapon->AttachToComponent(GetMesh(), AttachRules, TEXT("WeaponSocket"));
+				//Weapon->GetRootComponent()->SetUsingAbsoluteRotation(true);
+				//Weapon->SetActorRotation(FRotator(0.f, 90.f, 0.f));
 			}
 		}
 	}

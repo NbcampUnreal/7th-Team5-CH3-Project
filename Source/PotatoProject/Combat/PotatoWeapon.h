@@ -25,7 +25,7 @@ public:
 	EWeaponType Type;
 	//공격력
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
-	int Damage;
+	float Damage;
 	//최대탄약수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	int MagazineSize;
@@ -38,6 +38,11 @@ public:
 	//발사속도
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	float FireRate;
+	//곡사 각도
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
+	float Fireangle;
+
+
 
 	//원본 투사체
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")

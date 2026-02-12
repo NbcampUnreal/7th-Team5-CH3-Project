@@ -30,10 +30,16 @@ public:
 	float Gravity;
 	UPROPERTY(VisibleAnywhere)
 	UStaticMeshComponent* Mesh;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
+	bool IsHit;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
+	bool IsOverlap;
 
 	virtual void Tick(float DeltaTime) override;
 
 	void Launch(FVector Direction);
-	void OnHit(AActor * HitActor);
+	UFUNCTION()
+	void OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
+	//void Overlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,bool bFromSweep, const FHitResult& SweepResult);
 	void Explode();
 };

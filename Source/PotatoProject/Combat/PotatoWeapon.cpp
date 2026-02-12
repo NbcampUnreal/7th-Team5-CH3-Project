@@ -3,6 +3,8 @@
 #include "PotatoWeaponSystem.h"
 #include "../Monster/PotatoMonster.h"
 #include "DrawDebugHelpers.h"
+#include "Kismet/GameplayStatics.h"
+
 
 APotatoWeapon::APotatoWeapon()
 {
@@ -50,7 +52,7 @@ void APotatoWeapon::Fire()
 		if (WeaponSystem)
 		{
 				FTransform WeaponTransform = GetActorTransform();
-				FVector RelativeOffset = GetActorLocation().ForwardVector * -90.0f;
+				FVector RelativeOffset = GetActorLocation().ForwardVector * +90.0f+ GetActorLocation().UpVector* Fireangle;
 				FVector SpawnLocation = WeaponTransform.TransformPosition(RelativeOffset);
 				FRotator SpawnRotation = FRotator::ZeroRotator;
 				FVector Direction = SpawnLocation - GetActorLocation();
@@ -79,19 +81,27 @@ void APotatoWeapon::Fire()
 					ECC_Visibility,
 					Params
 				);
-				UE_LOG(LogTemp, Warning, TEXT("맞냐?"));
+				//UE_LOG(LogTemp, Warning, TEXT("맞냐?"));
 				if (bHit && HitResult.GetActor())
 				{
 					// 1. 부딪힌 액터 가져오기
 					AActor* HitActor = HitResult.GetActor();
 					FString a = HitActor->GetFName().ToString();
-					UE_LOG(LogTemp, Warning, TEXT("뭔가 맞았다! %s"),*a);
+					//UE_LOG(LogTemp, Warning, TEXT("뭔가 맞았다! %s"),*a);
 
 					// 3. 특정 클래스인지 확인 (Cast 이용)
 					APotatoMonster* Monster = Cast<APotatoMonster>(HitActor);
 					if (Monster)
 					{
-						UE_LOG(LogTemp, Warning, TEXT("몬스터 맞았다!"));
+						//static mesh에만 맞는듯...?
+						UGameplayStatics::ApplyDamage(
+							Monster,
+							Damage,
+							GetInstigatorController(),
+							this,
+							UDamageType::StaticClass()
+						);
+						UE_LOG(LogTemp, Warning, TEXT("몬스터 맞았다! %f"), Damage);
 					}
 				}
 				else {
@@ -130,28 +140,31 @@ void APotatoWeapon::ChangeWeapon(int index)
 	}
 	switch (typeindex)
 	{
-	case 1:
+	case 0:
 		Damage = 10;
 		MagazineSize = 30;
 		CurrentAmmo = 30;
 		CropCostPerShot = 1;
 		FireRate = 0.5f;
+		Fireangle = 10.0f;
 		break;
-	case 2:
+	case 1:
 		Damage = 8;
 		MagazineSize = 30;
 		CurrentAmmo = 30;
 		CropCostPerShot = 1;
 		FireRate = 0.5f;
+		Fireangle = 0.0f;
 		break;
-	case 3:
+	case 2:
 		Damage = 30;
 		MagazineSize = 10;
 		CurrentAmmo = 30;
 		CropCostPerShot = 3;
 		FireRate = 1.0f;
+		Fireangle = 10.0f;
 		break;
-	case 4:
+	case 3:
 		Damage = 5;
 		MagazineSize = 30;
 		CurrentAmmo = 50;

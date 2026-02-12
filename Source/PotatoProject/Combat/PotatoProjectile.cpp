@@ -1,5 +1,7 @@
 #include "PotatoProjectile.h"
 #include "Components/StaticMeshComponent.h"
+#include "../Monster/PotatoMonster.h"
+#include "Kismet/GameplayStatics.h"
 
 APotatoProjectile::APotatoProjectile()
 {
@@ -11,19 +13,23 @@ void APotatoProjectile::BeginPlay()
 {
 	Super::BeginPlay();
 	Mesh = Cast<UStaticMeshComponent>(GetComponentByClass(UStaticMeshComponent::StaticClass()));
+
+	if (IsHit) {
+		Mesh->OnComponentHit.AddDynamic(this, &APotatoProjectile::OnHit);
+	}
 }
 
 void APotatoProjectile::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	FVector Location = GetActorLocation();
+	//FVector Location = GetActorLocation();
 
-	//float Gravity = -980.f; // UE 기본 중력 (cm/s^2)
-	Velocity.Z += -980.f * Gravity * DeltaTime;
+	////float Gravity = -980.f; // UE 기본 중력 (cm/s^2)
+	//Velocity.Z += -980.f * Gravity * DeltaTime;
 
-	Location += Velocity * DeltaTime;
+	//Location += Velocity * DeltaTime;
 
-	SetActorLocation(Location);
+	//SetActorLocation(Location);
 }
 
 void APotatoProjectile::Launch(FVector Direction)
@@ -39,10 +45,42 @@ void APotatoProjectile::Launch(FVector Direction)
 	}
 }
 
-void APotatoProjectile::OnHit(AActor* HitActor)
+void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-
+	
+	if (OtherActor && (OtherActor != this)) {
+		APotatoMonster* Monster = Cast<APotatoMonster>(OtherActor);
+		if (Monster)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("몬스터 맞음! %f"), Damage);
+			UGameplayStatics::ApplyDamage(
+				Monster,
+				Damage,        
+				GetInstigatorController(),
+				this,                 
+				UDamageType::StaticClass()
+			);
+		}
+	}
 }
+
+//void APotatoProjectile::Overlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+//	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+//	bool bFromSweep, const FHitResult& SweepResult)
+//{
+//	if (OtherActor && (OtherActor != this))
+//	{
+//		FString f = OtherActor->GetFName().ToString();
+//		UE_LOG(LogTemp, Log, TEXT("관통함!%s"), *f);
+//		//// Monster인지 체크 (Cast 사용)
+//		//AMonster* Monster = Cast<AMonster>(OtherActor);
+//		//if (Monster)
+//		//{
+//		//	// 관통하면서 실행될 로직
+//		//	
+//		//}
+//	}
+//}
 
 void APotatoProjectile::Explode()
 {
