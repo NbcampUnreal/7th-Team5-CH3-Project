@@ -2,6 +2,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "../Monster/PotatoMonster.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/SphereComponent.h"
 
 APotatoProjectile::APotatoProjectile()
 {
@@ -17,6 +18,10 @@ void APotatoProjectile::BeginPlay()
 	if (IsHit) {
 		Mesh->OnComponentHit.AddDynamic(this, &APotatoProjectile::OnHit);
 	}
+	if (SphereComponent == nullptr)
+	{
+		SphereComponent = Cast<USphereComponent>(GetComponentByClass(USphereComponent::StaticClass()));
+	}
 }
 
 void APotatoProjectile::Tick(float DeltaTime)
@@ -30,6 +35,9 @@ void APotatoProjectile::Tick(float DeltaTime)
 	//Location += Velocity * DeltaTime;
 
 	//SetActorLocation(Location);
+	if (IsExplosive) {
+		Explode(DeltaTime);
+	}
 }
 
 void APotatoProjectile::Launch(FVector Direction)
@@ -52,7 +60,7 @@ void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherAc
 		APotatoMonster* Monster = Cast<APotatoMonster>(OtherActor);
 		if (Monster)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("몬스터 맞음! %f"), Damage);
+			//UE_LOG(LogTemp, Warning, TEXT("몬스터 맞음! %f"), Damage);
 			UGameplayStatics::ApplyDamage(
 				Monster,
 				Damage,        
@@ -61,6 +69,8 @@ void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherAc
 				UDamageType::StaticClass()
 			);
 		}
+		IsExplosive = true;
+		//UE_LOG(LogTemp, Warning, TEXT("Explosive true!"));
 	}
 }
 
@@ -82,7 +92,17 @@ void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherAc
 //	}
 //}
 
-void APotatoProjectile::Explode()
+void APotatoProjectile::Explode(float DeltaTime)
 {
-
+	/*if (SphereComponent)
+	{
+		float CurrentRadius = SphereComponent->GetUnscaledSphereRadius();
+		UE_LOG(LogTemp, Warning, TEXT("Radius: %f"), CurrentRadius);
+		float NewRadius = CurrentRadius + 5.f*DeltaTime;
+		SphereComponent->SetSphereRadius(NewRadius);
+		if (NewRadius > 15.f)
+		{
+			IsExplosive = false;
+		}
+	}*/
 }

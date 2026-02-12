@@ -154,7 +154,7 @@ void APotatoWeapon::ChangeWeapon(int index)
 		CurrentAmmo = 30;
 		CropCostPerShot = 1;
 		FireRate = 0.5f;
-		Fireangle = 0.0f;
+		Fireangle = 10.0f;
 		break;
 	case 2:
 		Damage = 30;
