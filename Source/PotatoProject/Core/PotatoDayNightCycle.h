@@ -1,16 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "PotatoEnums.h"
 #include "PotatoDayNightCycle.generated.h"
-
-UENUM()
-enum class EDayPhase : uint8
-{
-    Day UMETA(DisplayName = "Day"),
-    Evening UMETA(DisplayName = "Evening"),
-    Night UMETA(DisplayName = "Night"),
-    Dawn UMETA(DisplayName = "Dawn")
-};
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPhaseChanged);
 
@@ -22,6 +14,8 @@ class POTATOPROJECT_API UPotatoDayNightCycle : public UWorldSubsystem
 private:
     EDayPhase CurrentPhase = EDayPhase::Day;
     float RemainingTime = 0.f;
+
+    bool bIsStarted = false;
 
     // Day Phase 전환 핸들러
     FTimerHandle PhaseTimerHandle;
@@ -40,12 +34,23 @@ private:
 #pragma region DayData
 public:
     // Gamemode에서 Init용으로
+    UFUNCTION(BlueprintCallable, Category = "DaySystem")
     void StartSystem(float InDayDuration, float InEveningDuration, float InNightDuration, float InDawnDuration);
+    UFUNCTION(BlueprintCallable, Category = "DaySystem")
     void EndSystem();
+    UFUNCTION(BlueprintPure, Category = "DaySystem")
+    bool IsSystemStarted() const { return bIsStarted; }
 
+    UFUNCTION(BlueprintCallable, Category = "DayNight")
     void EnterDay(float InDayDuration);
+
+    UFUNCTION(BlueprintCallable, Category = "DayNight")
     void EnterEvening(float InEveningDuration);
+
+    UFUNCTION(BlueprintCallable, Category = "DayNight")
     void EnterNight(float InNightDuration);
+
+    UFUNCTION(BlueprintCallable, Category = "DayNight")
     void EnterDawn(float InDawnDuration);
 
     UFUNCTION(BlueprintCallable, Category = "DayNight")

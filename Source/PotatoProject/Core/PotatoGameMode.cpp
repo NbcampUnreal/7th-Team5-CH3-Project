@@ -1,5 +1,6 @@
 #include "PotatoGameMode.h"
 #include "PotatoDayNightCycle.h"
+#include "PotatoResourceManager.h"
 #include "Subsystems/WorldSubsystem.h"
 
 APotatoGameMode::APotatoGameMode() 
@@ -22,6 +23,8 @@ void APotatoGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
         DayNightSystem->OnNightStarted.Clear();
         DayNightSystem->OnEveningStarted.Clear();
         DayNightSystem->OnDawnStarted.Clear();
+
+        DayNightSystem = nullptr;
     }
     Super::EndPlay(EndPlayReason);
 }
@@ -39,6 +42,12 @@ void APotatoGameMode::StartGame()
     DayNightSystem->OnDawnStarted.AddDynamic(this, &APotatoGameMode::StartResultPhase);
 
     DayNightSystem->StartSystem(DayDuration, EveningDuration, NightDuration, DawnDuration);
+
+    // Resource System 접근 및 초기화
+    ResourceManager = GetWorld()->GetSubsystem<UPotatoResourceManager>();
+    if (!ResourceManager) return;
+
+    ResourceManager->StartSystem(InitialWood, InitialStone, InitialCrop, InitialLivestock);
 }
 
 void APotatoGameMode::StartDayPhase()

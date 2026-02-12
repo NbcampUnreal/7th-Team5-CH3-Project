@@ -126,3 +126,12 @@ enum class EWeaponType : uint8
     Pumpkin   UMETA(DisplayName = "호박"),
     Carrot        UMETA(DisplayName = "당근")
 };
+
+UENUM()
+enum class EDayPhase : uint8
+{
+    Day UMETA(DisplayName = "Day"),
+    Evening UMETA(DisplayName = "Evening"),
+    Night UMETA(DisplayName = "Night"),
+    Dawn UMETA(DisplayName = "Dawn")
+};

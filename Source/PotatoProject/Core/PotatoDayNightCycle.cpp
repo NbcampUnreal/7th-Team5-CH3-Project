@@ -1,7 +1,12 @@
 #include "PotatoDayNightCycle.h"
+#include "PotatoResourceManager.h"
 
 void UPotatoDayNightCycle::StartSystem(float InDayDuration, float InEveningDuration, float InNightDuration, float InDawnDuration)
 {   
+    if (bIsStarted) return;
+
+    bIsStarted = true;
+
     CachedDayDuration = InDayDuration;
     CachedEveningDuration = InEveningDuration;
     CachedNightDuration = InNightDuration;
@@ -14,7 +19,15 @@ void UPotatoDayNightCycle::StartSystem(float InDayDuration, float InEveningDurat
 
 void UPotatoDayNightCycle::EndSystem()
 {
+    if (!bIsStarted) return;
 
+    bIsStarted = false;
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(PhaseTimerHandle);
+        World->GetTimerManager().ClearTimer(TickTimerHandle);
+    }
 }
 
 // UI 갱신용
@@ -72,10 +85,6 @@ void UPotatoDayNightCycle::EnterDawn(float InDawnDuration)
 
 void UPotatoDayNightCycle::Deinitialize()
 {
-    if (UWorld* World = GetWorld())
-    {
-        World->GetTimerManager().ClearTimer(PhaseTimerHandle);
-        World->GetTimerManager().ClearTimer(TickTimerHandle);
-    }
+    EndSystem();
     Super::Deinitialize();
 }

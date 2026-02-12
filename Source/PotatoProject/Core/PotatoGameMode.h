@@ -5,6 +5,7 @@
 #include "PotatoGameMode.generated.h"
 
 class UPotatoDayNightCycle;
+class UPotatoResourceManager;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDayPhase);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNightPhase);
@@ -74,5 +75,25 @@ public:
     UFUNCTION(BlueprintCallable, Category = "DayNight")
     void StartResultPhase();
 
+    UFUNCTION(BlueprintPure, Category = "DayNight")
+    int32 GetCurrentDay() const { return CurrentDay; }
+
 #pragma endregion DayNightSystem
+
+#pragma region ResourceSystem
+private:
+    UPROPERTY()
+    UPotatoResourceManager* ResourceManager;
+
+    // -- Resource Manager BP 설정용입니다. --
+    UPROPERTY(EditDefaultsOnly, Category = "ResourceSystem|Initial")
+    int32 InitialWood = 100;
+    UPROPERTY(EditDefaultsOnly, Category = "ResourceSystem|Initial")
+    int32 InitialStone = 100;
+    UPROPERTY(EditDefaultsOnly, Category = "ResourceSystem|Initial")
+    int32 InitialCrop = 50;
+    UPROPERTY(EditDefaultsOnly, Category = "ResourceSystem|Initial")
+    int32 InitialLivestock = 50;
+
+#pragma endregion ResourceSystem
 };
