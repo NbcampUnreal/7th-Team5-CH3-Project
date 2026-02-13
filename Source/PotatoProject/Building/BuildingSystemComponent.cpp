@@ -3,6 +3,7 @@
 #include "PotatoPlaceableStructure.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Kismet/GameplayStatics.h"
 
 UBuildingSystemComponent::UBuildingSystemComponent()
 {
@@ -104,6 +105,41 @@ void UBuildingSystemComponent::ToggleBuildMode()
 
 void UBuildingSystemComponent::OnPlaceStructure(const FInputActionValue& Value)
 {
+	if (!GhostActor || !bIsBuildMode)
+	{
+		return;
+	}
+	
+	if (GhostActor->IsHidden())
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("이 장소에는 배치할 수 없습니다!"));
+		return;
+	}
+	
+	const UPotatoStructureData* SelectedData = GetSelectedData();
+	if (!SelectedData)
+	{
+		return;
+	}
+	
+	FTransform SpawnTransform = GhostActor->GetActorTransform(); // 이미 스냅되어 있음
+	// Deferred Spawn
+	APotatoPlaceableStructure* NewStructure = GetWorld()->SpawnActorDeferred<APotatoPlaceableStructure>(
+		SelectedData->StructureClass,
+		SpawnTransform,
+		GetOwner(),
+		nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+		);
+	
+	if (NewStructure)
+	{
+		NewStructure->StructureData = SelectedData;
+		UGameplayStatics::FinishSpawningActor(NewStructure, SpawnTransform);
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("%s 설치 성공!"), *SelectedData->DisplayName.ToString()));
+		
+		// TODO: 리소스 차감 및 사운드, 파티클 이펙트 재생
+	}
 }
 
 void UBuildingSystemComponent::OnRotateStructure(const FInputActionValue& Value)
@@ -148,6 +184,7 @@ void UBuildingSystemComponent::OnCycleStructure(const FInputActionValue& Value)
 		CurrentSlotIndex = (CurrentSlotIndex - 1 + StructureSlots.Num()) % StructureSlots.Num();
 	}
 	
+	CurrentRotationIndex = 0; // Structure 선택 변경 시 회전 초기화
 	RefreshGhostActorModel();
 }
 
