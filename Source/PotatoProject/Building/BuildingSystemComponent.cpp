@@ -3,6 +3,7 @@
 #include "PotatoPlaceableStructure.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "GeometryTypes.h"
 #include "Kismet/GameplayStatics.h"
 
 UBuildingSystemComponent::UBuildingSystemComponent()
@@ -110,9 +111,10 @@ void UBuildingSystemComponent::OnPlaceStructure(const FInputActionValue& Value)
 		return;
 	}
 	
-	if (GhostActor->IsHidden())
+	if (!bIsPlacementValid || GhostActor->IsHidden())
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("이 장소에는 배치할 수 없습니다!"));
+		// TODO: 오류 사운드 재생?
 		return;
 	}
 	
@@ -259,15 +261,52 @@ void UBuildingSystemComponent::UpdateGhostActorTransform()
 	
 	if (bIsFloor)
 	{
+		GhostActor->SetActorHiddenInGame(false);
+		
+		// 스냅
 		FVector SnappedLocation = CalculateSnappedLocation(Hit.Location);
 		FRotator SnappedRotation = FRotator(0, CurrentRotationIndex * 90.0f, 0);
-		
 		GhostActor->SetActorLocationAndRotation(SnappedLocation, SnappedRotation);
-		GhostActor->SetActorHiddenInGame(false);
+		
+		// 유효성 검사
+		const UPotatoStructureData* SelectedData = GetSelectedData();
+		bIsPlacementValid = CheckPlacementValidity(SnappedLocation, SnappedRotation, SelectedData);
+		
+		// 녹색 또는 빨간색
+		UpdateGhostActorMaterials();
 	}
 	else
 	{
 		GhostActor->SetActorHiddenInGame(true);
+		bIsPlacementValid = false;
+	}
+	
+}
+
+void UBuildingSystemComponent::UpdateGhostActorMaterials()
+{
+	if (!GhostActor)
+	{
+		return;
+	}
+	
+	UMaterialInterface* NewMaterial = bIsPlacementValid? GhostValidMaterial: GhostInvalidMaterial;
+	
+	if (!NewMaterial)
+	{
+		return;
+	}
+	
+	TArray<UMeshComponent*> MeshComponents;
+	GhostActor->GetComponents<UMeshComponent>(MeshComponents);
+	
+	for (UMeshComponent* Mesh : MeshComponents)
+	{
+		int32 NumMaterials = Mesh->GetNumMaterials();
+		for (int32 i = 0; i < NumMaterials; ++i)
+		{
+			Mesh->SetMaterial(i, NewMaterial);
+		}
 	}
 	
 }
@@ -297,7 +336,6 @@ void UBuildingSystemComponent::RefreshGhostActorModel()
 		GhostActor->StructureData = SelectedData;
 		GhostActor->SetActorEnableCollision(false);
 		UpdateGhostActorTransform();
-		// TODO: 머티리얼 변경
 		
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("GhostActor %s Created"),*SelectedData->DisplayName.ToString()));
 	}
@@ -311,6 +349,88 @@ const UPotatoStructureData* UBuildingSystemComponent::GetSelectedData() const
 		return StructureSlots[CurrentSlotIndex];
 	}
 	return nullptr;
+}
+
+bool UBuildingSystemComponent::CheckPlacementValidity(const FVector& Location, const FRotator& Rotation,
+	const UPotatoStructureData* Data)
+{
+	if (!Data)
+	{
+		return false;
+	}
+
+	FVector BoxExtent;
+	BoxExtent.X = (Data->GridSize.X * GridUnitSize) * 0.5f - 2.0f;
+	BoxExtent.Y = (Data->GridSize.Y * GridUnitSize) * 0.5f - 2.0f;
+	BoxExtent.Z = 100.0f;
+	
+	//회전 처리
+	if (CurrentRotationIndex % 2 != 0)
+	{
+		float Temp = BoxExtent.X;
+		BoxExtent.X = BoxExtent.Y;
+		BoxExtent.Y = Temp;
+	}
+	
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(GhostActor);
+	
+	// =================================================================
+	// 1. 오버랩 체크: 배치할 위치에 다른 오브젝트가 있는지 검사
+	// =================================================================
+	
+	FCollisionObjectQueryParams ObjectParams;
+	ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
+	ObjectParams.AddObjectTypesToQuery(ECC_Pawn);
+	// 필요 시 추가
+	
+	FVector OverlapCenter = Location + FVector(0, 0, BoxExtent.Z + 20.0f);
+
+	bool bHit = GetWorld()->OverlapAnyTestByObjectType(
+	OverlapCenter,
+	FQuat(Rotation),
+	ObjectParams,
+	FCollisionShape::MakeBox(BoxExtent),
+	QueryParams
+	);
+	
+	if (bHit)
+	{
+		return false;
+	}
+
+	// =================================================================
+	// 2. 지면 유효성 체크
+	// =================================================================
+	
+	FVector Center = Location;
+	float X = BoxExtent.X;
+	float Y = BoxExtent.Y;
+	
+	TArray<FVector> CheckPoints;
+	CheckPoints.Add(Center + Rotation.RotateVector(FVector(X, Y, 20.0f)));
+	CheckPoints.Add(Center + Rotation.RotateVector(FVector(X, -Y, 20.0f)));
+	CheckPoints.Add(Center + Rotation.RotateVector(FVector(-X, Y, 20.0f)));
+	CheckPoints.Add(Center + Rotation.RotateVector(FVector(-X, -Y, 20.0f)));
+	
+	for (const FVector& Point : CheckPoints)
+	{
+		FHitResult GroundHit;
+		
+		bool bGroundFound = GetWorld()->LineTraceSingleByObjectType(
+		GroundHit,
+		Point,
+		Point - FVector(0, 0, 100.0f),
+		FCollisionObjectQueryParams(ECC_WorldStatic),
+		QueryParams
+		);
+		if (!bGroundFound)
+		{
+			return false;
+		}
+	}
+	
+	return true;
 }
 
 void UBuildingSystemComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)

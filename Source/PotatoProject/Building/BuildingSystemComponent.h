@@ -75,6 +75,17 @@ public:
 	UPROPERTY()
 	TObjectPtr<APotatoPlaceableStructure> GhostActor;
 	
+	// =================================================================
+	// Visual
+	// =================================================================
+	/** 배치가 유효할 때 적용할 머티리얼: 녹색 */
+	UPROPERTY(EditDefaultsOnly, Category = "Building|Visuals")
+	TObjectPtr<UMaterialInterface> GhostValidMaterial;
+	
+	/** 배치가 유효하지 않을 때 적용할 머티리얼: 빨간색 */
+	UPROPERTY(EditDefaultsOnly, Category = "Building|Visuals")
+	TObjectPtr<UMaterialInterface> GhostInvalidMaterial;
+	
 public:
 	/** 빌드 모드 토글: 플레이어 컨트롤러에 의해 호출됨(B키) */
 	UFUNCTION(BlueprintCallable, Category = "Building")
@@ -84,15 +95,18 @@ private:
 	// =================================================================
 	// Internal Logic & Input Handlers
 	// =================================================================
-
+	
 	void OnPlaceStructure(const FInputActionValue& Value);
 	void OnRotateStructure(const FInputActionValue& Value);
 	void OnCycleStructure(const FInputActionValue& Value);
 	
 	FVector CalculateSnappedLocation(const FVector& HitLocation) const;
+	const UPotatoStructureData* GetSelectedData() const;
+    bool CheckPlacementValidity(const FVector& Location, const FRotator& Rotation, const UPotatoStructureData* Data);
 	
 	void UpdateGhostActorTransform();
+	void UpdateGhostActorMaterials();
 	void RefreshGhostActorModel();
-	
-	const UPotatoStructureData* GetSelectedData() const;
+private:
+	bool bIsPlacementValid = false;
 };
