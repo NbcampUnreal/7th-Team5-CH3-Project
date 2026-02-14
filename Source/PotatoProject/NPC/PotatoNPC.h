@@ -2,13 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "../Core/PotatoEnums.h"
-#include "GameFramework/Actor.h"
+#include "GameFramework/Character.h"
+#include "Core/PotatoProductionComponent.h"
 #include "PotatoNPC.generated.h"
 
 class APotatoBuilding;
 
 UCLASS()
-class POTATOPROJECT_API APotatoNPC : public AActor
+class POTATOPROJECT_API APotatoNPC : public ACharacter
 {
 	GENERATED_BODY()
 	
@@ -19,15 +20,35 @@ protected:
 	virtual void BeginPlay() override;
 
 public:	
-	ENPCType Type;
-	int CropHireCost;
-	int LivestockMaintenanceCost;
-	float ProductionBonus;
-	APotatoBuilding* AssignedBuilding;
+	// Working State (Idle/Working)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "NPC|Runtime")
+	bool bIsWorking = false;
 	
-	virtual void Tick(float DeltaTime) override;
+	// Type
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "NPC")	
+	ENPCType Type;
 
-	void Work();
-	bool PayMaintenance();
+	// 유지비용 축산물 (매일 밤 차감)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "NPC")
+	int32 MaintenanceCostLivestock;
+
+	// 생산/경제 컴포넌트 (비용, 분당 생산량, 환급 모두 여기서 관리)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "NPC|Runtime")
+	TObjectPtr<UPotatoProductionComponent> ProductionComp;
+	
+	// 할당된 건물 (작업지시, 퇴직 시 참조)
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "NPC|Runtime")
+	TObjectPtr<AActor> AssignedBuilding = nullptr;
+
+	// 작업지시: 건물 참조 저장 + 생산 시작
+	UFUNCTION(BlueprintCallable, Category = "NPC|Runtime")
+	void InitializeWithBuilding(AActor* InBuilding);
+
+	// 유지비용 지불 시도, 성공 시 true 반환
+	UFUNCTION(BlueprintCallable, Category = "NPC|Economy")
+	bool TryPayMaintenance();
+
+	// 퇴직: 건물 제거 + 환급 + Destroy
+    UFUNCTION(BlueprintCallable, Category = "NPC|Runtime")
 	void Retire();
 };

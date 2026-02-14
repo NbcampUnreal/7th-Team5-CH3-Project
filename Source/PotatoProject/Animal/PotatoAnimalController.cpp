@@ -7,8 +7,8 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Components/BoxComponent.h"
 
-const FName APotatoAnimalController::Key_BarnActor(TEXT("BarnActor"));
-const FName APotatoAnimalController::Key_BarnBounds(TEXT("BarnBounds"));
+const FName APotatoAnimalController::Key_AssignedBuilding(TEXT("AssignedBuilding"));
+const FName APotatoAnimalController::Key_MovingArea(TEXT("MovingArea"));
 
 APotatoAnimalController::APotatoAnimalController()
 {
@@ -30,12 +30,12 @@ void APotatoAnimalController::OnPossess(APawn* InPawn)
 
     if (IsValid(Animal->AssignedBarn))
     {
-        BlackboardComp->SetValueAsObject(Key_BarnActor, Animal->AssignedBarn);
+        BlackboardComp->SetValueAsObject(Key_AssignedBuilding, Animal->AssignedBarn);
     }
     
     if (IsValid(Animal->MovingArea))
     {
-        BlackboardComp->SetValueAsObject(Key_BarnBounds, Animal->MovingArea);
+        BlackboardComp->SetValueAsObject(Key_MovingArea, Animal->MovingArea);
     }
 }
 

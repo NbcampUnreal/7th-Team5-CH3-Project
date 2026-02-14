@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "AIController.h"
-#include "PotatoAnimalController.generated.h"
+#include "PotatoNPCController.generated.h"
 
 class UBehaviorTreeComponent;
 class UBlackboardComponent;
@@ -13,17 +13,17 @@ class UBlackboardComponent;
  * 
  */
 UCLASS()
-class POTATOPROJECT_API APotatoAnimalController : public AAIController
+class POTATOPROJECT_API APotatoNPCController : public AAIController
 {
 	GENERATED_BODY()
-
+	
 public:
-    APotatoAnimalController();
+    APotatoNPCController();
 
 protected:
     virtual void OnPossess(APawn* InPawn) override;
     virtual void OnUnPossess() override;
-	
+
 public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "AI")
     TObjectPtr<UBehaviorTree> BehaviorTreeAsset;

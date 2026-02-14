@@ -66,6 +66,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Animal|Economy", meta=(ClampMin="0"))
 	int32 RefundLivestock = 0;
 
+public:
 	// API
 	// 구매 비용 ResourceManager에서 차감 시도, 성공 시 true
     UFUNCTION(BlueprintCallable, Category = "Production")
