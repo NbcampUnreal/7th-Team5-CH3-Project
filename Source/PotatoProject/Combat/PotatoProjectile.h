@@ -33,12 +33,14 @@ public:
 	UPROPERTY(VisibleAnywhere)
 	UStaticMeshComponent* Mesh;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
-	bool IsHit;
+	bool HitEnable;
 	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	//bool IsOverlap;
 	//폭발시 범위 판정용 구체
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Projectile")
 	USphereComponent* SphereComponent;
+	//처음 맞았을 때 맞는 판정. 도탄은 피격 판정 없음.
+	bool IsMonsterHit;
 
 	virtual void Tick(float DeltaTime) override;
 

@@ -21,6 +21,11 @@ void APotatoWeapon::BeginPlay()
 		//WeaponSystem->Fire();
 	}
 
+	//CurrentAmmo[0] = 30;
+	//CurrentAmmo[1] = 30;
+	//CurrentAmmo[2] = 10;
+	//CurrentAmmo[3] = 50;
+	ChangeWeapon(1);
 }
 
 float FireAccTime = 0.0f; // 누적 시간 계산용
@@ -48,7 +53,16 @@ void APotatoWeapon::Tick(float DeltaTime)
 
 void APotatoWeapon::Fire()
 {
-
+	int Weaponindex = (int)Type;
+	if (CurrentAmmo[Weaponindex] == 0) {
+		//UE_LOG(LogTemp, Warning, TEXT("탄환: %d / %d"), CurrentAmmo[Weaponindex], MagazineSize);
+		return;
+	}
+	else {
+		CurrentAmmo[Weaponindex]--;
+		//UE_LOG(LogTemp, Warning, TEXT("탄환: %d / %d"), CurrentAmmo[Weaponindex], MagazineSize);
+	
+	}
 		if (WeaponSystem)
 		{
 				FTransform WeaponTransform = GetActorTransform();
@@ -65,7 +79,7 @@ void APotatoWeapon::Fire()
 					SpawnParams
 				);
 				WeaponSystem->ProjectileLimit.Add(NewProjectile);
-				UE_LOG(LogTemp, Log, TEXT("Direction %s"), *Direction.ToString());
+				//UE_LOG(LogTemp, Log, TEXT("Direction %s"), *Direction.ToString());
 				NewProjectile->Launch(Direction);
 				WeaponSystem->LimitBullets();
 			}
@@ -101,12 +115,12 @@ void APotatoWeapon::Fire()
 							this,
 							UDamageType::StaticClass()
 						);
-						UE_LOG(LogTemp, Warning, TEXT("몬스터 맞았다! %f"), Damage);
+						//UE_LOG(LogTemp, Warning, TEXT("몬스터 맞았다! %f"), Damage);
 					}
 				}
 				else {
 				
-				UE_LOG(LogTemp, Warning, TEXT("안 맞음 ? "));
+				//UE_LOG(LogTemp, Warning, TEXT("안 맞음 ? "));
 				}
 			}
 		}	
@@ -115,12 +129,15 @@ void APotatoWeapon::Fire()
 
 bool APotatoWeapon::Reload()
 {
-	if (MagazineSize == CurrentAmmo)
+	int Weaponindex = (int)Type;
+	if (MagazineSize == CurrentAmmo[Weaponindex])
 	{
+		//UE_LOG(LogTemp, Warning, TEXT("탄환: %d / %d"), CurrentAmmo[Weaponindex], MagazineSize);
 		return false;
 	}
 	else {
-		CurrentAmmo = MagazineSize;
+		CurrentAmmo[Weaponindex] = MagazineSize;
+		//UE_LOG(LogTemp, Warning, TEXT("탄환: %d / %d"), CurrentAmmo[Weaponindex], MagazineSize);
 		return true;
 	}
 }
@@ -143,7 +160,7 @@ void APotatoWeapon::ChangeWeapon(int index)
 	case 0:
 		Damage = 10;
 		MagazineSize = 30;
-		CurrentAmmo = 30;
+		//CurrentAmmo = 30;
 		CropCostPerShot = 1;
 		FireRate = 0.5f;
 		Fireangle = 10.0f;
@@ -151,7 +168,7 @@ void APotatoWeapon::ChangeWeapon(int index)
 	case 1:
 		Damage = 8;
 		MagazineSize = 30;
-		CurrentAmmo = 30;
+		//CurrentAmmo = 30;
 		CropCostPerShot = 1;
 		FireRate = 0.5f;
 		Fireangle = 10.0f;
@@ -159,15 +176,15 @@ void APotatoWeapon::ChangeWeapon(int index)
 	case 2:
 		Damage = 30;
 		MagazineSize = 10;
-		CurrentAmmo = 30;
+		//CurrentAmmo = 30;
 		CropCostPerShot = 3;
 		FireRate = 1.0f;
 		Fireangle = 10.0f;
 		break;
 	case 3:
 		Damage = 5;
-		MagazineSize = 30;
-		CurrentAmmo = 50;
+		MagazineSize = 50;
+		//CurrentAmmo = 50;
 		CropCostPerShot = 1;
 		FireRate = 0;
 		break;

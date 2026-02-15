@@ -29,9 +29,9 @@ public:
 	//최대탄약수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	int MagazineSize;
-	//현재 장전 총알 수
+	//무기별 현재 장전 총알 수
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
-	int CurrentAmmo;
+	TArray<int>  CurrentAmmo;
 	//샷1번당 소모량
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	int CropCostPerShot;
@@ -54,6 +54,8 @@ public:
 
 	//유효사거리
 	float ValidDistance = 5000.0f;
+
+
 
 	virtual void Tick(float DeltaTime) override;
 

@@ -15,7 +15,7 @@ void APotatoProjectile::BeginPlay()
 	Super::BeginPlay();
 	Mesh = Cast<UStaticMeshComponent>(GetComponentByClass(UStaticMeshComponent::StaticClass()));
 
-	if (IsHit) {
+	if (HitEnable) {
 		Mesh->OnComponentHit.AddDynamic(this, &APotatoProjectile::OnHit);
 	}
 	if (SphereComponent == nullptr)
@@ -55,7 +55,7 @@ void APotatoProjectile::Launch(FVector Direction)
 
 void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	
+	if (IsMonsterHit) return;
 	if (OtherActor && (OtherActor != this)) {
 		APotatoMonster* Monster = Cast<APotatoMonster>(OtherActor);
 		if (Monster)
@@ -70,7 +70,7 @@ void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherAc
 			);
 		}
 		IsExplosive = true;
-		//UE_LOG(LogTemp, Warning, TEXT("Explosive true!"));
+		IsMonsterHit = true;
 	}
 }
 
