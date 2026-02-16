@@ -22,12 +22,20 @@ UPotatoBTTask_PickRandomLocation::UPotatoBTTask_PickRandomLocation()
 EBTNodeResult::Type UPotatoBTTask_PickRandomLocation::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
     UBlackboardComponent* BlackboardComp = OwnerComp.GetBlackboardComponent();
-    if (!BlackboardComp) return EBTNodeResult::Failed;
+    if (!BlackboardComp)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PickRandomLocation: No BlackboardComponent found."));
+        return EBTNodeResult::Failed;
+    }
 
     UObject* Building = BlackboardComp->GetValueAsObject(MovingAreaKey.SelectedKeyName);
     UBoxComponent* TargetArea = Cast<UBoxComponent>(Building);
 
-    if (!TargetArea) return EBTNodeResult::Failed;
+    if (!TargetArea)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("PickRandomLocation: Invalid BoxComponent in MovingAreaKey."));
+        return EBTNodeResult::Failed;
+    }
 
     // 랜덤 위치 계산
     FVector Origin = TargetArea->GetComponentLocation();

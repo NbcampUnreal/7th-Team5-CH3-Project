@@ -74,7 +74,7 @@ void UPotatoResourceManager::BroadcastOne(EResourceType Type)
 
 void UPotatoResourceManager::AddResource(EResourceType Type, int32 Amount)
 {
-    if (!bIsStarted || Amount <= 0) return;
+    if (!bIsStarted || Amount < 0) return;
 
     switch (Type)
     {
@@ -90,7 +90,7 @@ void UPotatoResourceManager::AddResource(EResourceType Type, int32 Amount)
 
 bool UPotatoResourceManager::RemoveResource(EResourceType Type, int32 Amount)
 {
-    if (!bIsStarted || Amount <= 0 || !HasEnoughResource(Type, Amount)) return false;
+    if (!bIsStarted || Amount < 0 || !HasEnoughResource(Type, Amount)) return false;
 
     switch (Type)
     {
@@ -119,7 +119,18 @@ int32 UPotatoResourceManager::GetResource(EResourceType Type) const
 
 bool UPotatoResourceManager::HasEnoughResource(EResourceType Type, int32 Amount) const
 {
-    if (!bIsStarted || Amount <= 0) return false;
+    if (!bIsStarted)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Resource check failed: System not started."));
+        return false;
+    }
+
+    if (Amount < 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Resource check failed: Invalid amount %d."), Amount);
+        return false;
+    }
+
     return GetResource(Type) >= Amount;
 }
 
@@ -177,7 +188,7 @@ void UPotatoResourceManager::AccumulateAndFlush(int32 TotalPerMinute, float& Acc
     Accumulated += PerSecond * Interval;
 
     const int32 WholeAmount = FMath::FloorToInt32(Accumulated);
-    if (WholeAmount <= 0) return;
+    if (WholeAmount < 0) return;
 
     Accumulated -= static_cast<float>(WholeAmount);
     AddResource(Type, WholeAmount);

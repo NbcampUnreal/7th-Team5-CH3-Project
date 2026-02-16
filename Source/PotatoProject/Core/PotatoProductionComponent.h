@@ -72,9 +72,15 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Production")
 	bool TryPurchase();
 
+    UFUNCTION(BlueprintCallable, Category = "Production")
+    bool TryPurchaseWithWorld(UPotatoResourceManager* OuterResourceManager);
+
 	// 환급 비용만큼 ResourceManager에 자원 추가
 	UFUNCTION(BlueprintCallable, Category = "Production")
 	void Refund();
+
+    UFUNCTION(BlueprintCallable, Category = "Production")
+    void RefundWithWorld(UPotatoResourceManager* OuterResourceManager);
 
 protected:
 	UPROPERTY()
