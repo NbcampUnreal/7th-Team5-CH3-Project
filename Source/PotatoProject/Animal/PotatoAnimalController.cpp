@@ -33,9 +33,9 @@ void APotatoAnimalController::OnPossess(APawn* InPawn)
         BlackboardComp->SetValueAsObject(Key_AssignedBuilding, Animal->AssignedBarn);
     }
     
-    if (IsValid(Animal->MovingArea))
+    if (UBoxComponent* MovingArea = Animal->MovingArea.Get())
     {
-        BlackboardComp->SetValueAsObject(Key_MovingArea, Animal->MovingArea);
+        BlackboardComp->SetValueAsObject(Key_MovingArea, Cast<UObject>(MovingArea));
     }
 }
 

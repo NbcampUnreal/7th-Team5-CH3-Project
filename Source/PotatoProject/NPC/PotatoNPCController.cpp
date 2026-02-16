@@ -33,13 +33,11 @@ void APotatoNPCController::OnPossess(APawn *InPawn)
     if (IsValid(NPC->AssignedBuilding))
     {
         BlackboardComp->SetValueAsObject(Key_AssignedBuilding, NPC->AssignedBuilding);
+    }
 
-        // 건물 BP에 배치된 BoxComponent를 탐색하여 MovingArea로 세팅
-        UBoxComponent* MovingArea = NPC->AssignedBuilding->FindComponentByClass<UBoxComponent>();
-        if (MovingArea)
-        {
-            BlackboardComp->SetValueAsObject(Key_MovingArea, MovingArea);
-        }
+    if (UBoxComponent* MovingArea = NPC->MovingArea.Get())
+    {
+        BlackboardComp->SetValueAsObject(Key_MovingArea, Cast<UObject>(MovingArea));
     }
 }
 

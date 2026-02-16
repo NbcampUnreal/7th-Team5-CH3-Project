@@ -36,9 +36,10 @@ void APotatoNPC::BeginPlay()
 	
 }
 
-void APotatoNPC::InitializeWithBuilding(AActor* InBuilding)
+void APotatoNPC::InitializeWithBuilding(AActor* InBuilding, UBoxComponent* InMovingArea)
 {
 	AssignedBuilding = InBuilding;
+	MovingArea = InMovingArea;
 
 	// 데이터 주입 완료 후 수동으로 AIController 부착
 	SpawnDefaultController();

@@ -7,6 +7,7 @@
 #include "PotatoNPC.generated.h"
 
 class APotatoBuilding;
+class UBoxComponent;
 
 UCLASS()
 class POTATOPROJECT_API APotatoNPC : public ACharacter
@@ -40,9 +41,13 @@ public:
 	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "NPC|Runtime")
 	TObjectPtr<AActor> AssignedBuilding = nullptr;
 
+	// 배회 영역 (건물 BP의 BoxComponent)
+	UPROPERTY(VisibleInstanceOnly, BlueprintReadOnly, Category = "NPC|Runtime")
+	TObjectPtr<UBoxComponent> MovingArea = nullptr;
+
 	// 작업지시: 건물 참조 저장 + 생산 시작
 	UFUNCTION(BlueprintCallable, Category = "NPC|Runtime")
-	void InitializeWithBuilding(AActor* InBuilding);
+	void InitializeWithBuilding(AActor* InBuilding, UBoxComponent* InMovingArea);
 
 	// 유지비용 지불 시도, 성공 시 true 반환
 	UFUNCTION(BlueprintCallable, Category = "NPC|Economy")
