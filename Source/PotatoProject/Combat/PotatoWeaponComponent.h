@@ -35,6 +35,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Weapon")
 	void EquipWeapon(int32 SlotIndex);
 	
+	UFUNCTION(BlueprintCallable, Category = "Combat")
+	void Fire();
+	
 	FVector GetMuzzleLocation() const;
 	
 private:

@@ -1,6 +1,7 @@
 #include "PotatoWeaponComponent.h"
 #include "PotatoWeapon.h"
 #include "PotatoWeaponData.h"
+#include "PotatoProjectile.h"
 #include "GameFramework/Character.h"
 
 UPotatoWeaponComponent::UPotatoWeaponComponent()
@@ -99,6 +100,92 @@ void UPotatoWeaponComponent::EquipWeapon(int32 SlotIndex)
 	CurrentWeaponIndex = SlotIndex;
 	CurrentWeaponData = NewData;
 	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("EquipWeapon 성공! 현재 무기: %s, 인덱스 번호: %d"), *NewData->WeaponName.ToString(), SlotIndex ));
+}
+
+void UPotatoWeaponComponent::Fire()
+{
+	if (!CurrentWeaponData || !CurrentWeaponActor)
+	{
+		return;
+	}
+	
+	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+	
+	APlayerController* PlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!PlayerController)
+	{
+		return;
+	}
+	
+	// 크로스헤어 위치 얻기
+	FVector CameraLoc;
+	FRotator CameraRot;
+	PlayerController->GetPlayerViewPoint(CameraLoc, CameraRot);
+	
+	FVector TraceStart = CameraLoc;
+	FVector TraceEnd = CameraLoc + (CameraRot.Vector() * 10000.0f);
+	
+	FHitResult HitResult;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(OwnerCharacter);
+	QueryParams.AddIgnoredActor(CurrentWeaponActor);
+	
+	bool bHit = GetWorld()->LineTraceSingleByChannel(
+		HitResult,
+		TraceStart,
+		TraceEnd,
+		ECC_Visibility,
+		QueryParams
+	);
+	
+	// 아무것도 맞히지 못했다면 (e.g. 하늘) 트레이스의 끝 지점
+	FVector TargetLocation = bHit ? HitResult.Location : TraceEnd;
+	
+	// 스폰 위치 및 회전 계산
+	FVector MuzzleLocation = GetMuzzleLocation();
+	FVector LaunchDirection = (TargetLocation - MuzzleLocation).GetSafeNormal();
+	FRotator LaunchRotation = LaunchDirection.Rotation();
+	
+	// =================================================================
+	// 투사체 발사 처리
+	// =================================================================
+	
+	if (CurrentWeaponData->FireType == EWeaponFireType::Projectile)
+	{
+		if (CurrentWeaponData->ProjectileClass)
+		{
+			FActorSpawnParameters SpawnParams;
+			SpawnParams.Owner = OwnerCharacter;
+			SpawnParams.Instigator = OwnerCharacter;
+			
+			APotatoProjectile* NewProjectile = GetWorld()->SpawnActor<APotatoProjectile>(
+				CurrentWeaponData->ProjectileClass,
+				MuzzleLocation,
+				LaunchRotation,
+				SpawnParams
+			);
+			
+			if (NewProjectile)
+			{
+				NewProjectile->InitializeProjectile(
+					CurrentWeaponData->ProjectileSpeed,
+					CurrentWeaponData->ProjectileGravityScale
+				);
+			}
+		}
+	}
+	// =================================================================
+	// 히트스캔 발사 처리
+	// =================================================================
+	else if (CurrentWeaponData->FireType == EWeaponFireType::Hitscan)
+	{
+		// TODO: 히트스캔(당근) 로직 구현
+		DrawDebugLine(GetWorld(), MuzzleLocation, TargetLocation, FColor::Red, false, 1.0f, 0, 1.0f);
+	}
 }
 
 FVector UPotatoWeaponComponent::GetMuzzleLocation() const

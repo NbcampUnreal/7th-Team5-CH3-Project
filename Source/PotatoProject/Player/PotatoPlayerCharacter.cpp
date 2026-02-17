@@ -248,6 +248,10 @@ void APotatoPlayerCharacter::CameraZoom(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 {
+	if (WeaponComponent)
+	{
+		WeaponComponent->Fire();
+	}
 }
 
 void APotatoPlayerCharacter::Reload(const FInputActionValue& Value)
