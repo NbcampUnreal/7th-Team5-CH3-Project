@@ -7,7 +7,7 @@
 
 #include "../Core/PotatoEnums.h"
 #include "PotatoMonsterFinalStats.h"
-
+#include "PotatoMonsterAnimSet.h"
 #include "PotatoMonster.generated.h"
 
 class UPotatoCombatComponent;
@@ -135,4 +135,12 @@ public:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Monster|Anim")
 	TObjectPtr<UAnimMontage> BasicAttackMontage = nullptr;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Anim")
+	TObjectPtr<UPotatoMonsterAnimSet> AnimSet = nullptr;
+
+	UFUNCTION(BlueprintCallable, Category = "Anim")
+	UPotatoMonsterAnimSet* GetAnimSet() const { return AnimSet; }
+
+	void SetAnimSet(UPotatoMonsterAnimSet* InSet);
 };

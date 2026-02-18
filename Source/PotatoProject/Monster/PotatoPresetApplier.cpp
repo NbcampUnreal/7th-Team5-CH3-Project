@@ -1,6 +1,12 @@
 ﻿#include "PotatoPresetApplier.h"
 #include "Engine/DataTable.h"
+#include "Engine/StreamableManager.h"
+#include "Engine/AssetManager.h"
+#include "PotatoMonsterAnimSet.h"
 #include "UObject/UnrealType.h"
+
+// forward
+static UPotatoMonsterAnimSet* LoadAnimSetSync(const TSoftObjectPtr<UPotatoMonsterAnimSet>& SoftPtr);
 
 FName UPotatoPresetApplier::GetRankRowName(EMonsterRank InRank)
 {
@@ -49,6 +55,9 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 
     Out.BehaviorTree = DefaultBehaviorTree;
 
+    // AnimSet 기본값
+    Out.AnimSet = nullptr;
+
     // -------------------------
     // 1) TypePreset 로드
     // -------------------------
@@ -73,7 +82,11 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
         TypeIsRanged = TypeRow->bIsRanged;
         TypeDefaultSkillId = TypeRow->DefaultSpecialSkillId;
 
-        // BT override (네 스타일: IsValid/Get, 아니면 LoadSync)
+        //  AnimSet 로드/주입 (Type 기준)
+        // TypeRow에 AnimSet(TSoftObjectPtr)이 추가되어 있다는 전제
+        Out.AnimSet = LoadAnimSetSync(TypeRow->AnimSet);
+
+        // BT override
         if (TypeRow->OverrideBehaviorTree.IsValid())
         {
             Out.BehaviorTree = TypeRow->OverrideBehaviorTree.Get();
@@ -94,7 +107,11 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 
     Out.AttackDamage = TypeBaseAttackDamage;
     Out.AttackRange = TypeBaseAttackRange;
-    Out.bIsRanged = TypeIsRanged;
+
+    //  원거리 여부 “정답”을 통일하는 정책
+    // - 추천: AnimSet이 있으면 AnimSet->bIsRanged가 정답
+    // - AnimSet이 없으면 기존 TypeRow의 bIsRanged로 fallback
+    Out.bIsRanged = (Out.AnimSet != nullptr) ? Out.AnimSet->bIsRanged : TypeIsRanged;
 
     // WaveBaseHP가 있으면 TypeBaseHP 대신 베이스로 사용(현재 정책 유지)
     const float BaseHP = (WaveBaseHP > 0.f) ? WaveBaseHP : TypeBaseHP;
@@ -141,8 +158,6 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
     Out.MaxHP = BaseHP * Out.AppliedHpMultiplier;
 
     Out.AppliedMoveSpeedRatio = RankRow->MoveSpeedRatioToPlayer;
-
-    // Boss 포함 랭크별 값으로 통일: RankPreset의 Ratio를 사용
     Out.MoveSpeed = PlayerReferenceSpeed * Out.AppliedMoveSpeedRatio * TypeMoveSpeedMul;
 
     Out.StructureDamageMultiplier = RankRow->StructureDamageMultiplier;
@@ -189,4 +204,14 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
     }
 
     return Out;
+}
+
+//  AnimSet 로드(동기)
+static UPotatoMonsterAnimSet* LoadAnimSetSync(const TSoftObjectPtr<UPotatoMonsterAnimSet>& SoftPtr)
+{
+    if (SoftPtr.IsNull()) return nullptr;
+    if (UPotatoMonsterAnimSet* Already = SoftPtr.Get()) return Already;
+
+    FStreamableManager& SM = UAssetManager::GetStreamableManager();
+    return Cast<UPotatoMonsterAnimSet>(SM.LoadSynchronous(SoftPtr.ToSoftObjectPath()));
 }

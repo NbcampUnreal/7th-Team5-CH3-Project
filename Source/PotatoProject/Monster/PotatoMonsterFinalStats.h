@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "../Core/PotatoEnums.h"
+#include "PotatoMonsterAnimSet.h"
 #include "PotatoMonsterFinalStats.generated.h"
 
 USTRUCT(BlueprintType)
@@ -27,4 +28,8 @@ struct FPotatoMonsterFinalStats
     UPROPERTY(BlueprintReadOnly) float SpecialDamageMultiplier = 1.f;
 
     UPROPERTY(BlueprintReadOnly) TObjectPtr<UBehaviorTree> BehaviorTree = nullptr;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Anim")
+    TObjectPtr<UPotatoMonsterAnimSet> AnimSet = nullptr;
+
 };

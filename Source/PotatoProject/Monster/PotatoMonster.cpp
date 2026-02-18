@@ -96,3 +96,20 @@ AActor* APotatoMonster::GetCurrentLaneTarget() const
 	}
 	return WarehouseActor;
 }
+
+void APotatoMonster::SetAnimSet(UPotatoMonsterAnimSet* InSet)
+{
+	AnimSet = InSet;
+
+	// AnimInstance에 주입(로코모션/공격에서 참고 가능)
+	//if (USkeletalMeshComponent* Skel = GetMesh())
+	//{
+	//	if (UAnimInstance* AI = Skel->GetAnimInstance())
+	//	{
+	//		if (UPotatoMonsterAnimInstance* PMI = Cast<UPotatoMonsterAnimInstance>(AI))
+	//		{
+	//			PMI->SetAnimSet(AnimSet);
+	//		}
+	//	}
+	//}
+}

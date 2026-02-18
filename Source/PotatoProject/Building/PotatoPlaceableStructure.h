@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
@@ -45,4 +45,7 @@ public:
 						struct FDamageEvent const& DamageEvent,
 						AController* EventInstigator, 
 						AActor* DamageCauser) override;
+
+	UPROPERTY(VisibleAnywhere)
+	bool bDestroyed = false;
 };

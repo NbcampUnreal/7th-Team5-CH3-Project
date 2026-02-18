@@ -2,91 +2,130 @@
 
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
+#include "Navigation/PathFollowingComponent.h"
 #include "PotatoMonster.h"
 
 UBT_AdvanceLaneTarget::UBT_AdvanceLaneTarget()
 {
 	NodeName = TEXT("Advance Lane Target");
 
-	// 실수 방지: Actor만 선택 가능하게
 	MoveTargetKey.AddObjectFilter(this, GET_MEMBER_NAME_CHECKED(UBT_AdvanceLaneTarget, MoveTargetKey), AActor::StaticClass());
 	WarehouseActorKey.AddObjectFilter(this, GET_MEMBER_NAME_CHECKED(UBT_AdvanceLaneTarget, WarehouseActorKey), AActor::StaticClass());
 }
 
 EBTNodeResult::Type UBT_AdvanceLaneTarget::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
 {
-    AAIController* AICon = OwnerComp.GetAIOwner();
-    if (!AICon) return EBTNodeResult::Failed;
+	AAIController* AICon = OwnerComp.GetAIOwner();
+	if (!AICon) return EBTNodeResult::Failed;
 
-    APotatoMonster* Monster = Cast<APotatoMonster>(AICon->GetPawn());
-    if (!Monster) return EBTNodeResult::Failed;
+	APotatoMonster* Monster = Cast<APotatoMonster>(AICon->GetPawn());
+	if (!Monster) return EBTNodeResult::Failed;
 
-    UBlackboardComponent* BB = OwnerComp.GetBlackboardComponent();
-    if (!BB) return EBTNodeResult::Failed;
+	UBlackboardComponent* BB = OwnerComp.GetBlackboardComponent();
+	if (!BB) return EBTNodeResult::Failed;
 
-    if (MoveTargetKey.SelectedKeyName.IsNone())
-    {
-        UE_LOG(LogTemp, Error, TEXT("[AdvanceLaneTarget] MoveTargetKey is NONE. Set it in BT Task Details."));
-        return EBTNodeResult::Failed;
-    }
+	if (MoveTargetKey.SelectedKeyName.IsNone())
+	{
+		return EBTNodeResult::Failed;
+	}
 
-    const FName WarehouseKeyName = WarehouseActorKey.SelectedKeyName;
+	// ---------------------------------------------------------
+	// ✅ (선택) 전투/접근 중이면 레인 전진 금지 (MoveGoal != MoveTarget)
+	// ---------------------------------------------------------
+	{
+		static const FName MoveGoalKeyName = TEXT("MoveGoal");
+		AActor* MoveGoal = Cast<AActor>(BB->GetValueAsObject(MoveGoalKeyName));
+		AActor* MoveTarget = Cast<AActor>(BB->GetValueAsObject(MoveTargetKey.SelectedKeyName));
 
-    // Warehouse 참조 확보 (우선 Monster 주입값, 없으면 BB에서)
-    AActor* Warehouse = Monster->WarehouseActor;
-    if (!Warehouse && !WarehouseKeyName.IsNone())
-    {
-        Warehouse = Cast<AActor>(BB->GetValueAsObject(WarehouseKeyName));
-    }
+		if (IsValid(MoveGoal) && IsValid(MoveTarget) && MoveGoal != MoveTarget)
+		{
+			return EBTNodeResult::Succeeded; // 아무것도 안 하고 통과
+		}
+	}
 
-    if (!IsValid(Warehouse))
-    {
-        UE_LOG(LogTemp, Error, TEXT("[AdvanceLaneTarget] WarehouseActor is NULL/Invalid."));
-        return EBTNodeResult::Failed;
-    }
+	const int32 NumPoints = Monster->LanePoints.Num();
+	if (NumPoints <= 0)
+	{
+		return EBTNodeResult::Failed;
+	}
 
-    UE_LOG(LogTemp, Warning, TEXT("[AdvanceLaneTarget] Before: LaneIndex=%d Points=%d PawnLoc=%s"),
-        Monster->LaneIndex, Monster->LanePoints.Num(), *Monster->GetActorLocation().ToString());
+	// (0) 이동 중이면 실행 차단
+	// ❗️중요: 여기서 Failed를 내면 시퀀스/셀렉터가 흔들려 MoveTo가 불안정해질 수 있음
+	// -> 조용히 통과(Succeeded)
+	if (UPathFollowingComponent* PFC = AICon->GetPathFollowingComponent())
+	{
+		const EPathFollowingStatus::Type Status = PFC->GetStatus();
+		if (Status == EPathFollowingStatus::Moving || Status == EPathFollowingStatus::Paused)
+		{
+			return EBTNodeResult::Succeeded;
+		}
+	}
 
-    // 끝 이후 무한 증가 방지 (선택이지만 추천)
-    if (Monster->LaneIndex >= Monster->LanePoints.Num())
-    {
-        // 이미 Lane이 끝났다면 그냥 Warehouse로 유지
-        BB->SetValueAsObject(MoveTargetKey.SelectedKeyName, Warehouse);
-        UE_LOG(LogTemp, Warning, TEXT("[AdvanceLaneTarget] Lane already finished -> MoveTarget=Warehouse (%s)"),
-            *Warehouse->GetPathName());
-        return EBTNodeResult::Succeeded;
-    }
+	// (1) LaneIndex 유효성 보정
+	if (!Monster->LanePoints.IsValidIndex(Monster->LaneIndex))
+	{
+		AActor* LastPoint = Monster->LanePoints.Last().Get();
+		if (IsValid(LastPoint))
+		{
+			BB->SetValueAsObject(MoveTargetKey.SelectedKeyName, LastPoint);
+		}
+		return EBTNodeResult::Succeeded;
+	}
 
-    // LaneIndex 전진
-    Monster->AdvanceLaneIndex();
+	AActor* ExpectedTarget = Monster->LanePoints[Monster->LaneIndex].Get();
+	if (!IsValid(ExpectedTarget))
+	{
+		return EBTNodeResult::Failed;
+	}
 
-    AActor* NextTarget = Monster->GetCurrentLaneTarget();
+	AActor* CurMoveTargetBB = Cast<AActor>(BB->GetValueAsObject(MoveTargetKey.SelectedKeyName));
 
-    UE_LOG(LogTemp, Warning, TEXT("[AdvanceLaneTarget] After: LaneIndex=%d Next=%s"),
-        Monster->LaneIndex,
-        NextTarget ? *NextTarget->GetPathName() : TEXT("NULL"));
+	const float Dist2D = FVector::Dist2D(
+		Monster->GetActorLocation(),
+		ExpectedTarget->GetActorLocation());
 
-    // NextTarget이 유효하고 Warehouse가 아니면 다음 LanePoint로
-    if (IsValid(NextTarget) && NextTarget != Warehouse)
-    {
-        BB->SetValueAsObject(MoveTargetKey.SelectedKeyName, NextTarget);
+	// ✅ 도착 판정
+	// MoveTo AcceptanceRadius와 비슷한 값으로 맞추는 게 가장 안정적
+	const float ArrivedThreshold = 60.f; // 기존 50보다 약간 여유
 
-        AActor* After = Cast<AActor>(BB->GetValueAsObject(MoveTargetKey.SelectedKeyName));
-        UE_LOG(LogTemp, Warning, TEXT("[AdvanceLaneTarget] Set MoveTarget -> LanePoint=%s | AfterRead=%s"),
-            *NextTarget->GetPathName(),
-            After ? *After->GetPathName() : TEXT("NULL"));
+	// 아직 도착 안 했으면: BB 정렬만 하고 통과 (Failed 금지)
+	if (Dist2D > ArrivedThreshold)
+	{
+		// BB MoveTarget이 어긋났다면 복구
+		if (CurMoveTargetBB != ExpectedTarget)
+		{
+			BB->SetValueAsObject(MoveTargetKey.SelectedKeyName, ExpectedTarget);
+		}
+		return EBTNodeResult::Succeeded;
+	}
 
-        return EBTNodeResult::Succeeded;
-    }
+	// (2) 마지막 포인트면 유지
+	if (Monster->LaneIndex >= NumPoints - 1)
+	{
+		AActor* LastPoint = Monster->LanePoints.Last().Get();
+		if (IsValid(LastPoint))
+		{
+			BB->SetValueAsObject(MoveTargetKey.SelectedKeyName, LastPoint);
+		}
+		return EBTNodeResult::Succeeded;
+	}
 
-    // Lane 끝(또는 NextTarget이 Warehouse로 판정) -> Abort하지 말고 "이어가기"
-    BB->SetValueAsObject(MoveTargetKey.SelectedKeyName, Warehouse);
+	// (3) 정상 도착 → LaneIndex 증가
+	Monster->AdvanceLaneIndex();
 
-    AActor* After = Cast<AActor>(BB->GetValueAsObject(MoveTargetKey.SelectedKeyName));
-    UE_LOG(LogTemp, Warning, TEXT("[AdvanceLaneTarget] Lane finished -> MoveTarget=Warehouse=%s | AfterRead=%s"),
-        *Warehouse->GetPathName(),
-        After ? *After->GetPathName() : TEXT("NULL"));
+	AActor* NextTarget = Monster->GetCurrentLaneTarget();
+	if (IsValid(NextTarget))
+	{
+		BB->SetValueAsObject(MoveTargetKey.SelectedKeyName, NextTarget);
+		return EBTNodeResult::Succeeded;
+	}
 
-    return EBTNodeResult::Succeeded;
+	// 예외: NextTarget 없으면 마지막 유지
+	AActor* LastPoint = Monster->LanePoints.Last().Get();
+	if (IsValid(LastPoint))
+	{
+		BB->SetValueAsObject(MoveTargetKey.SelectedKeyName, LastPoint);
+	}
+
+	return EBTNodeResult::Succeeded;
 }

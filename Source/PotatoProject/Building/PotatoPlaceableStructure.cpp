@@ -1,4 +1,4 @@
-#include "PotatoPlaceableStructure.h"
+﻿#include "PotatoPlaceableStructure.h"
 #include "PotatoStructureData.h"
 
 APotatoPlaceableStructure::APotatoPlaceableStructure()
@@ -61,7 +61,19 @@ float APotatoPlaceableStructure::TakeDamage(float DamageAmount,
 											AActor* DamageCauser)
 {
 	const float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-    
+
+	if (!HasAuthority())
+	{
+		return 0.0f;
+	}
+	if (!StructureData)
+	{
+		return 0.0f;
+	}
+	if (bDestroyed)
+	{
+		return 0.0f;
+	}
 	if (!IsDestructible() || CurrentHealth <= 0.0f)
 	{
 		return 0.0f;
@@ -75,6 +87,7 @@ float APotatoPlaceableStructure::TakeDamage(float DamageAmount,
 	{
 		// 파괴 처리: FX 재생 등
 		// OnStructureDestroyed.Broadcast();
+		bDestroyed = true;
 		Destroy();
 	}
 	return DamageToApply;

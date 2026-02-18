@@ -5,6 +5,7 @@
 #include "../Core/PotatoEnums.h"
 #include "PotatoMonsterTypePresetRow.generated.h"
 
+class UPotatoMonsterAnimSet;
 USTRUCT(BlueprintType)
 struct FPotatoMonsterTypePresetRow : public FTableRowBase
 {
@@ -33,4 +34,7 @@ struct FPotatoMonsterTypePresetRow : public FTableRowBase
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Special")
     FName DefaultSpecialSkillId;
+
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim")
+    TSoftObjectPtr<UPotatoMonsterAnimSet> AnimSet;
 };
