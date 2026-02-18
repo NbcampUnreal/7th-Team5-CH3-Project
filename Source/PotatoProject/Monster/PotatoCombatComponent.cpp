@@ -12,34 +12,36 @@
 #include "Building/PotatoPlaceableStructure.h"
 #include "Building/PotatoStructureData.h"
 #include "GameFramework/DamageType.h"
-#include "Components/PrimitiveComponent.h"
+
 #include "PotatoProjectileDamageable.h"
-//  AnimSet
+
+// AnimSet
 #include "PotatoMonsterAnimSet.h"
 
 static const FName TAG_LanePoint(TEXT("LanePoint"));
 
 // ------------------------------------------------------------
-// Helper: collision primitive 찾기 (사거리/거리측정 안정화)
+// Helper: Target의 충돌 Bounds (Origin/Extent) 가져오기
+// - true: collision이 있는 컴포넌트 기준(가능한 경우)
+// - 실패/빈값 대비 fallback 포함
 // ------------------------------------------------------------
-static UPrimitiveComponent* FindFirstCollisionPrimitive(AActor* Target)
+static void GetTargetBoundsSafe(AActor* Target, FVector& OutOrigin, FVector& OutExtent)
 {
-	if (!Target) return nullptr;
-
-	if (UPrimitiveComponent* RootPrim = Cast<UPrimitiveComponent>(Target->GetRootComponent()))
+	if (!Target)
 	{
-		if (RootPrim->IsCollisionEnabled()) return RootPrim;
+		OutOrigin = FVector::ZeroVector;
+		OutExtent = FVector::ZeroVector;
+		return;
 	}
 
-	TArray<UPrimitiveComponent*> Prims;
-	Target->GetComponents<UPrimitiveComponent>(Prims);
-	for (UPrimitiveComponent* C : Prims)
+	// collision 컴포넌트 기준 bounds
+	Target->GetActorBounds(true, OutOrigin, OutExtent);
+
+	// 혹시 너무 작은 값(또는 0)으로 나오면 전체 컴포넌트 기준으로 fallback
+	if (OutExtent.IsNearlyZero())
 	{
-		if (!C) continue;
-		if (!C->IsCollisionEnabled()) continue;
-		return C;
+		Target->GetActorBounds(false, OutOrigin, OutExtent);
 	}
-	return nullptr;
 }
 
 UPotatoCombatComponent::UPotatoCombatComponent()
@@ -143,7 +145,7 @@ bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 	USkeletalMeshComponent* Mesh = Monster->GetMesh();
 	UAnimInstance* AnimInst = Mesh ? Mesh->GetAnimInstance() : nullptr;
 
-	//  AnimSet에서 몽타주 가져오기
+	// AnimSet에서 몽타주 가져오기
 	const UPotatoMonsterAnimSet* AnimSet = GetAnimSet();
 	if (!AnimInst || !AnimSet || !AnimSet->BasicAttackMontage)
 	{
@@ -162,18 +164,16 @@ bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 		return false;
 	}
 
-	//  여기서부터 공격 상태 ON
+	// 여기서부터 공격 상태 ON
 	PendingBasicTarget = Target;
 	bIsAttacking = true;
 
-	//  몽타주 종료 시 EndBasicAttack 보장
+	// 몽타주 종료 시 EndBasicAttack 보장
 	FOnMontageEnded EndDelegate;
 	EndDelegate.BindUObject(this, &UPotatoCombatComponent::OnBasicAttackMontageEnded);
 	AnimInst->Montage_SetEndDelegate(EndDelegate, AnimSet->BasicAttackMontage);
 
-	//  공격 간격: "데이터화된 공속"이 정답
-	// - AnimSet.BasicAttackInterval을 기본으로 쓰되
-	// - 기존 Scale/Extra는 유지해서 튜닝 가능하게
+	// 공격 간격: 데이터화된 공속 우선
 	const float BaseInterval = FMath::Max(0.01f, AnimSet->BasicAttackInterval);
 	const float Interval = FMath::Max(0.05f, BaseInterval * AttackIntervalScale + AttackIntervalExtra);
 	NextAttackTime = Now + (double)Interval;
@@ -197,7 +197,7 @@ void UPotatoCombatComponent::ApplyPendingBasicDamage()
 		return;
 	}
 
-	//  원거리면 근접 데미지 노티파이는 무시(정책)
+	// 원거리면 근접 데미지 노티파이는 무시(정책)
 	const UPotatoMonsterAnimSet* AnimSet = GetAnimSet();
 	if (AnimSet && AnimSet->bIsRanged)
 	{
@@ -236,14 +236,12 @@ void UPotatoCombatComponent::ApplyPendingBasicDamage()
 
 	ApplyBasicDamage(Target);
 
-	//  1타 정책 유지
+	// 1타 정책 유지
 	EndBasicAttack();
 }
 
 // ------------------------------------------------------------
-//  (추가) 원거리 발사 Notify용
-// - 공격중(PendingTarget)인 대상을 향해 투사체 스폰
-// - 근접/원거리 분리는 AnimSet->bIsRanged로
+// (추가) 원거리 발사 Notify용
 // ------------------------------------------------------------
 void UPotatoCombatComponent::FirePendingRangedProjectile()
 {
@@ -265,7 +263,7 @@ void UPotatoCombatComponent::FirePendingRangedProjectile()
 		return;
 	}
 
-	// Notify 시점 재검증(원본과 동일한 안정장치)
+	// Notify 시점 재검증
 	if (!IsAllowedAttackTarget(Monster, Target) || !Target->CanBeDamaged())
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Combat] FireProjectile target invalid -> cancel. Target=%s"), *GetNameSafe(Target));
@@ -273,7 +271,7 @@ void UPotatoCombatComponent::FirePendingRangedProjectile()
 		return;
 	}
 
-	// 사거리 밖이면 1회 종료(정책 유지)
+	// 사거리 밖이면 종료
 	if (!IsTargetInRange(Target))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Combat] Out of range at FireProjectile -> EndBasicAttack. Target=%s"), *GetNameSafe(Target));
@@ -283,7 +281,7 @@ void UPotatoCombatComponent::FirePendingRangedProjectile()
 
 	SpawnProjectileToTarget(Target);
 
-	//  원거리도 1회 공격 정책이면 여기서 종료
+	// 원거리도 1회 공격 정책이면 종료
 	EndBasicAttack();
 }
 
@@ -294,7 +292,7 @@ void UPotatoCombatComponent::EndBasicAttack()
 }
 
 // ------------------------------------------------------------
-// 사거리 체크 개선: Pivot 거리 대신 Collision 기준(가능한 경우)
+// 사거리 체크 개선: Bounds 기반(충돌 기준) 표면 거리 근사
 // ------------------------------------------------------------
 bool UPotatoCombatComponent::IsTargetInRange(AActor* Target) const
 {
@@ -303,19 +301,16 @@ bool UPotatoCombatComponent::IsTargetInRange(AActor* Target) const
 	const FVector From = GetOwner()->GetActorLocation();
 	const float Range = Stats.AttackRange + FMath::Max(0.f, AttackRangePadding);
 
-	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
-	{
-		FVector Closest;
-		const float Dist3D = Prim->GetDistanceToCollision(From, Closest);
-		if (Dist3D >= 0.f)
-		{
-			const float Dist2D = FVector::Dist2D(From, Closest);
-			return Dist2D <= Range;
-		}
-	}
+	FVector Origin, Extent;
+	GetTargetBoundsSafe(Target, Origin, Extent);
 
-	const float Dist2D = FVector::Dist2D(From, Target->GetActorLocation());
-	return Dist2D <= Range;
+	const float CenterDist2D = FVector::Dist2D(From, Origin);
+	const float Radius2D = FVector(Extent.X, Extent.Y, 0.f).Size();
+
+	// "표면까지 거리" 근사
+	const float SurfaceDist2D = FMath::Max(0.f, CenterDist2D - Radius2D);
+
+	return SurfaceDist2D <= Range;
 }
 
 // ------------------------------------------------------------
@@ -362,7 +357,7 @@ void UPotatoCombatComponent::ApplyBasicDamage(AActor* Target) const
 }
 
 // ------------------------------------------------------------
-//  (추가) Muzzle 위치 계산 + Projectile 스폰
+// (추가) Muzzle 위치 계산 + Projectile 스폰
 // ------------------------------------------------------------
 bool UPotatoCombatComponent::GetMuzzleTransform(FVector& OutLoc, FRotator& OutRot) const
 {
@@ -412,24 +407,22 @@ void UPotatoCombatComponent::SpawnProjectileToTarget(AActor* Target) const
 	}
 
 	// ------------------------------------------------------------
-	// 1) AimPoint: Target pivot 대신 collision의 closest point로
-	//    (피봇이 애매한 구조물/배럴에서 방향 튐 방지)
+	// 1) AimPoint: Target pivot 대신 collision bounds Origin으로
 	// ------------------------------------------------------------
-	FVector AimPoint = Target->GetActorLocation();
-	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
+	FVector AimPoint;
 	{
-		FVector Closest;
-		const float Dist = Prim->GetDistanceToCollision(MuzzleLoc, Closest);
-		if (Dist >= 0.f)
-		{
-			AimPoint = Closest;
-		}
+		FVector Origin, Extent;
+		GetTargetBoundsSafe(Target, Origin, Extent);
+		AimPoint = Origin;
+
+		// (선택) 중심 대신 표면 쪽으로 살짝 당기고 싶으면 주석 해제
+		// const FVector DirTo = (Origin - MuzzleLoc).GetSafeNormal();
+		// const float PushOut = FVector(Extent.X, Extent.Y, Extent.Z).Size() * 0.15f;
+		// AimPoint = Origin - DirTo * PushOut;
 	}
 
 	// ------------------------------------------------------------
-	// 2) SpawnRot: 타겟을 향해 쏘되,
-	//    "발사 순간 몬스터가 아직 안 돌아봤다" 문제는
-	//    아래 Velocity 강제 세팅으로 투사체는 정확히 날아가게 고정
+	// 2) SpawnRot + AimDir
 	// ------------------------------------------------------------
 	const FVector AimDir = (AimPoint - MuzzleLoc).GetSafeNormal();
 	const FRotator SpawnRot = AimDir.Rotation();
@@ -452,15 +445,11 @@ void UPotatoCombatComponent::SpawnProjectileToTarget(AActor* Target) const
 	}
 
 	// ------------------------------------------------------------
-	// 3) 방향/속도 강제 고정 (중요)
-	//    ProjectileMovement가 있으면 Velocity를 직접 넣어줌
+	// 3) 방향/속도 강제 고정
 	// ------------------------------------------------------------
 	if (UProjectileMovementComponent* PM = Proj->FindComponentByClass<UProjectileMovementComponent>())
 	{
-		// 속도는 "현재 컴포넌트 설정값"을 기준으로 사용
-		// (원하면 AnimSet에 ProjectileSpeed 추가해서 여기서 덮어쓰면 됨)
 		const float Speed = (PM->InitialSpeed > 0.f) ? PM->InitialSpeed : 1200.f;
-
 		PM->Velocity = AimDir * Speed;
 		PM->UpdateComponentVelocity();
 	}
