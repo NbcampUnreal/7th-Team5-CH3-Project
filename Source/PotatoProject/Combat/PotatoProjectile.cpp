@@ -3,106 +3,151 @@
 #include "../Monster/PotatoMonster.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/SphereComponent.h"
+#include "PotatoWeaponData.h"
 
 APotatoProjectile::APotatoProjectile()
 {
-	PrimaryActorTick.bCanEverTick = true;
-
+	PrimaryActorTick.bCanEverTick = false;
+	
+	CollisionComp = CreateDefaultSubobject<USphereComponent>(FName("SphereComponent"));
+	CollisionComp->SetupAttachment(RootComponent);
+	CollisionComp->InitSphereRadius(15.0f);
+	CollisionComp->SetCollisionProfileName(TEXT("Projectile"));
+	
+	ProjectileMesh = CreateDefaultSubobject<UStaticMeshComponent>(FName("ProjectileMesh"));
+	ProjectileMesh->SetupAttachment(CollisionComp);
+	ProjectileMesh->SetCollisionProfileName(TEXT("NoCollision"));
+	
+	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(FName("ProjectileMovement"));
+	ProjectileMovement->UpdatedComponent = CollisionComp;
+	ProjectileMovement->InitialSpeed = 1000.0f;
+	ProjectileMovement->MaxSpeed = 1000.0f;
+	ProjectileMovement->bRotationFollowsVelocity = true;
+	ProjectileMovement->bShouldBounce = false;
 }
 
 void APotatoProjectile::BeginPlay()
 {
 	Super::BeginPlay();
-	Mesh = Cast<UStaticMeshComponent>(GetComponentByClass(UStaticMeshComponent::StaticClass()));
+	
+	// 충돌 이벤트 바인딩
+	CollisionComp->OnComponentHit.AddDynamic(this, &APotatoProjectile::OnHit);
+	CollisionComp->OnComponentBeginOverlap.AddDynamic(this, &APotatoProjectile::OnOverlap);
+	
+	SetLifeSpan(3.0f);
 
-	if (HitEnable) {
-		Mesh->OnComponentHit.AddDynamic(this, &APotatoProjectile::OnHit);
-	}
-	if (SphereComponent == nullptr)
+}
+
+void APotatoProjectile::InitializeProjectile(const UPotatoWeaponData* WeaponData)
+{
+	if (!WeaponData)
 	{
-		SphereComponent = Cast<USphereComponent>(GetComponentByClass(USphereComponent::StaticClass()));
+		return;
 	}
-}
-
-void APotatoProjectile::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-	//FVector Location = GetActorLocation();
-
-	////float Gravity = -980.f; // UE 기본 중력 (cm/s^2)
-	//Velocity.Z += -980.f * Gravity * DeltaTime;
-
-	//Location += Velocity * DeltaTime;
-
-	//SetActorLocation(Location);
-	if (IsExplosive) {
-		Explode(DeltaTime);
-	}
-}
-
-void APotatoProjectile::Launch(FVector Direction)
-{
-
-	if (Mesh)
+	
+	Damage = WeaponData->BaseDamage;
+	PierceCount = WeaponData->MaxPierceCount;
+	ExplosionRadius = WeaponData->ExplosionRadius;
+	
+	if (ProjectileMovement)
 	{
-		//FVector LaunchDirection = GetActorLocation() - GetActorLocation().RightVector;
-		Direction.Normalize();
-		Mesh->AddImpulse(Direction * Speed , NAME_None, true);
-		//Mesh->SetLinearDamping(10.0f* Gravity);
-
+		ProjectileMovement->InitialSpeed = WeaponData->ProjectileSpeed;
+		ProjectileMovement->MaxSpeed = WeaponData->ProjectileSpeed;
+		ProjectileMovement->ProjectileGravityScale = WeaponData->ProjectileGravityScale;
+		ProjectileMovement->Velocity = GetActorForwardVector() * WeaponData->ProjectileSpeed;
 	}
 }
 
-void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (IsMonsterHit) return;
-	if (OtherActor && (OtherActor != this)) {
-		APotatoMonster* Monster = Cast<APotatoMonster>(OtherActor);
-		if (Monster)
-		{
-			//UE_LOG(LogTemp, Warning, TEXT("몬스터 맞음! %f"), Damage);
-			UGameplayStatics::ApplyDamage(
-				Monster,
-				Damage,        
-				GetInstigatorController(),
-				this,                 
-				UDamageType::StaticClass()
-			);
-		}
-		IsExplosive = true;
-		IsMonsterHit = true;
-	}
-}
-
-//void APotatoProjectile::Overlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-//	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-//	bool bFromSweep, const FHitResult& SweepResult)
-//{
-//	if (OtherActor && (OtherActor != this))
-//	{
-//		FString f = OtherActor->GetFName().ToString();
-//		UE_LOG(LogTemp, Log, TEXT("관통함!%s"), *f);
-//		//// Monster인지 체크 (Cast 사용)
-//		//AMonster* Monster = Cast<AMonster>(OtherActor);
-//		//if (Monster)
-//		//{
-//		//	// 관통하면서 실행될 로직
-//		//	
-//		//}
-//	}
-//}
-
-void APotatoProjectile::Explode(float DeltaTime)
-{
-	/*if (SphereComponent)
+	if (!OtherActor || OtherActor == GetOwner() || OtherActor == this)
 	{
-		float CurrentRadius = SphereComponent->GetUnscaledSphereRadius();
-		UE_LOG(LogTemp, Warning, TEXT("Radius: %f"), CurrentRadius);
-		float NewRadius = CurrentRadius + 5.f*DeltaTime;
-		SphereComponent->SetSphereRadius(NewRadius);
-		if (NewRadius > 15.f)
-		{
-			IsExplosive = false;
-		}
-	}*/
+		return;
+	}
+	
+	// 호박: 지면/벽 충돌 시 폭발
+	if (ExplosionRadius > 0.0f)
+	{
+		Explode(Hit.Location);
+		return;
+	}
+	
+	// 감자/옥수수: 지면/벽 충돌 시 소멸
+	// TODO: 태그로 몬스터 확인
+	if (OtherActor->CanBeDamaged())
+	{
+		UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+	}
+	Destroy();
+}
+
+void APotatoProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (!OtherActor || OtherActor == GetOwner() || OtherActor == this)
+	{
+		return;
+	}
+	
+	// TODO: 태그로 몬스터 확인
+	if (!OtherActor->CanBeDamaged())
+	{
+		return;
+	}
+	
+	// 호박: 적 충돌 시에도 폭발
+	if (ExplosionRadius > 0.0f)
+	{
+		Explode(GetActorLocation());
+		return;
+	}
+	
+	// 감자/옥수수: 데미지 적용
+	UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
+	
+	// 옥수수: 관통 적용
+	if (PierceCount > 0)
+	{
+		PierceCount--;
+		
+		CollisionComp->IgnoreActorWhenMoving(OtherActor, true);
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("관통: 남은 횟수 %d"), PierceCount));
+	}
+	else
+	{
+		// 감자 또는 관통 횟수를 모두 소진한 옥수수 파괴
+		Destroy();
+	}
+	
+}
+
+void APotatoProjectile::Explode(const FVector& ImpactLocation)
+{
+	if (IsPendingKillPending())
+	{
+		return;
+	}
+	
+	TArray<AActor*> IgnoredActors;
+	IgnoredActors.Add(this);
+	IgnoredActors.Add(GetOwner());
+	
+	UGameplayStatics::ApplyRadialDamage(
+		this,
+		Damage,
+		ImpactLocation,
+		ExplosionRadius,
+		UDamageType::StaticClass(),
+		IgnoredActors,
+		this,
+		GetInstigatorController(),
+		true
+	);
+	
+	DrawDebugSphere(GetWorld(), ImpactLocation, ExplosionRadius, 12, FColor::Orange, false, 2.0f);
+	
+	// TODO: 파티클 및 사운드 재생
+	
+	Destroy();
 }

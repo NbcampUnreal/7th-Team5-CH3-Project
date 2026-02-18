@@ -4,10 +4,11 @@
 #include "GameFramework/Character.h"
 #include "PotatoPlayerCharacter.generated.h"
 
-class APotatoWeapon;
-class UBuildingSystemComponent;
 class UCameraComponent;
+class UBuildingSystemComponent;
 class USpringArmComponent;
+class UPotatoWeaponComponent;
+
 struct FInputActionValue;
 
 UCLASS()
@@ -25,6 +26,9 @@ private:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UBuildingSystemComponent* BuildingComponent;
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	UPotatoWeaponComponent* WeaponComponent;
 
 protected:
 	// Camera Settings
@@ -49,17 +53,9 @@ protected:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement")
 	float SprintSpeed = 900.0f;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
-	TSubclassOf<APotatoWeapon> WeaponOrigin;
 	
 private:
 	float TargetCameraDistance;
-	FTimerHandle CameraZoomTimerHandle;
-
-	APotatoWeapon* Weapon;
-	
-	void UpdateCameraZoom();
 	
 	// Functions
 public:
@@ -93,8 +89,6 @@ protected:
 	void Reload(const FInputActionValue& Value);
 	UFUNCTION()
 	void WeaponChange(const FInputActionValue& Value);
-	void WeaponEqiup(bool isEquip);
-	void WeaponRotate();
 	
 	UFUNCTION()
 	void OnToggleBuildMode(const FInputActionValue& Value);

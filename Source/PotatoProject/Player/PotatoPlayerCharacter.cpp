@@ -5,16 +5,16 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Building/BuildingSystemComponent.h"
-#include "Combat/PotatoWeapon.h"
+#include "Combat/PotatoWeaponComponent.h"
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
 {
 	PrimaryActorTick.bCanEverTick = true;
-	
+
 	// Configure character movement
 	GetCharacterMovement()->MaxWalkSpeed = NormalSpeed;
 
-	// create the camera boom
+	// Create the camera boom
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 
@@ -22,31 +22,33 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 	CameraBoom->bUsePawnControlRotation = true;
 	CameraBoom->bEnableCameraLag = true;
 	CameraBoom->bEnableCameraRotationLag = true;
-	
+
 	// 카메라 줌인/줌아웃: 목표 거리 초기화
 	TargetCameraDistance = DefaultCameraDistance;
 
-	// create the orbiting camera
+	// Create the orbiting camera
 	FollowCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("FollowCamera"));
 	FollowCamera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	FollowCamera->bUsePawnControlRotation = false;
-	
-	// create build system component
+
+	// Create build system component
 	BuildingComponent = CreateDefaultSubobject<UBuildingSystemComponent>(TEXT("BuildingComponent"));
+
+	// Create weapon component
+	WeaponComponent = CreateDefaultSubobject<UPotatoWeaponComponent>(TEXT("WeaponComponent"));
 }
 
 void APotatoPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	WeaponEqiup(true);
 }
 
 void APotatoPlayerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	
+
 	// 카메라 줌인/줌아웃: 보간
-	if(CameraBoom && !FMath::IsNearlyEqual(CameraBoom->TargetArmLength, TargetCameraDistance, 0.1f))
+	if (CameraBoom && !FMath::IsNearlyEqual(CameraBoom->TargetArmLength, TargetCameraDistance, 0.1f))
 	{
 		float NewDistance = FMath::FInterpTo(
 			CameraBoom->TargetArmLength,
@@ -54,11 +56,9 @@ void APotatoPlayerCharacter::Tick(float DeltaTime)
 			DeltaTime,
 			CameraZoomInterpSpeed
 		);
-		
+
 		CameraBoom->TargetArmLength = NewDistance;
 	}
-
-	WeaponRotate();
 }
 
 void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -120,7 +120,7 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					this,
 					&APotatoPlayerCharacter::StopSprint);
 			}
-			
+
 			// Camera
 			if (PlayerController->CameraZoomAction)
 			{
@@ -132,7 +132,7 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 				);
 			}
 
-
+			// Combat
 			if (PlayerController->AttackAction)
 			{
 				EnhancedInput->BindAction(
@@ -161,7 +161,7 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					&APotatoPlayerCharacter::WeaponChange
 				);
 			}
-			
+
 			if (PlayerController->ToggleBuildAction)
 			{
 				EnhancedInput->BindAction(
@@ -169,7 +169,7 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					ETriggerEvent::Started,
 					this,
 					&APotatoPlayerCharacter::OnToggleBuildMode
-					);
+				);
 			}
 		}
 	}
@@ -180,14 +180,14 @@ void APotatoPlayerCharacter::Move(const FInputActionValue& Value)
 	if (GetController() != nullptr)
 	{
 		const FVector2D MovementVector = Value.Get<FVector2D>();
-		
+
 		// find out which way is forward
 		const FRotator Rotation = GetController()->GetControlRotation();
 		const FRotator YawRotation(0, Rotation.Yaw, 0);
-		
+
 		const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
 		const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-		
+
 		AddMovementInput(ForwardDirection, MovementVector.X);
 		AddMovementInput(RightDirection, MovementVector.Y);
 	}
@@ -238,101 +238,57 @@ void APotatoPlayerCharacter::StopSprint(const FInputActionValue& Value)
 void APotatoPlayerCharacter::CameraZoom(const FInputActionValue& Value)
 {
 	float CameraZoomValue = Value.Get<float>();
-	
+
 	if (CameraBoom && CameraZoomValue != 0.0f)
 	{
-		TargetCameraDistance = FMath::Clamp(TargetCameraDistance + (CameraZoomValue * CameraZoomSpeed), MinCameraDistance, MaxCameraDistance);
+		TargetCameraDistance = FMath::Clamp(TargetCameraDistance + (CameraZoomValue * CameraZoomSpeed),
+		                                    MinCameraDistance, MaxCameraDistance);
 	}
 }
 
 void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 {
-
-	if (Value.Get<bool>())
+	if (WeaponComponent)
 	{
-	//UE_LOG(LogTemp, Log, TEXT("isAttack1!"));
-		if (Weapon)
-		{
-			//UE_LOG(LogTemp, Log, TEXT("isAttack2"));
-			Weapon->Fire();
-		}
+		WeaponComponent->Fire();
 	}
 }
+
 void APotatoPlayerCharacter::Reload(const FInputActionValue& Value)
 {
-	if (Value.Get<bool>())
-	{
-		if (Weapon)
-		{
-			Weapon->Reload();
-		}
-
-	}
 }
+
 void APotatoPlayerCharacter::WeaponChange(const FInputActionValue& Value)
 {
-	if (Value.Get<bool>()) {
-	
-		APlayerController* PC = Cast<APlayerController>(GetController());
-		if (!PC) return;
-		int32 WeaponIndex = 1;
-		if (PC->IsInputKeyDown(EKeys::One) || PC->IsInputKeyDown(EKeys::NumPadOne))
-		{
-			WeaponIndex = 1;
-		}
-		if (PC->IsInputKeyDown(EKeys::Two) || PC->IsInputKeyDown(EKeys::NumPadTwo))
-		{
-			WeaponIndex = 2;
-		}
-		if (PC->IsInputKeyDown(EKeys::Three) || PC->IsInputKeyDown(EKeys::NumPadThree))
-		{
-			WeaponIndex = 3;
-		}
-		if (PC->IsInputKeyDown(EKeys::Four) || PC->IsInputKeyDown(EKeys::NumPadFour))
-		{
-			WeaponIndex = 4;
-		}
-		Weapon->ChangeWeapon(WeaponIndex);
-	}
-
-}
-
-void APotatoPlayerCharacter::WeaponEqiup(bool isEquip)
-{
-	if (isEquip) {
-		if (WeaponOrigin)
-		{
-			FActorSpawnParameters SpawnParams;
-			SpawnParams.Owner = this;
-			SpawnParams.Instigator = GetInstigator();
-			//SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			if (!Weapon) {
-				Weapon = GetWorld()->SpawnActor<APotatoWeapon>(WeaponOrigin, GetActorLocation(), GetActorRotation(), SpawnParams);
-				FAttachmentTransformRules AttachRules(EAttachmentRule::SnapToTarget, // 위치는 소켓에 붙임
-					EAttachmentRule::KeepWorld,    // 회전은 방금 설정한 월드값 유지
-					EAttachmentRule::KeepWorld,    // 스케일 유지
-					true);
-				Weapon->AttachToComponent(GetMesh(), AttachRules, TEXT("WeaponSocket"));
-				//Weapon->GetRootComponent()->SetUsingAbsoluteRotation(true);
-				//Weapon->SetActorRotation(FRotator(0.f, 90.f, 0.f));
-			}
-		}
-	}
-	else {
-		if (Weapon)
-		{
-			Weapon->Destroy();
-		}
-	}
-}
-
-void APotatoPlayerCharacter::WeaponRotate()
-{
-	if (Weapon && FollowCamera)
+	if (Value.Get<bool>() && WeaponComponent)
 	{
-		Weapon->SetActorRotation(FollowCamera->GetComponentRotation());
+		APlayerController* PlayerController = Cast<APlayerController>(GetController());
+		if (!PlayerController)
+		{
+			return;
+		}
+		
+		int32 SlotIndex = 0;
+		
+		if (PlayerController->IsInputKeyDown(EKeys::One) || PlayerController->IsInputKeyDown(EKeys::NumPadOne))
+		{
+			SlotIndex = 0;
+		}
+		if (PlayerController->IsInputKeyDown(EKeys::Two) || PlayerController->IsInputKeyDown(EKeys::NumPadTwo))
+		{
+			SlotIndex = 1;
+		}
+		if (PlayerController->IsInputKeyDown(EKeys::Three) || PlayerController->IsInputKeyDown(EKeys::NumPadThree))
+		{
+			SlotIndex = 2;
+		}
+		if (PlayerController->IsInputKeyDown(EKeys::Four) || PlayerController->IsInputKeyDown(EKeys::NumPadFour))
+		{
+			SlotIndex = 3;
+		}
+		
+		WeaponComponent->EquipWeapon(SlotIndex);
 	}
-	//
 }
 
 void APotatoPlayerCharacter::OnToggleBuildMode(const FInputActionValue& Value)
