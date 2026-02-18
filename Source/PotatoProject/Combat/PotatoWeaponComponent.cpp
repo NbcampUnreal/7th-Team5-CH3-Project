@@ -15,10 +15,25 @@ UPotatoWeaponComponent::UPotatoWeaponComponent()
 void UPotatoWeaponComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	InitializeAmmoMap();
 
 	if (WeaponSlots.IsValidIndex(0))
 	{
 		EquipWeapon(0);
+	}
+}
+
+void UPotatoWeaponComponent::InitializeAmmoMap()
+{
+	for (UPotatoWeaponData* Data : WeaponSlots)
+	{
+		if (Data && !AmmoMap.Contains(Data))
+		{
+			FWeaponAmmoState NewState;
+			NewState.CurrentAmmo = Data->MaxAmmoSize; // 탄약 가득 채우고 시작
+			NewState.ReserveAmmo = 100; // 테스트를 위한 예비 탄약 100개
+			AmmoMap.Add(Data, NewState);
+		}
 	}
 }
 
@@ -56,6 +71,7 @@ void UPotatoWeaponComponent::SpawnWeapon(TSubclassOf<APotatoWeapon> NewClass)
 	}
 }
 
+
 void UPotatoWeaponComponent::EquipWeapon(int32 SlotIndex)
 {
 	if (!WeaponSlots.IsValidIndex(SlotIndex))
@@ -67,6 +83,14 @@ void UPotatoWeaponComponent::EquipWeapon(int32 SlotIndex)
 	if (!NewData)
 	{
 		return;
+	}
+	
+	// 무기를 교체하는 경우 재장전 취소
+	if (GetWorld()->GetTimerManager().IsTimerActive(ReloadTimerHandle))
+	{
+		GetWorld()->GetTimerManager().ClearTimer(ReloadTimerHandle);
+		CurrentState = EWeaponState::Idle;
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, TEXT("무기 교체로 인해 장전이 취소되었습니다!"));
 	}
 
 	// 이미 동일한 무기를 들고 있다면 아무것도 하지 않음
@@ -116,11 +140,45 @@ bool UPotatoWeaponComponent::CanFire() const
 
 void UPotatoWeaponComponent::Fire()
 {
+	// 유효성 검사
 	if (!CurrentWeaponData || !CurrentWeaponActor)
 	{
 		return;
 	}
-	
+
+	// 상태 확인
+	if (CurrentState != EWeaponState::Idle)
+	{
+		return;
+	}
+
+	// =================================================================
+	// 탄약 로직
+	// =================================================================
+
+	if (!AmmoMap.Contains(CurrentWeaponData))
+	{
+		return;
+	}
+
+	FWeaponAmmoState& State = AmmoMap[CurrentWeaponData];
+
+	if (State.CurrentAmmo <= 0)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("장전 된 탄약이 없습니다!"));
+		return;
+	}
+
+	State.CurrentAmmo--;
+	GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan,
+	                                 FString::Printf(
+		                                 TEXT("Bang! %d/%d (예비 탄약 %d)"), State.CurrentAmmo,
+		                                 CurrentWeaponData->MaxAmmoSize, State.ReserveAmmo));
+
+	// =================================================================
+	// 실제 발사 로직
+	// =================================================================
+
 	FVector TargetLocation = GetCrosshairTargetLocation();
 
 	switch (CurrentWeaponData->FireType)
@@ -134,6 +192,72 @@ void UPotatoWeaponComponent::Fire()
 	}
 
 	// TODO: 반동 또는 카메라 흔들림 추가
+}
+
+void UPotatoWeaponComponent::StartReload()
+{
+	if (!CurrentWeaponData || !CurrentWeaponActor)
+	{
+		return;
+	}
+	
+	if (CurrentState != EWeaponState::Idle)
+	{
+		return;
+	}
+	
+	FWeaponAmmoState& State = AmmoMap[CurrentWeaponData];
+	
+	// 이미 가득 차 있는지 확인
+	if (State.CurrentAmmo >= CurrentWeaponData->MaxAmmoSize)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("탄창이 꽉 찼습니다!"));
+		return;
+	}
+	
+	// 예비 탄약이 있는지 확인
+	if (State.ReserveAmmo <= 0)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("예비 탄약이 없습니다!"));
+		return;
+	}
+	
+	CurrentState = EWeaponState::Reloading;
+	
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Reloading..."));
+	
+	float Duration = CurrentWeaponData->ReloadTime;
+	
+	GetWorld()->GetTimerManager().SetTimer(
+		ReloadTimerHandle,
+		this,
+		&UPotatoWeaponComponent::FinishReload,
+		Duration,
+		false
+	);
+}
+
+void UPotatoWeaponComponent::FinishReload()
+{
+	if (!CurrentWeaponData || !AmmoMap.Contains(CurrentWeaponData))
+	{
+		CurrentState = EWeaponState::Idle;
+		return;
+	}
+	
+	FWeaponAmmoState& State = AmmoMap[CurrentWeaponData];
+	
+	int32 AmmoNeeded = CurrentWeaponData->MaxAmmoSize - State.CurrentAmmo;
+	int32 AmmoToTransfer = FMath::Min(AmmoNeeded, State.ReserveAmmo);
+	
+	State.CurrentAmmo += AmmoToTransfer;
+	State.ReserveAmmo -= AmmoToTransfer;
+	
+	CurrentState = EWeaponState::Idle;
+	
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, FString::Printf(TEXT("장전 완료! %d/%d (예비 탄약: %d)"), State.CurrentAmmo, CurrentWeaponData->MaxAmmoSize, State.ReserveAmmo));
+	
+	GetWorld()->GetTimerManager().ClearTimer(ReloadTimerHandle);
 }
 
 FVector UPotatoWeaponComponent::GetMuzzleLocation() const
@@ -224,21 +348,21 @@ void UPotatoWeaponComponent::FireHitscan(const FVector& TargetLocation)
 	{
 		return;
 	}
-	
+
 	APlayerController* PlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
 	if (!PlayerController)
 	{
 		return;
 	}
-	
+
 	FVector MuzzleLocation = GetMuzzleLocation();
 	// Muzzle에서 Target까지의 기본 방향 계산 (시각적 정확성을 위해 카메라에서 Target까지의 방향이 아님!)
 	FVector BaseDirection = (TargetLocation - MuzzleLocation).GetSafeNormal();
-	
+
 	FCollisionQueryParams QueryParams;
 	QueryParams.AddIgnoredActor(OwnerCharacter);
 	QueryParams.AddIgnoredActor(CurrentWeaponActor);
-		
+
 	FCollisionObjectQueryParams ObjectQueryParams;
 	ObjectQueryParams.AddObjectTypesToQuery(ECC_WorldStatic);
 	ObjectQueryParams.AddObjectTypesToQuery(ECC_WorldDynamic);
@@ -246,21 +370,24 @@ void UPotatoWeaponComponent::FireHitscan(const FVector& TargetLocation)
 
 	for (int32 i = 0; i < CurrentWeaponData->PelletCount; ++i)
 	{
-		FVector SpreadDirection = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(BaseDirection, CurrentWeaponData->SpreadAngle);
+		FVector SpreadDirection = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(
+			BaseDirection, CurrentWeaponData->SpreadAngle);
 		FVector TraceEnd = MuzzleLocation + (SpreadDirection * CurrentWeaponData->EffectiveRange);
-		
+
 		FHitResult HitResult;
-		
-		bool bHit = GetWorld()->LineTraceSingleByObjectType(HitResult, MuzzleLocation, TraceEnd, ObjectQueryParams, QueryParams);
-		
+
+		bool bHit = GetWorld()->LineTraceSingleByObjectType(HitResult, MuzzleLocation, TraceEnd, ObjectQueryParams,
+		                                                    QueryParams);
+
 		if (bHit)
 		{
 			AActor* HitActor = HitResult.GetActor();
-			
+
 			// TODO: 태그로 몬스터 확인
 			if (HitActor && HitActor->CanBeDamaged())
 			{
-				UGameplayStatics::ApplyDamage(HitActor, CurrentWeaponData->BaseDamage, PlayerController, CurrentWeaponActor, UDamageType::StaticClass());
+				UGameplayStatics::ApplyDamage(HitActor, CurrentWeaponData->BaseDamage, PlayerController,
+				                              CurrentWeaponActor, UDamageType::StaticClass());
 			}
 			SpawnHitscanVisual(HitResult, SpreadDirection);
 		}
@@ -273,19 +400,19 @@ void UPotatoWeaponComponent::SpawnHitscanVisual(const FHitResult& HitResult, con
 	{
 		return;
 	}
-	
+
 	FRotator VisualRotation = ShotDirection.Rotation();
-	
+
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	
+
 	AActor* VisualActor = GetWorld()->SpawnActor<AActor>(
 		CurrentWeaponData->HitscanActorClass,
 		HitResult.Location,
 		VisualRotation,
 		SpawnParams
 	);
-	
+
 	if (VisualActor)
 	{
 		VisualActor->AttachToComponent(HitResult.GetComponent(), FAttachmentTransformRules::KeepWorldTransform);

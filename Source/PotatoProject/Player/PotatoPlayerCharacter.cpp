@@ -256,6 +256,10 @@ void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Reload(const FInputActionValue& Value)
 {
+	if (WeaponComponent)
+	{
+		WeaponComponent->StartReload();
+	}
 }
 
 void APotatoPlayerCharacter::WeaponChange(const FInputActionValue& Value)
