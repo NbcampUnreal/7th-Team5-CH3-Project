@@ -6,6 +6,9 @@
 
 class UPotatoDayNightCycle;
 class UPotatoResourceManager;
+class APotatoPlayerCharacter;
+class APotatoMonsterSpawner;
+class APotatoAnimalController;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDayPhase);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNightPhase);
@@ -94,6 +97,18 @@ private:
     int32 InitialCrop = 50;
     UPROPERTY(EditDefaultsOnly, Category = "ResourceSystem|Initial")
     int32 InitialLivestock = 50;
+
+    APotatoPlayerCharacter* PlayerCharacter;
+
+    UPROPERTY(EditAnywhere, Category = "Spawner")
+    TSubclassOf<APotatoMonsterSpawner> MonsterSpawnerClass;
+
+    APotatoMonsterSpawner* MonsterSpawner;
+
+    UPROPERTY(EditAnywhere, Category = "Spawner")
+    TSubclassOf<APotatoAnimalController> AnimalControllerClass;
+
+    APotatoAnimalController* AnimalController;
 
 #pragma endregion ResourceSystem
 };

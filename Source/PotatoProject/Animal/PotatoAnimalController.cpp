@@ -14,6 +14,7 @@ APotatoAnimalController::APotatoAnimalController()
 {
     BlackboardComp = CreateDefaultSubobject<UBlackboardComponent>(TEXT("BlackboardComp"));
     BehaviorComp = CreateDefaultSubobject<UBehaviorTreeComponent>(TEXT("BehaviorComp"));
+    IsAnimalPosses = true;
 }
 
 void APotatoAnimalController::OnPossess(APawn* InPawn)
@@ -21,7 +22,7 @@ void APotatoAnimalController::OnPossess(APawn* InPawn)
     Super::OnPossess(InPawn);
 
     APotatoAnimal* Animal = Cast<APotatoAnimal>(InPawn);
-    if (!Animal) return;
+    if (!Animal && !IsAnimalPosses) return;
 
     if (!BehaviorTreeAsset || !BehaviorTreeAsset->BlackboardAsset) return;
 
@@ -43,8 +44,13 @@ void APotatoAnimalController::OnUnPossess()
 {
     Super::OnUnPossess();
 
-    if (BehaviorComp)
+    if (BehaviorComp && IsAnimalPosses)
     {
         BehaviorComp->StopTree();
     }
+}
+
+void APotatoAnimalController::SetIsAnimalPosses(bool IsPossess)
+{
+    IsAnimalPosses = IsPossess;
 }

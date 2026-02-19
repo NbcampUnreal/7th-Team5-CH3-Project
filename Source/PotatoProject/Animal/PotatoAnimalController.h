@@ -19,7 +19,7 @@ class POTATOPROJECT_API APotatoAnimalController : public AAIController
 
 public:
     APotatoAnimalController();
-
+    void SetIsAnimalPosses(bool IsPossess);
 protected:
     virtual void OnPossess(APawn* InPawn) override;
     virtual void OnUnPossess() override;
@@ -36,4 +36,5 @@ public:
 
     static const FName Key_AssignedBuilding;
     static const FName Key_MovingArea;
+    bool IsAnimalPosses;
 };
