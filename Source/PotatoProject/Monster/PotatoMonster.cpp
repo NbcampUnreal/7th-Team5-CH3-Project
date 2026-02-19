@@ -58,16 +58,36 @@ float APotatoMonster::TakeDamage(
 	AActor* DamageCauser
 )
 {
-	if (bIsDead) return 0.f;
-
+	if (bIsDead)
+	{
+		return 0.f;
+	}
 	const float Applied = FMath::Max(0.f, DamageAmount);
-	if (Applied <= 0.f) return 0.f;
-
+	if (Applied <= 0.f)
+	{
+		return 0.f;
+	}
 	Health = FMath::Clamp(Health - Applied, 0.f, MaxHealth);
-	if (Health <= 0.f)
+
+	if (Health > 0.f)
+	{
+		const UPotatoMonsterAnimSet* AS = GetAnimSet();
+		if (AS && AS->HitReactMontage)
+		{
+			if (USkeletalMeshComponent* Skel = GetMesh())
+			{
+				if (UAnimInstance* AnimInst = Skel->GetAnimInstance())
+				{
+					AnimInst->Montage_Play(AS->HitReactMontage, 1.0f);
+				}
+			}
+		}
+	}
+	else
 	{
 		Die();
 	}
+
 	return Applied;
 }
 
@@ -80,8 +100,20 @@ void APotatoMonster::Die()
 	{
 		MoveComp->DisableMovement();
 	}
-}
 
+	SetActorEnableCollision(false);
+
+	const UPotatoMonsterAnimSet* AS = GetAnimSet();
+	if (AS && AS->DeathMontage)
+	{
+		if (UAnimInstance* AnimInst = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+		{
+			AnimInst->Montage_Play(AS->DeathMontage, 1.0f);
+		}
+	}
+
+	SetLifeSpan(2.0f);
+}
 void APotatoMonster::AdvanceLaneIndex()
 {
 	// LanePoints의 마지막을 넘기면 GetCurrentLaneTarget이 Warehouse로 fallback

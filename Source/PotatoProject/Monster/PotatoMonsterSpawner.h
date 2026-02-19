@@ -11,7 +11,14 @@
 #include "PotatoMonsterSpawner.generated.h"
 
 class APotatoMonster;
-
+UENUM()
+enum class EPotatoWaveEndReason : uint8
+{
+    Cleared,
+    GameOver,
+    TimeExpired,
+    ForcedStop,
+};
 USTRUCT()
 struct FPendingSpawn
 {
@@ -80,6 +87,29 @@ protected:
     // Blackboard Key Name (MoveTo가 바라볼 키)
     UPROPERTY(EditDefaultsOnly, Category = "Lane")
     FName MoveTargetKeyName = TEXT("MoveTarget");
+
+    UPROPERTY()
+    TArray<TWeakObjectPtr<APotatoMonster>> SpawnedMonsters;
+
+    UPROPERTY()
+    int32 AliveCount = 0;
+
+    UPROPERTY()
+    bool bWaveActive = false;
+
+    UPROPERTY()
+    bool bSpawnFinished = false;
+
+    UFUNCTION()
+    void HandleSpawnedMonsterDestroyed(AActor* DestroyedActor);
+
+    void EndWave(EPotatoWaveEndReason Reason, bool bClearMonsters);
+
+public:
+    UFUNCTION(BlueprintCallable, Category = "Wave")
+    void NotifyGameOver();
+    UFUNCTION(BlueprintCallable, Category = "Wave")
+    void NotifyTimeExpired();
 
     // ==== Runtime ====
     FName CurrentWaveId = NAME_None;
