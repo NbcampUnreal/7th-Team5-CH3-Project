@@ -24,6 +24,17 @@ void UPotatoWeaponComponent::BeginPlay()
 	}
 }
 
+void UPotatoWeaponComponent::AddAmmoToWeapon(UPotatoWeaponData* TargetWeapon, int32 Amount)
+{
+	if (!TargetWeapon || !AmmoMap.Contains(TargetWeapon))
+	{
+		return;
+	}
+	
+	FWeaponAmmoState& State = AmmoMap[TargetWeapon];
+	State.ReserveAmmo += Amount;
+}
+
 void UPotatoWeaponComponent::InitializeAmmoMap()
 {
 	for (UPotatoWeaponData* Data : WeaponSlots)
@@ -173,8 +184,8 @@ void UPotatoWeaponComponent::Fire()
 	State.CurrentAmmo--;
 	GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan,
 	                                 FString::Printf(
-		                                 TEXT("Bang! %d/%d (예비 탄약 %d)"), State.CurrentAmmo,
-		                                 CurrentWeaponData->MaxAmmoSize, State.ReserveAmmo));
+		                                 TEXT("Bang! %d/%d"), State.CurrentAmmo,
+		                                 CurrentWeaponData->MaxAmmoSize));
 
 	// =================================================================
 	// 실제 발사 로직
@@ -289,7 +300,6 @@ void UPotatoWeaponComponent::CancelReload()
 	
 	// 3. 상태 재설정
 	CurrentState = EWeaponState::Idle;
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, TEXT("장전이 취소되었습니다!"));
 }
 
 FVector UPotatoWeaponComponent::GetMuzzleLocation() const

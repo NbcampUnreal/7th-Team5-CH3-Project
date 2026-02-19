@@ -87,6 +87,10 @@ public:
     /** DataAsset(Key) -> 탄약 상태(Value) 매핑 */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Ammo")
     TMap<TObjectPtr<UPotatoWeaponData>, FWeaponAmmoState> AmmoMap;
+    
+    /** 현재 무기에 예비 탄약 추가: 탄약 텍스트 업데이트를 위해 추가 후 예비 탄약 개수 반환 */
+    UFUNCTION(BlueprintCallable, Category = "Ammo")
+    void AddAmmoToWeapon(UPotatoWeaponData* TargetWeapon, int32 Amount);
 
 private:
     void InitializeAmmoMap();

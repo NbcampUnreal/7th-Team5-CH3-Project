@@ -43,6 +43,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	float ReloadTime = 1.5f;
 	
+	/** 1개의 탄약을 만들기 위해 몇 개의 농작물이 필요한가? (e.g. 호박: 3) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
+	int32 AmmoCraftingCost = 1;
+	
 	/** 발사 타입: 투사체 또는 히트스캔 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	EWeaponFireType FireType;
