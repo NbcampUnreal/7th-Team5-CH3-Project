@@ -232,6 +232,19 @@ void APotatoPlayerCharacter::Look(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::StartSprint(const FInputActionValue& Value)
 {
+	if (!WeaponComponent)
+	{
+		if (GetCharacterMovement())
+		{
+			GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
+		}
+	}
+	
+	if (WeaponComponent->IsReloading())
+	{
+		return;
+	}
+	
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = SprintSpeed;
@@ -240,6 +253,20 @@ void APotatoPlayerCharacter::StartSprint(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::StopSprint(const FInputActionValue& Value)
 {
+	if (!WeaponComponent)
+	{
+		if (GetCharacterMovement())
+		{
+			GetCharacterMovement()->MaxWalkSpeed = NormalSpeed;
+		}
+	}
+	
+	if (WeaponComponent->IsReloading())
+	{
+		WeaponComponent->UpdateCachedWalkSpeed(NormalSpeed);
+		return;
+	}
+	
 	if (GetCharacterMovement())
 	{
 		GetCharacterMovement()->MaxWalkSpeed = NormalSpeed;
@@ -267,6 +294,10 @@ void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Reload(const FInputActionValue& Value)
 {
+	if (WeaponComponent)
+	{
+		WeaponComponent->StartReload();
+	}
 }
 
 void APotatoPlayerCharacter::WeaponChange(const FInputActionValue& Value)

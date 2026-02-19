@@ -26,7 +26,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
 	UTexture2D* Icon;
 	
+	// =================================================================
 	// 공통 스탯
+	// =================================================================
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	float BaseDamage = 10.0f;
 	
@@ -36,15 +39,26 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	float FireRate = 0.5f;
 	
+	/** 재장전에 걸리는 시간(초) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
+	float ReloadTime = 1.5f;
+	
+	/** 1개의 탄약을 만들기 위해 몇 개의 농작물이 필요한가? (e.g. 호박: 3) */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
+	int32 AmmoCraftingCost = 1;
+	
 	/** 발사 타입: 투사체 또는 히트스캔 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	EWeaponFireType FireType;
 	
-	// 스폰할 실제 액터: BP_FarmCannon, BP_Hammer
+	/** 스폰할 실제 액터: BP_FarmCannon */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visuals")
 	TSubclassOf<APotatoWeapon> WeaponActorClass;
 	
+	// =================================================================
 	// 투사체 설정: FireType이 Projectile일 경우 사용됨
+	// =================================================================
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile", EditConditionHides))
 	TSubclassOf<APotatoProjectile> ProjectileClass;
 	
@@ -63,7 +77,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile", EditConditionHides))
 	float ProjectileGravityScale = 1.0f;
 	
+	// =================================================================
 	// 히트스캔 설정: FireType이 Hitscan일 경우 사용됨
+	// =================================================================
+	
 	/** 히트스캔 라인트레이스 길이 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Hitscan", meta = (EditCondition = "FireType == EWeaponFireType::Hitscan", EditConditionHides))
 	float EffectiveRange = 5000.0f;

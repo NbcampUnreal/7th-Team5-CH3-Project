@@ -121,8 +121,8 @@ enum class EBarricadeType : uint8
 UENUM(BlueprintType)
 enum class EWeaponState : uint8
 {
-	Idle UMETA(DisplayName = "Idle"), // 발사 준비 완료
-	Reloading UMETA(DisplayName = "Reloading"), // 재장전 애니메이션 실행중
+	Idle UMETA(DisplayName = "Idle"), // 발사 or 재장전 준비 완료
+	Reloading UMETA(DisplayName = "Reloading"), // 재장전 실행중
 	Equipped UMETA(DisplayName = "Equipping"), // 무기 교체중
 };
 
