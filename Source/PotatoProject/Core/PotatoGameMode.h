@@ -25,7 +25,7 @@ public:
     APotatoGameMode();
 
     void StartGame();
-    void EndGame();
+    void EndGame(bool IsGameClear);
     void CheckVictoryCondition();
 
 protected:
@@ -44,16 +44,16 @@ private:
 public:
     // -- Day-night cycle BP 설정용입니다. --
     UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
-    float DayDuration = 10.0f;
+    float DayDuration = 3.0f;
 
     UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
-    float EveningDuration = 30.0f;
+    float EveningDuration = 3.0f;
 
     UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
-    float NightDuration = 30.0f;
+    float NightDuration = 3.0f;
 
     UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
-    float DawnDuration = 30.0f;
+    float DawnDuration = 3.0f;
 
 public:
     UPROPERTY(BlueprintAssignable)

@@ -176,25 +176,32 @@ void APotatoGameMode::StartResultPhase()
 
 }
 
-void APotatoGameMode::EndGame()
+void APotatoGameMode::EndGame(bool IsGameClear)
 {
+    
     if (MonsterSpawner)
     {
         GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Stop Wave!")));
         MonsterSpawner->NotifyGameOver();
     }
-    GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("게임 끝!")));
+    if (IsGameClear)
+    {
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("게임 클리어!")));
+    }
+    else {
+        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("실패해서 게임 끝!")));
+    }
 }
 
 void  APotatoGameMode::CheckVictoryCondition()
 {
     if (CurrentDay > 10)
     {
-        EndGame();
+        EndGame(true);
     }
 }
 
 void APotatoGameMode::OnHouseDestroyed(AActor* DestroyedActor)
 {
-    EndGame();
+    EndGame(false);
 }

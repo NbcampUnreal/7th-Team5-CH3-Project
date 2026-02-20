@@ -360,7 +360,7 @@ void APotatoPlayerCharacter::OnDeath()
 	APotatoGameMode* GameMode = Cast<APotatoGameMode>(UGameplayStatics::GetGameMode(GetWorld()));
 	if (GameMode)
 	{
-		GameMode->EndGame();
+		GameMode->EndGame(false);
 	}
 	//캐릭터 죽는 애니메이션 실행필요
 }
