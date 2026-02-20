@@ -7,6 +7,7 @@
 #include "../Player/PotatoPlayerCharacter.h" 
 #include "../Monster/PotatoMonsterSpawner.h" 
 #include "../Animal/PotatoAnimalController.h"
+#include "../NPC/PotatoNPC.h"
 
 APotatoGameMode::APotatoGameMode() 
 {
@@ -77,6 +78,7 @@ void APotatoGameMode::StartGame()
     {
         WarehouseActor->OnDestroyed.AddDynamic(this, &APotatoGameMode::OnHouseDestroyed);
     }
+    
 }
 
 void APotatoGameMode::StartDayPhase()
@@ -137,7 +139,30 @@ void APotatoGameMode::StartResultPhase()
 
     CurrentDay++;
     CheckVictoryCondition();
+
+
+    ///NPC가 추가될 때 마다 관리하는 array에 추가하는 코드로 바꿔야 할 듯.
+    if (NPCs.IsEmpty())
+    {
+        for (TActorIterator<APotatoNPC> It(GetWorld()); It; ++It)
+        {
+            auto tmp = *It;
+            if (tmp)
+            {
+                NPCs.Add(tmp);
+            }
+            //break;
+        }
+    }
+    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan,FString::Printf(TEXT("npc 수: %d"), NPCs.Num()));
+    for (int i = 0; i < NPCs.Num(); i++)
+    {
+        bool npcTryPay = NPCs[i]->TryPayMaintenance();
+        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan,
+            FString::Printf(TEXT("유지비용지불시도: %s"), *LexToString(npcTryPay)));
+    }
     // 보상 지급 및 결과 UI 표시?
+
 }
 
 void APotatoGameMode::EndGame()

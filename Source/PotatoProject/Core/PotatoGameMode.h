@@ -9,6 +9,7 @@ class UPotatoResourceManager;
 class APotatoPlayerCharacter;
 class APotatoMonsterSpawner;
 class APotatoAnimalController;
+class APotatoNPC;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDayPhase);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNightPhase);
@@ -49,7 +50,7 @@ public:
     float EveningDuration = 30.0f;
 
     UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
-    float NightDuration = 300.0f;
+    float NightDuration = 30.0f;
 
     UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
     float DawnDuration = 30.0f;
@@ -114,5 +115,7 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "Spawner")
     TObjectPtr<AActor> WarehouseActor;
+    UPROPERTY(EditAnywhere, Category = "Spawner")
+    TArray<TObjectPtr<APotatoNPC>> NPCs;
 #pragma endregion ResourceSystem
 };
