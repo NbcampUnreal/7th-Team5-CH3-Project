@@ -8,6 +8,7 @@
 #include "../Monster/PotatoMonsterSpawner.h" 
 #include "../Animal/PotatoAnimalController.h"
 #include "../NPC/PotatoNPC.h"
+#include "../Core/PotatoEnums.h"
 
 APotatoGameMode::APotatoGameMode() 
 {
@@ -140,6 +141,16 @@ void APotatoGameMode::StartResultPhase()
     CurrentDay++;
     CheckVictoryCondition();
 
+    //보상 어떤식으로 줘야 할지 논의 필요
+    ResourceManager->AddResource(EResourceType::Wood, 1);
+    ResourceManager->AddResource(EResourceType::Stone, 1);
+    ResourceManager->AddResource(EResourceType::Crop, 1);
+    ResourceManager->AddResource(EResourceType::Livestock, 1);
+    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("나무: %d"), ResourceManager->GetResource(EResourceType::Wood)));
+    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("광석: %d"), ResourceManager->GetResource(EResourceType::Stone )));
+    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("농작물: %d"), ResourceManager->GetResource(EResourceType::Crop)));
+    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("축산물: %d"), ResourceManager->GetResource(EResourceType::Livestock)));
+
 
     ///NPC가 추가될 때 마다 관리하는 array에 추가하는 코드로 바꿔야 할 듯.
     if (NPCs.IsEmpty())
@@ -154,7 +165,7 @@ void APotatoGameMode::StartResultPhase()
             //break;
         }
     }
-    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan,FString::Printf(TEXT("npc 수: %d"), NPCs.Num()));
+    //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan,FString::Printf(TEXT("npc 수: %d"), NPCs.Num()));
     for (int i = 0; i < NPCs.Num(); i++)
     {
         bool npcTryPay = NPCs[i]->TryPayMaintenance();
