@@ -29,7 +29,7 @@ void UPotatoPlayerAnimInstance::NativeUpdateAnimation(float DeltaTime)
 	// 1. 속도
 	FVector Velocity = MovementComponent->Velocity;
 	FVector LateralVelocity = FVector(Velocity.X, Velocity.Y, 0.0f);
-	GroundSpeed = LateralVelocity.SizeSquared();
+	GroundSpeed = LateralVelocity.Size();
 	
 	// 2. 낙하
 	bIsFalling = MovementComponent->IsFalling();

@@ -16,6 +16,9 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 
 	// Configure character movement
 	GetCharacterMovement()->MaxWalkSpeed = NormalSpeed;
+	GetCharacterMovement()->JumpZVelocity = 700.0f;
+	GetCharacterMovement()->AirControl = 0.35f;
+	GetCharacterMovement()->GravityScale = 1.5f;
 
 	// Create the camera boom
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
@@ -23,7 +26,7 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 
 	CameraBoom->TargetArmLength = DefaultCameraDistance;
 	CameraBoom->bUsePawnControlRotation = true;
-	CameraBoom->bEnableCameraLag = true;
+	//CameraBoom->bEnableCameraLag = true;
 	CameraBoom->bEnableCameraRotationLag = true;
 
 	// 카메라 줌인/줌아웃: 목표 거리 초기화
