@@ -114,6 +114,9 @@ private:
     /** 히트스캔 시각 효과 스폰: 당근 */
     void SpawnHitscanVisual(const FHitResult& HitResult, const FVector& ShotDirection);
     
+    /** 사운드, 파티클, 카메라 흔들림 및 반동 처리 */
+    void PlayFireEffects();
+    
     FVector GetMuzzleLocation() const;
     FVector GetCrosshairTargetLocation() const;
 

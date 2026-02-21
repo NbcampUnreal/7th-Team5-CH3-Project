@@ -5,7 +5,8 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetMaterialLibrary.h"
+#include "NiagaraFunctionLibrary.h"
+#include "Camera/CameraShakeBase.h"
 #include "Kismet/KismetMathLibrary.h"
 
 UPotatoWeaponComponent::UPotatoWeaponComponent()
@@ -30,7 +31,7 @@ void UPotatoWeaponComponent::AddAmmoToWeapon(UPotatoWeaponData* TargetWeapon, in
 	{
 		return;
 	}
-	
+
 	FWeaponAmmoState& State = AmmoMap[TargetWeapon];
 	State.ReserveAmmo += Amount;
 }
@@ -188,6 +189,12 @@ void UPotatoWeaponComponent::Fire()
 		                                 CurrentWeaponData->MaxAmmoSize));
 
 	// =================================================================
+	// Game Feel
+	// =================================================================
+
+	PlayFireEffects();
+
+	// =================================================================
 	// 실제 발사 로직
 	// =================================================================
 
@@ -202,8 +209,6 @@ void UPotatoWeaponComponent::Fire()
 		FireHitscan(TargetLocation);
 		break;
 	}
-
-	// TODO: 반동 또는 카메라 흔들림 추가
 }
 
 void UPotatoWeaponComponent::StartReload()
@@ -233,7 +238,7 @@ void UPotatoWeaponComponent::StartReload()
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("예비 탄약이 없습니다!"));
 		return;
 	}
-	
+
 	CurrentState = EWeaponState::Reloading;
 	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Reloading...(이동 속도 감소)"));
 
@@ -244,7 +249,7 @@ void UPotatoWeaponComponent::StartReload()
 		CachedWalkSpeed = OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed;
 		OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed = CachedWalkSpeed * ReloadWalkSpeedScale;
 	}
-	
+
 	float Duration = CurrentWeaponData->ReloadTime;
 
 	GetWorld()->GetTimerManager().SetTimer(
@@ -287,7 +292,7 @@ void UPotatoWeaponComponent::CancelReload()
 	{
 		GetWorld()->GetTimerManager().ClearTimer(ReloadTimerHandle);
 	}
-	
+
 	// 2. 이동 속도 복원
 	if (CurrentState == EWeaponState::Reloading)
 	{
@@ -297,7 +302,7 @@ void UPotatoWeaponComponent::CancelReload()
 			OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed = CachedWalkSpeed;
 		}
 	}
-	
+
 	// 3. 상태 재설정
 	CurrentState = EWeaponState::Idle;
 }
@@ -463,5 +468,59 @@ void UPotatoWeaponComponent::SpawnHitscanVisual(const FHitResult& HitResult, con
 	{
 		VisualActor->AttachToComponent(HitResult.GetComponent(), FAttachmentTransformRules::KeepWorldTransform);
 		VisualActor->SetLifeSpan(10.0f);
+	}
+}
+
+void UPotatoWeaponComponent::PlayFireEffects()
+{
+	if (!CurrentWeaponData || !CurrentWeaponActor)
+	{
+		return;
+	}
+
+	// 1. 사운드 재생 (랜덤 피치 적용)
+	if (CurrentWeaponData->FireSound)
+	{
+		float RandomPitch = 1.0f;
+		if (CurrentWeaponData->FireSoundPitchRandomness > 0.0f)
+		{
+			float MinPitch = 1.0f - CurrentWeaponData->FireSoundPitchRandomness;
+			float MaxPitch = 1.0f + CurrentWeaponData->FireSoundPitchRandomness;
+			RandomPitch = FMath::RandRange(MinPitch, MaxPitch);
+		}
+		UGameplayStatics::PlaySoundAtLocation(this, CurrentWeaponData->FireSound, GetMuzzleLocation(), 1.0f, RandomPitch);
+	}
+
+	// 2. 총구 이펙트 재생
+	if (CurrentWeaponData->MuzzleFlash)
+	{
+		// 무기 메쉬의 Muzzle 소켓에 부착
+		UNiagaraFunctionLibrary::SpawnSystemAttached(
+			CurrentWeaponData->MuzzleFlash,
+			CurrentWeaponActor->WeaponMesh,
+			TEXT("Muzzle"),
+			FVector::ZeroVector,
+			FRotator::ZeroRotator,
+			EAttachLocation::SnapToTarget,
+			true
+		);
+	}
+
+	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!PlayerController)
+	{
+		return;
+	}
+
+	// 3. Camera Shake
+	if (CurrentWeaponData->FireCameraShake)
+	{
+		PlayerController->ClientStartCameraShake(CurrentWeaponData->FireCameraShake);
 	}
 }
