@@ -192,6 +192,11 @@ bool UPotatoWeaponComponent::IsReloading() const
 	return CurrentState == EWeaponState::Reloading;
 }
 
+bool UPotatoWeaponComponent::IsInCombatStance() const
+{
+	return (GetWorld()->GetTimeSeconds() - LastFireTime) < 3.0f;
+}
+
 void UPotatoWeaponComponent::Fire()
 {
 	if (!CanFire())
@@ -276,10 +281,15 @@ void UPotatoWeaponComponent::StartReload()
 
 	CurrentState = EWeaponState::Reloading;
 	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Reloading...(이동 속도 감소)"));
-
-	// 이동 속도 처리
+	
 	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-	if (OwnerCharacter && OwnerCharacter->GetCharacterMovement())
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+	
+	// 이동 속도 처리
+	if (OwnerCharacter->GetCharacterMovement())
 	{
 		CachedWalkSpeed = OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed;
 		OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed = CachedWalkSpeed * ReloadWalkSpeedScale;
@@ -294,6 +304,12 @@ void UPotatoWeaponComponent::StartReload()
 		Duration,
 		false
 	);
+	
+	// 애니메이션 처리
+	if (CurrentWeaponData->ReloadMontage)
+	{
+		OwnerCharacter->PlayAnimMontage(CurrentWeaponData->ReloadMontage);
+	}
 }
 
 void UPotatoWeaponComponent::FinishReload()
@@ -570,6 +586,11 @@ void UPotatoWeaponComponent::PlayFireEffects()
 		// 5. Procedural Weapon Kick (무기 모델 반동)
 		CurrentWeaponActor->PlayKick(CurrentWeaponData->WeaponKickOffset, CurrentWeaponData->WeaponKickRotation,
 								 CurrentWeaponData->WeaponKickRecoverySpeed);
+	}
+	
+	if (CurrentWeaponData->FireMontage)
+	{
+		OwnerCharacter->PlayAnimMontage(CurrentWeaponData->FireMontage);
 	}
 	
 }

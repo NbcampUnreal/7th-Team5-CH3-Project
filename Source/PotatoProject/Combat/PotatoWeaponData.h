@@ -57,8 +57,14 @@ public:
 	TSubclassOf<APotatoWeapon> WeaponActorClass;
 	
 	// =================================================================
-	// Game Feel
+	// Visuals
 	// =================================================================
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animations")
+	UAnimMontage* FireMontage;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animations")
+	UAnimMontage* ReloadMontage;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
 	USoundBase* FireSound;
@@ -73,6 +79,10 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
 	TSubclassOf<UCameraShakeBase> FireCameraShake;
 	
+	// =================================================================
+	// Game Feel
+	// =================================================================
+
 	/** 수직 반동: 카메라가 위로 튀어오르는 정도 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Recoil")
 	float RecoilPitch = 0.5f;

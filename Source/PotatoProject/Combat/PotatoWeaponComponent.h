@@ -72,6 +72,9 @@ public:
     
     UFUNCTION(BlueprintPure, Category = "Combat")
     bool IsReloading() const;
+    
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    bool IsInCombatStance() const;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
     EWeaponState CurrentState = EWeaponState::Idle;
@@ -117,7 +120,7 @@ private:
     
     /** 사운드, 파티클, 카메라 흔들림 및 반동 처리 */
     void PlayFireEffects();
-    
+
     FVector GetMuzzleLocation() const;
     FVector GetCrosshairTargetLocation() const;
 
@@ -125,7 +128,7 @@ private:
     FTimerHandle ReloadTimerHandle;
     
     /** 마지막 발사 시간 추적 */
-    float LastFireTime = 0.0f;
+    float LastFireTime = -10.0f;
     
     float CachedWalkSpeed = 0.0f;
     

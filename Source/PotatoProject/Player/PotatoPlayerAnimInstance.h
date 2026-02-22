@@ -40,4 +40,7 @@ protected:
 	/** 조준의 Pitch값: -90은 아래, +90은 위 */
 	UPROPERTY(BlueprintReadOnly, Category = "Combat")
 	float AimPitch;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Combat")
+	bool bIsInCombatStance;
 };
