@@ -75,7 +75,7 @@ private:
 	
 	bool IsBuildingMode;
 	// Functions
-	bool IsAmmoProduct;
+	//bool IsAmmoProduct;
 public:
 	APotatoPlayerCharacter();
 	

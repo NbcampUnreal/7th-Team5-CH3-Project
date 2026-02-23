@@ -10,6 +10,7 @@
 class UTextBlock;
 class UProgressBar;
 class USlider;
+class UButton;
 class UPotatoWeaponData;
 class UPotatoWeaponComponent;
 class UPotatoResourceManager;
@@ -24,6 +25,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "AmmoPopup")
     void InitPopup(UPotatoWeaponComponent* InWeaponComp);
 
+
+    //bool IsSetActive;
 protected:
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
@@ -86,6 +89,8 @@ protected:
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<USlider> SliderValue;
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UButton> CloseButton;
 
     // 탄약 종류 선택 버튼 핸들러 
     UFUNCTION(BlueprintCallable, Category = "AmmoPopup")

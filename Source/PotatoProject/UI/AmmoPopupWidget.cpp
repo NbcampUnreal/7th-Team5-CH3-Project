@@ -7,6 +7,9 @@
 #include "Components/TextBlock.h"
 #include "Components/ProgressBar.h"
 #include "Components/Slider.h"
+#include "Components/Button.h"
+
+
 
 void UAmmoPopupWidget::NativeConstruct()
 {
@@ -24,6 +27,10 @@ void UAmmoPopupWidget::NativeConstruct()
         {
             ResourceManager->OnResourceChanged.AddDynamic(this, &UAmmoPopupWidget::OnResourceChanged);
         }
+    }
+    if (CloseButton) {
+        //IsSetActive = false;
+        CloseButton->OnClicked.AddDynamic(this, &UAmmoPopupWidget::OnCloseButtonClicked);
     }
 }
 
@@ -82,7 +89,16 @@ void UAmmoPopupWidget::OnCarrotButtonClicked()
 
 void UAmmoPopupWidget::OnCloseButtonClicked()
 {
-    RemoveFromParent();
+    //APlayerController* PlayerController = Cast<APlayerController>(GetController());
+    APlayerController* PlayerController = Cast<APlayerController>(GetWorld()->GetFirstPlayerController());
+    if (PlayerController)
+    {
+        SetVisibility(ESlateVisibility::Hidden);
+        PlayerController->bShowMouseCursor = false;
+        FInputModeGameOnly InputMode;
+        PlayerController->SetInputMode(InputMode);
+        //RemoveFromParent();
+    }
 }
 
 void UAmmoPopupWidget::OnChargeButtonClicked()

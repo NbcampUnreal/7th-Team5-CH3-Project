@@ -46,7 +46,7 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 
 	//빌드모드 가능여부
 	IsBuildingMode = true;
-	IsAmmoProduct = false;
+	//IsAmmoProduct = false;
 
 	
 
@@ -250,7 +250,7 @@ void APotatoPlayerCharacter::StopJump(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Look(const FInputActionValue& Value)
 {
-	if (GetController() != nullptr)
+	if (GetController() != nullptr && AmmoPopupWidget && !AmmoPopupWidget->IsVisible())
 	{
 		const FVector2D LookAxisVector = Value.Get<FVector2D>();
 		AddControllerYawInput(LookAxisVector.X);
@@ -314,7 +314,7 @@ void APotatoPlayerCharacter::CameraZoom(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 {
-	if (WeaponComponent)
+	if (WeaponComponent && AmmoPopupWidget && !AmmoPopupWidget->IsVisible())
 	{
 		WeaponComponent->Fire();
 	}
@@ -357,7 +357,13 @@ void APotatoPlayerCharacter::WeaponChange(const FInputActionValue& Value)
 			SlotIndex = 3;
 		}
 		
-		WeaponComponent->EquipWeapon(SlotIndex);
+		if (AmmoPopupWidget && AmmoPopupWidget->IsVisible()) {
+			//1 2 3 4로 탄환충전할 거 선택
+		}
+		else {
+			WeaponComponent->EquipWeapon(SlotIndex);
+		}
+		
 	}
 }
 
@@ -384,21 +390,29 @@ void APotatoPlayerCharacter::SetIsBuildingMode(bool BuildingMode)
 
 void APotatoPlayerCharacter::OnAmmoMode(const FInputActionValue& Value)
 {
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo!")));
-	IsAmmoProduct = !IsAmmoProduct;
-	if (IsAmmoProduct)
+	//GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo!")));
+	//IsAmmoProduct = !IsAmmoProduct;
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+
+
+	if (AmmoPopupWidget && PlayerController)
 	{
-		if (AmmoPopupWidget)
-		{
-			AmmoPopupWidget->SetVisibility(ESlateVisibility::Visible);
-		}
-	}
-	else {
-		if (AmmoPopupWidget)
-		{
+		if (AmmoPopupWidget->IsVisible()) {
 			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+			PlayerController->bShowMouseCursor = false;
+			FInputModeGameOnly InputMode;
+			PlayerController->SetInputMode(InputMode);
+		}
+		else {
+			AmmoPopupWidget->SetVisibility(ESlateVisibility::Visible);
+			PlayerController->bShowMouseCursor = true;
+			//FInputModeGameAndUI InputMode;
+			//InputMode.SetWidgetToFocus(AmmoPopupWidget->TakeWidget());
+			//PlayerController->SetInputMode(InputMode);
 		}
 	}
+
+
 }
 
 
