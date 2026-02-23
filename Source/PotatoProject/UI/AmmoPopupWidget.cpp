@@ -1,12 +1,12 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "UI/AmmoPopupWidget.h"
-#include "Components/TextBlock.h"
-#include "Components/ProgressBar.h"
-#include "Components/Slider.h"
 #include "Combat/PotatoWeaponComponent.h"
 #include "Combat/PotatoWeaponData.h"
 #include "Core/PotatoResourceManager.h"
+#include "Components/TextBlock.h"
+#include "Components/ProgressBar.h"
+#include "Components/Slider.h"
 
 void UAmmoPopupWidget::NativeConstruct()
 {
