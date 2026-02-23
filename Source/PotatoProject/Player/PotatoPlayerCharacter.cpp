@@ -8,6 +8,7 @@
 #include "Combat/PotatoWeaponComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "../Core/PotatoGameMode.h" 
+#include "../UI/AmmoPopupWidget.h"
 
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
@@ -45,11 +46,26 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 
 	//빌드모드 가능여부
 	IsBuildingMode = true;
+	IsAmmoProduct = false;
+
+	
+
 }
 
 void APotatoPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	if (AmmoPopupClass)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo! a")));
+		AmmoPopupWidget = CreateWidget<UAmmoPopupWidget>(GetWorld(), AmmoPopupClass);
+		if (AmmoPopupWidget)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo! b")));
+			AmmoPopupWidget->AddToViewport();
+			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
 }
 
 void APotatoPlayerCharacter::Tick(float DeltaTime)
@@ -183,6 +199,15 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					ETriggerEvent::Started,
 					this,
 					&APotatoPlayerCharacter::OnToggleBuildMode
+				);
+			}
+			if (PlayerController->AmmoAction)
+			{
+				EnhancedInput->BindAction(
+					PlayerController->AmmoAction,
+					ETriggerEvent::Started,
+					this,
+					&APotatoPlayerCharacter::OnAmmoMode
 				);
 			}
 		}
@@ -353,6 +378,25 @@ void APotatoPlayerCharacter::SetIsBuildingMode(bool BuildingMode)
 	{
 		if (BuildingComponent->bIsBuildMode) {
 			BuildingComponent->ToggleBuildMode();
+		}
+	}
+}
+
+void APotatoPlayerCharacter::OnAmmoMode(const FInputActionValue& Value)
+{
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo!")));
+	IsAmmoProduct = !IsAmmoProduct;
+	if (IsAmmoProduct)
+	{
+		if (AmmoPopupWidget)
+		{
+			AmmoPopupWidget->SetVisibility(ESlateVisibility::Visible);
+		}
+	}
+	else {
+		if (AmmoPopupWidget)
+		{
+			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }

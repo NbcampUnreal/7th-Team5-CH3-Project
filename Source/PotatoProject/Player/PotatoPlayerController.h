@@ -41,7 +41,9 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
 	UInputAction* ToggleBuildAction;
-	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
+	UInputAction* AmmoAction;
+
 	// functions
 public:
 	APotatoPlayerController();
