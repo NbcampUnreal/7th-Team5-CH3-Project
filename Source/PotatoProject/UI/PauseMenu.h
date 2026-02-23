@@ -6,12 +6,60 @@
 #include "Blueprint/UserWidget.h"
 #include "PauseMenu.generated.h"
 
-/**
- * 
- */
+class UButton;
+class UCanvasPanel;
+class UTextBlock;
+
 UCLASS()
 class POTATOPROJECT_API UPauseMenu : public UUserWidget
 {
-	GENERATED_BODY()
-	
+    GENERATED_BODY()
+
+protected:
+    virtual void NativeConstruct() override;
+    virtual void NativeDestruct() override;
+
+    // == PausePanel 위젯 ==================================
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UCanvasPanel> PausePanel;
+
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UButton> Button_Start;           // 게임 재개
+
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UButton> Button_DayRestart;      // Day 다시 시작 (다이얼로그 열기)
+
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UButton> Button_GoToMainMenu;    // 메인 메뉴로
+
+    // == DialogPanel 위젯 =================================
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UCanvasPanel> DialogPanel;
+
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UTextBlock> GameOverMessage_1;   // 확인 메시지
+
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UButton> ButtonYes;              // 예 — Day 재시작 실행
+
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UButton> ButtonNo;               // 아니오 — 다이얼로그 닫기
+
+private:
+    UFUNCTION()
+    void OnResumeClicked();
+
+    UFUNCTION()
+    void OnDayRestartClicked();     // DialogPanel 열기
+
+    UFUNCTION()
+    void OnGoToMainMenuClicked();
+
+    UFUNCTION()
+    void OnDialogYesClicked();      // 실제 Day 재시작
+
+    UFUNCTION()
+    void OnDialogNoClicked();       // DialogPanel 닫기
+
+    void ShowDialog(bool bShow);
 };

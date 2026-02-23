@@ -82,6 +82,26 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Production")
     void RefundWithWorld(UPotatoResourceManager* OuterResourceManager);
 
+    // 생산량 Getter
+    UFUNCTION(BlueprintPure, Category = "Production")
+    int32 GetProductionPerMinuteWood() const { return ProductionPerMinuteWood; }
+    UFUNCTION(BlueprintPure, Category = "Production")
+    int32 GetProductionPerMinuteStone() const { return ProductionPerMinuteStone; }
+    UFUNCTION(BlueprintPure, Category = "Production")
+    int32 GetProductionPerMinuteCrop() const { return ProductionPerMinuteCrop; }
+    UFUNCTION(BlueprintPure, Category = "Production")
+    int32 GetProductionPerMinuteLivestock() const { return ProductionPerMinuteLivestock; }
+
+    // 구매 비용 Getter
+    UFUNCTION(BlueprintPure, Category = "Production")
+    int32 GetBuyCostWood() const { return BuyCostWood; }
+    UFUNCTION(BlueprintPure, Category = "Production")
+    int32 GetBuyCostStone() const { return BuyCostStone; }
+    UFUNCTION(BlueprintPure, Category = "Production")
+    int32 GetBuyCostCrop() const { return BuyCostCrop; }
+    UFUNCTION(BlueprintPure, Category = "Production")
+    int32 GetBuyCostLivestock() const { return BuyCostLivestock; }
+
 protected:
 	UPROPERTY()
 	UPotatoResourceManager* ResourceManager;

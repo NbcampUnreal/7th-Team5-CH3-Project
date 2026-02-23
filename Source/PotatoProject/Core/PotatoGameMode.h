@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/GameMode.h"
+#include "Core/PotatoEnums.h"
 #include "PotatoGameMode.generated.h"
 
 class UPotatoDayNightCycle;
@@ -83,6 +84,19 @@ public:
 
     UFUNCTION(BlueprintPure, Category = "DayNight")
     int32 GetCurrentDay() const { return CurrentDay; }
+
+    /**
+     * 하루(Day -> Evening -> Night -> Dawn) 전체 길이(초)를 반환합니다.
+     * DayClockNeedle 진행도 계산 등에 사용됩니다.
+     */
+    UFUNCTION(BlueprintPure, Category = "DayNight")
+    float GetTotalCycleDuration() const { return DayDuration + EveningDuration + NightDuration + DawnDuration; }
+
+    /**
+     * 주어진 페이즈가 사이클 전체에서 시작되는 시점(초)을 반환합니다.
+     * Day=0, Evening=DayDuration, Night=Day+Evening, Dawn=Day+Evening+Night
+     */
+    float GetPhaseStartTime(EDayPhase Phase) const;
 
 #pragma endregion DayNightSystem
 

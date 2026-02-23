@@ -14,6 +14,7 @@ class POTATOPROJECT_API UPotatoDayNightCycle : public UWorldSubsystem
 private:
     EDayPhase CurrentPhase = EDayPhase::Day;
     float RemainingTime = 0.f;
+    float TotalElapsedTime = 0.f;   // 현재 사이클 전체 기준 경과 시간(초)
 
     bool bIsStarted = false;
 
@@ -74,6 +75,10 @@ public:
 public:
     UFUNCTION(BlueprintCallable, Category = "DayNight")
     float GetRemainingDayTime() const { return RemainingTime; }
+
+    // 전체 사이클 기준 경과 시간 (0 ~ TotalDuration)
+    UFUNCTION(BlueprintPure, Category = "DayNight")
+    float GetTotalElapsedTime() const { return TotalElapsedTime; }
 
 protected:
     virtual void Deinitialize() override;

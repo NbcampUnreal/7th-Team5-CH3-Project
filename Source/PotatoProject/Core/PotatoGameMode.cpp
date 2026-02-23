@@ -205,3 +205,15 @@ void APotatoGameMode::OnHouseDestroyed(AActor* DestroyedActor)
 {
     EndGame(false);
 }
+
+float APotatoGameMode::GetPhaseStartTime(EDayPhase Phase) const
+{
+    switch (Phase)
+    {
+        case EDayPhase::Day:     return 0.f;
+        case EDayPhase::Evening: return DayDuration;
+        case EDayPhase::Night:   return DayDuration + EveningDuration;
+        case EDayPhase::Dawn:    return DayDuration + EveningDuration + NightDuration;
+        default:                 return 0.f;
+    }
+}
