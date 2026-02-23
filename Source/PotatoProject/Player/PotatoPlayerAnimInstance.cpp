@@ -3,6 +3,7 @@
 
 #include "PotatoPlayerAnimInstance.h"
 #include "PotatoPlayerCharacter.h"
+#include "Combat/PotatoWeaponComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 
 void UPotatoPlayerAnimInstance::NativeInitializeAnimation()
@@ -15,6 +16,7 @@ void UPotatoPlayerAnimInstance::NativeInitializeAnimation()
 	{
 		MovementComponent = PlayerCharacter->GetCharacterMovement();
 	}
+	
 }
 
 void UPotatoPlayerAnimInstance::NativeUpdateAnimation(float DeltaTime)
@@ -27,7 +29,7 @@ void UPotatoPlayerAnimInstance::NativeUpdateAnimation(float DeltaTime)
 	}
 	
 	// 1. 속도
-	FVector Velocity = MovementComponent->Velocity;
+	Velocity = MovementComponent->Velocity;
 	FVector LateralVelocity = FVector(Velocity.X, Velocity.Y, 0.0f);
 	GroundSpeed = LateralVelocity.Size();
 	
@@ -51,5 +53,12 @@ void UPotatoPlayerAnimInstance::NativeUpdateAnimation(float DeltaTime)
 	FRotator DeltaRotation = ControlRotation - ActorRotation;
 	DeltaRotation.Normalize();
 	AimPitch = DeltaRotation.Pitch;
+	
+	// 5. Combat Stance
+	UPotatoWeaponComponent* WeaponComponent = PlayerCharacter->FindComponentByClass<UPotatoWeaponComponent>();
+	if (WeaponComponent)
+	{
+		bIsInCombatStance = WeaponComponent->IsInCombatStance();
+	}
 	
 }

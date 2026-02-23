@@ -5,6 +5,7 @@
 #include "Components/SphereComponent.h"
 #include "PotatoWeaponData.h"
 #include "Engine/OverlapResult.h"
+#include "NiagaraFunctionLibrary.h"
 
 APotatoProjectile::APotatoProjectile()
 {
@@ -38,12 +39,14 @@ void APotatoProjectile::BeginPlay()
 	SetLifeSpan(3.0f);
 }
 
-void APotatoProjectile::InitializeProjectile(const UPotatoWeaponData* WeaponData)
+void APotatoProjectile::InitializeProjectile(UPotatoWeaponData* WeaponData)
 {
 	if (!WeaponData)
 	{
 		return;
 	}
+	
+	CachedWeaponData = WeaponData;
 
 	Damage = WeaponData->BaseDamage;
 	PierceCount = WeaponData->MaxPierceCount;
@@ -78,6 +81,7 @@ void APotatoProjectile::OnHit(UPrimitiveComponent* HitComponent, AActor* OtherAc
 	{
 		UGameplayStatics::ApplyDamage(OtherActor, Damage, GetInstigatorController(), this, UDamageType::StaticClass());
 	}
+	PlayImpactEffects(Hit.Location);
 	Destroy();
 }
 
@@ -119,6 +123,7 @@ void APotatoProjectile::OnOverlap(UPrimitiveComponent* OverlappedComponent, AAct
 	else
 	{
 		// 감자 또는 관통 횟수를 모두 소진한 옥수수 파괴
+		PlayImpactEffects(GetActorLocation());
 		Destroy();
 	}
 }
@@ -173,9 +178,39 @@ void APotatoProjectile::Explode(const FVector& ImpactLocation)
 		}
 	}
 
-	DrawDebugSphere(GetWorld(), ImpactLocation, ExplosionRadius, 12, FColor::Orange, false, 2.0f);
-
-	// TODO: 파티클 및 사운드 재생
-
+	//DrawDebugSphere(GetWorld(), ImpactLocation, ExplosionRadius, 12, FColor::Orange, false, 2.0f);
+	PlayImpactEffects(ImpactLocation);
 	Destroy();
+}
+
+void APotatoProjectile::PlayImpactEffects(const FVector& ImpactLocation)
+{
+	if (!CachedWeaponData)
+	{
+		return;
+	}
+	
+	if (CachedWeaponData->ImpactEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			CachedWeaponData->ImpactEffect,
+			ImpactLocation,
+			FRotator::ZeroRotator,
+			CachedWeaponData->ImpactEffectScale,
+			true,
+			true);
+	}
+	
+	if (CachedWeaponData->ImpactSound)
+	{
+		float RandomPitch = 1.0f;
+		if (CachedWeaponData->FireSoundPitchRandomness > 0.0f)
+		{
+			float MinPitch = 1.0f - CachedWeaponData->FireSoundPitchRandomness;
+			float MaxPitch = 1.0f + CachedWeaponData->FireSoundPitchRandomness;
+			RandomPitch = FMath::RandRange(MinPitch, MaxPitch);
+		}
+		UGameplayStatics::PlaySoundAtLocation(this, CachedWeaponData->ImpactSound, ImpactLocation, RandomPitch);
+	}
 }

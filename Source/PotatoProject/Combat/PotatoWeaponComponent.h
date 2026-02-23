@@ -34,6 +34,7 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+    virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
     // =================================================================
     // Weapon Inventory & Equipment
@@ -71,6 +72,9 @@ public:
     
     UFUNCTION(BlueprintPure, Category = "Combat")
     bool IsReloading() const;
+    
+    UFUNCTION(BlueprintCallable, Category = "Combat")
+    bool IsInCombatStance() const;
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat")
     EWeaponState CurrentState = EWeaponState::Idle;
@@ -114,11 +118,23 @@ private:
     /** 히트스캔 시각 효과 스폰: 당근 */
     void SpawnHitscanVisual(const FHitResult& HitResult, const FVector& ShotDirection);
     
+    /** 사운드, 파티클, 카메라 흔들림 및 반동 처리 */
+    void PlayFireEffects();
+
     FVector GetMuzzleLocation() const;
     FVector GetCrosshairTargetLocation() const;
 
 private:
     FTimerHandle ReloadTimerHandle;
     
+    /** 마지막 발사 시간 추적 */
+    float LastFireTime = -10.0f;
+    
     float CachedWalkSpeed = 0.0f;
+    
+    /** ControlRotation Recoil: 남은 Pitch 반동량 */
+    float TargetRecoilPitch = 0.0f;
+    
+    /** ControlRotation Recoil: 남은 Yaw 반동량 */
+    float TargetRecoilYaw = 0.0f;
 };

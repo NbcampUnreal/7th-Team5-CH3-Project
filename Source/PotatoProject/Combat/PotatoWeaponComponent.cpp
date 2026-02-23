@@ -5,12 +5,13 @@
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetMaterialLibrary.h"
+#include "NiagaraFunctionLibrary.h"
+#include "Camera/CameraShakeBase.h"
 #include "Kismet/KismetMathLibrary.h"
 
 UPotatoWeaponComponent::UPotatoWeaponComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = true;
 }
 
 void UPotatoWeaponComponent::BeginPlay()
@@ -30,7 +31,7 @@ void UPotatoWeaponComponent::AddAmmoToWeapon(UPotatoWeaponData* TargetWeapon, in
 	{
 		return;
 	}
-	
+
 	FWeaponAmmoState& State = AmmoMap[TargetWeapon];
 	State.ReserveAmmo += Amount;
 }
@@ -56,6 +57,29 @@ void UPotatoWeaponComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		CurrentWeaponActor->Destroy();
 	}
 	Super::EndPlay(EndPlayReason);
+}
+
+void UPotatoWeaponComponent::TickComponent(float DeltaTime, enum ELevelTick TickType,
+	FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	
+	// ControlRotation Recoil
+	if (!FMath::IsNearlyZero(TargetRecoilPitch) || !FMath::IsNearlyZero(TargetRecoilYaw))
+	{
+		ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+		if (OwnerCharacter && OwnerCharacter->GetController())
+		{
+			float PitchStep = FMath::FInterpTo(0.0f, TargetRecoilPitch, DeltaTime, CurrentWeaponData->RecoilSpeed);
+			float YawStep = FMath::FInterpTo(0.0f, TargetRecoilYaw, DeltaTime, CurrentWeaponData->RecoilSpeed);
+			
+			OwnerCharacter->AddControllerPitchInput(-PitchStep);
+			OwnerCharacter->AddControllerYawInput(-YawStep);
+			
+			TargetRecoilPitch -= PitchStep;
+			TargetRecoilYaw -= YawStep;
+		}
+	}
 }
 
 void UPotatoWeaponComponent::SpawnWeapon(TSubclassOf<APotatoWeapon> NewClass)
@@ -142,6 +166,24 @@ void UPotatoWeaponComponent::EquipWeapon(int32 SlotIndex)
 
 bool UPotatoWeaponComponent::CanFire() const
 {
+	// 유효성 검사
+	if (!CurrentWeaponData || !CurrentWeaponActor)
+	{
+		return false;
+	}
+
+	// 상태 확인
+	if (CurrentState != EWeaponState::Idle)
+	{
+		return false;
+	}
+
+	// 발사 속도 쿨다운: 타임스탬프 확인
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime - LastFireTime < CurrentWeaponData->FireRate)
+	{
+		return false;
+	}
 	return true;
 }
 
@@ -150,20 +192,18 @@ bool UPotatoWeaponComponent::IsReloading() const
 	return CurrentState == EWeaponState::Reloading;
 }
 
+bool UPotatoWeaponComponent::IsInCombatStance() const
+{
+	return (GetWorld()->GetTimeSeconds() - LastFireTime) < 3.0f;
+}
+
 void UPotatoWeaponComponent::Fire()
 {
-	// 유효성 검사
-	if (!CurrentWeaponData || !CurrentWeaponActor)
+	if (!CanFire())
 	{
 		return;
 	}
-
-	// 상태 확인
-	if (CurrentState != EWeaponState::Idle)
-	{
-		return;
-	}
-
+	
 	// =================================================================
 	// 탄약 로직
 	// =================================================================
@@ -182,10 +222,17 @@ void UPotatoWeaponComponent::Fire()
 	}
 
 	State.CurrentAmmo--;
+	LastFireTime = GetWorld()->GetTimeSeconds(); // 발사 직후 타임스탬프 업데이트
 	GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan,
 	                                 FString::Printf(
 		                                 TEXT("Bang! %d/%d"), State.CurrentAmmo,
 		                                 CurrentWeaponData->MaxAmmoSize));
+
+	// =================================================================
+	// Game Feel
+	// =================================================================
+
+	PlayFireEffects();
 
 	// =================================================================
 	// 실제 발사 로직
@@ -202,8 +249,6 @@ void UPotatoWeaponComponent::Fire()
 		FireHitscan(TargetLocation);
 		break;
 	}
-
-	// TODO: 반동 또는 카메라 흔들림 추가
 }
 
 void UPotatoWeaponComponent::StartReload()
@@ -233,18 +278,23 @@ void UPotatoWeaponComponent::StartReload()
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("예비 탄약이 없습니다!"));
 		return;
 	}
-	
+
 	CurrentState = EWeaponState::Reloading;
 	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Reloading...(이동 속도 감소)"));
-
-	// 이동 속도 처리
+	
 	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
-	if (OwnerCharacter && OwnerCharacter->GetCharacterMovement())
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+	
+	// 이동 속도 처리
+	if (OwnerCharacter->GetCharacterMovement())
 	{
 		CachedWalkSpeed = OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed;
 		OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed = CachedWalkSpeed * ReloadWalkSpeedScale;
 	}
-	
+
 	float Duration = CurrentWeaponData->ReloadTime;
 
 	GetWorld()->GetTimerManager().SetTimer(
@@ -254,6 +304,12 @@ void UPotatoWeaponComponent::StartReload()
 		Duration,
 		false
 	);
+	
+	// 애니메이션 처리
+	if (CurrentWeaponData->ReloadMontage)
+	{
+		OwnerCharacter->PlayAnimMontage(CurrentWeaponData->ReloadMontage);
+	}
 }
 
 void UPotatoWeaponComponent::FinishReload()
@@ -287,7 +343,7 @@ void UPotatoWeaponComponent::CancelReload()
 	{
 		GetWorld()->GetTimerManager().ClearTimer(ReloadTimerHandle);
 	}
-	
+
 	// 2. 이동 속도 복원
 	if (CurrentState == EWeaponState::Reloading)
 	{
@@ -297,7 +353,7 @@ void UPotatoWeaponComponent::CancelReload()
 			OwnerCharacter->GetCharacterMovement()->MaxWalkSpeed = CachedWalkSpeed;
 		}
 	}
-	
+
 	// 3. 상태 재설정
 	CurrentState = EWeaponState::Idle;
 }
@@ -464,4 +520,106 @@ void UPotatoWeaponComponent::SpawnHitscanVisual(const FHitResult& HitResult, con
 		VisualActor->AttachToComponent(HitResult.GetComponent(), FAttachmentTransformRules::KeepWorldTransform);
 		VisualActor->SetLifeSpan(10.0f);
 	}
+	
+	if (!CurrentWeaponData)
+	{
+		return;
+	}
+	
+	if (CurrentWeaponData->ImpactEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(),
+			CurrentWeaponData->ImpactEffect,
+			HitResult.Location,
+			FRotator::ZeroRotator,
+			CurrentWeaponData->ImpactEffectScale,
+			true,
+			true);
+	}
+	
+	if (CurrentWeaponData->ImpactSound)
+	{
+		float RandomPitch = 1.0f;
+		if (CurrentWeaponData->FireSoundPitchRandomness > 0.0f)
+		{
+			float MinPitch = 1.0f - CurrentWeaponData->FireSoundPitchRandomness;
+			float MaxPitch = 1.0f + CurrentWeaponData->FireSoundPitchRandomness;
+			RandomPitch = FMath::RandRange(MinPitch, MaxPitch);
+		}
+		UGameplayStatics::PlaySoundAtLocation(this, CurrentWeaponData->ImpactSound, HitResult.Location, RandomPitch);
+	}
+}
+
+void UPotatoWeaponComponent::PlayFireEffects()
+{
+	if (!CurrentWeaponData || !CurrentWeaponActor)
+	{
+		return;
+	}
+
+	// 1. 사운드 재생 (랜덤 피치 적용)
+	if (CurrentWeaponData->FireSound)
+	{
+		float RandomPitch = 1.0f;
+		if (CurrentWeaponData->FireSoundPitchRandomness > 0.0f)
+		{
+			float MinPitch = 1.0f - CurrentWeaponData->FireSoundPitchRandomness;
+			float MaxPitch = 1.0f + CurrentWeaponData->FireSoundPitchRandomness;
+			RandomPitch = FMath::RandRange(MinPitch, MaxPitch);
+		}
+		UGameplayStatics::PlaySoundAtLocation(this, CurrentWeaponData->FireSound, GetMuzzleLocation(), 1.0f,
+		                                      RandomPitch);
+	}
+
+	// 2. 총구 이펙트 재생
+	if (CurrentWeaponData->MuzzleFlash)
+	{
+		// 무기 메쉬의 Muzzle 소켓에 부착
+		UNiagaraFunctionLibrary::SpawnSystemAttached(
+			CurrentWeaponData->MuzzleFlash,
+			CurrentWeaponActor->WeaponMesh,
+			TEXT("Muzzle"),
+			FVector::ZeroVector,
+			FRotator::ZeroRotator,
+			EAttachLocation::SnapToTarget,
+			true
+		);
+	}
+
+	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+
+	APlayerController* PlayerController = Cast<APlayerController>(OwnerCharacter->GetController());
+	if (!PlayerController)
+	{
+		return;
+	}
+
+	// 3. Camera Shake
+	if (CurrentWeaponData->FireCameraShake)
+	{
+		PlayerController->ClientStartCameraShake(CurrentWeaponData->FireCameraShake);
+	}
+
+	
+	if (CurrentWeaponData && CurrentWeaponActor)
+	{
+		// 4. ControlRotation Recoil: 반동 누적, 연사 시 계속 위로 올라가도록
+		TargetRecoilPitch += CurrentWeaponData->RecoilPitch;
+		TargetRecoilYaw += FMath::RandRange(-CurrentWeaponData->RecoilYaw, CurrentWeaponData->RecoilYaw);
+		
+		// 5. Procedural Weapon Kick (무기 모델 반동)
+		CurrentWeaponActor->PlayKick(CurrentWeaponData->WeaponKickOffset, CurrentWeaponData->WeaponKickRotation,
+								 CurrentWeaponData->WeaponKickRecoverySpeed);
+	}
+	
+	if (CurrentWeaponData->FireMontage)
+	{
+		OwnerCharacter->PlayAnimMontage(CurrentWeaponData->FireMontage);
+	}
+	
 }

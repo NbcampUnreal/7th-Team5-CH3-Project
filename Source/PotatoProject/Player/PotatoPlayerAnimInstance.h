@@ -27,6 +27,9 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = "Movement")
 	float GroundSpeed;
 	
+	UPROPERTY(BlueprintReadOnly, Category = "Movement")
+	FVector Velocity;
+	
 	/** 액터 회전 방향: -180 ~ 180, 0은 전방 */
 	UPROPERTY(BlueprintReadOnly, Category = "Movement")
 	float LocomotionDirection;
@@ -37,4 +40,7 @@ protected:
 	/** 조준의 Pitch값: -90은 아래, +90은 위 */
 	UPROPERTY(BlueprintReadOnly, Category = "Combat")
 	float AimPitch;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Combat")
+	bool bIsInCombatStance;
 };
