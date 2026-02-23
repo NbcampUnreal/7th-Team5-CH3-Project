@@ -8,6 +8,7 @@ class UCameraComponent;
 class UBuildingSystemComponent;
 class USpringArmComponent;
 class UPotatoWeaponComponent;
+class UAmmoPopupWidget;
 
 struct FInputActionValue;
 
@@ -29,6 +30,7 @@ private:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UPotatoWeaponComponent* WeaponComponent;
+
 
 protected:
 	// Camera Settings
@@ -60,12 +62,20 @@ protected:
 	//현재 체력
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float CurrentHP = 100.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> AmmoPopupClass;
+
+	// 생성된 위젯을 참조할 변수
+	UPROPERTY()
+	UAmmoPopupWidget* AmmoPopupWidget;
 	
 private:
 	float TargetCameraDistance;
 	
 	bool IsBuildingMode;
 	// Functions
+	//bool IsAmmoProduct;
 public:
 	APotatoPlayerCharacter();
 	
@@ -101,6 +111,8 @@ protected:
 	
 	UFUNCTION()
 	void OnToggleBuildMode(const FInputActionValue& Value);
+	UFUNCTION()
+	void OnAmmoMode(const FInputActionValue& Value);
 
 	UFUNCTION()
 	void OnDeath();

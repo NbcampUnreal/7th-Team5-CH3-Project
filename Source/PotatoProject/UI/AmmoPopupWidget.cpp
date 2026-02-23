@@ -1,12 +1,16 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "UI/AmmoPopupWidget.h"
-#include "Components/TextBlock.h"
-#include "Components/ProgressBar.h"
-#include "Components/Slider.h"
 #include "Combat/PotatoWeaponComponent.h"
 #include "Combat/PotatoWeaponData.h"
 #include "Core/PotatoResourceManager.h"
+#include "Components/TextBlock.h"
+#include "Components/ProgressBar.h"
+#include "Components/Slider.h"
+#include "Components/Button.h"
+#include "Components/Image.h"
+
+
 
 void UAmmoPopupWidget::NativeConstruct()
 {
@@ -24,6 +28,10 @@ void UAmmoPopupWidget::NativeConstruct()
         {
             ResourceManager->OnResourceChanged.AddDynamic(this, &UAmmoPopupWidget::OnResourceChanged);
         }
+    }
+    if (CloseButton) {
+        //IsSetActive = false;
+        CloseButton->OnClicked.AddDynamic(this, &UAmmoPopupWidget::OnCloseButtonClicked);
     }
 }
 
@@ -82,7 +90,15 @@ void UAmmoPopupWidget::OnCarrotButtonClicked()
 
 void UAmmoPopupWidget::OnCloseButtonClicked()
 {
-    RemoveFromParent();
+    APlayerController* PlayerController = Cast<APlayerController>(GetWorld()->GetFirstPlayerController());
+    if (PlayerController)
+    {
+        SetVisibility(ESlateVisibility::Hidden);
+        PlayerController->bShowMouseCursor = false;
+        FInputModeGameOnly InputMode;
+        PlayerController->SetInputMode(InputMode);
+        //RemoveFromParent();
+    }
 }
 
 void UAmmoPopupWidget::OnChargeButtonClicked()
@@ -104,6 +120,14 @@ void UAmmoPopupWidget::OnChargeButtonClicked()
 void UAmmoPopupWidget::OnSliderValueChanged(float Value)
 {
     if (Slider) Slider->SetPercent(Value);
+    int Conval = (int)(Value*1000);
+    int Proval = (int)(Value*3000);
+    FString Constring = FString(TEXT("감자 %d개"), Value);
+    //ConsumeCrop->SetText(FText::FromString(Constring));
+    ConsumeCrop->SetText(FText::Format(FText::FromString(TEXT("감자{0}개")), Conval));
+    //FString Prostring = FString(TEXT("탄약 %d발"), Value);
+    //ProductionAmmo->SetText(FText::FromString(Prostring));
+    ProductionAmmo->SetText(FText::Format(FText::FromString(TEXT("탄약{0}발")), Proval));
     RefreshSelectionPanel();
 }
 
@@ -173,15 +197,16 @@ void UAmmoPopupWidget::RefreshAmmoDisplay()
 
 void UAmmoPopupWidget::OnResourceChanged(EResourceType Type, int32 NewValue)
 {
+    //GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Type!")));
+
     switch (Type)
     {
         case EResourceType::Wood:      
-            if (WoodAmount)      
-                WoodAmount->SetText(FText::AsNumber(NewValue));      
+            if (WoodAmount) WoodAmount->SetText(FText::AsNumber(NewValue));   
+            //if(Ammo)
             break;
         case EResourceType::Stone:     
-            if (StoneAmount)     
-                StoneAmount->SetText(FText::AsNumber(NewValue));     
+            if (StoneAmount) StoneAmount->SetText(FText::AsNumber(NewValue));     
             break;
         case EResourceType::Crop:     
             if (CropAmount) 

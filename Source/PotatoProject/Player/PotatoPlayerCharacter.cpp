@@ -8,6 +8,7 @@
 #include "Combat/PotatoWeaponComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "../Core/PotatoGameMode.h" 
+#include "../UI/AmmoPopupWidget.h"
 
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
@@ -45,11 +46,26 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 
 	//빌드모드 가능여부
 	IsBuildingMode = true;
+	//IsAmmoProduct = false;
+
+	
+
 }
 
 void APotatoPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	if (AmmoPopupClass)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo! a")));
+		AmmoPopupWidget = CreateWidget<UAmmoPopupWidget>(GetWorld(), AmmoPopupClass);
+		if (AmmoPopupWidget)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo! b")));
+			AmmoPopupWidget->AddToViewport();
+			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
 }
 
 void APotatoPlayerCharacter::Tick(float DeltaTime)
@@ -185,6 +201,15 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					&APotatoPlayerCharacter::OnToggleBuildMode
 				);
 			}
+			if (PlayerController->AmmoAction)
+			{
+				EnhancedInput->BindAction(
+					PlayerController->AmmoAction,
+					ETriggerEvent::Started,
+					this,
+					&APotatoPlayerCharacter::OnAmmoMode
+				);
+			}
 		}
 	}
 }
@@ -225,7 +250,7 @@ void APotatoPlayerCharacter::StopJump(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Look(const FInputActionValue& Value)
 {
-	if (GetController() != nullptr)
+	if (GetController() != nullptr && AmmoPopupWidget && !AmmoPopupWidget->IsVisible())
 	{
 		const FVector2D LookAxisVector = Value.Get<FVector2D>();
 		AddControllerYawInput(LookAxisVector.X);
@@ -289,7 +314,7 @@ void APotatoPlayerCharacter::CameraZoom(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 {
-	if (WeaponComponent)
+	if (WeaponComponent && AmmoPopupWidget && !AmmoPopupWidget->IsVisible())
 	{
 		WeaponComponent->Fire();
 	}
@@ -332,7 +357,13 @@ void APotatoPlayerCharacter::WeaponChange(const FInputActionValue& Value)
 			SlotIndex = 3;
 		}
 		
-		WeaponComponent->EquipWeapon(SlotIndex);
+		if (AmmoPopupWidget && AmmoPopupWidget->IsVisible()) {
+			//1 2 3 4로 탄환충전할 거 선택
+		}
+		else {
+			WeaponComponent->EquipWeapon(SlotIndex);
+		}
+		
 	}
 }
 
@@ -355,6 +386,28 @@ void APotatoPlayerCharacter::SetIsBuildingMode(bool BuildingMode)
 			BuildingComponent->ToggleBuildMode();
 		}
 	}
+}
+
+void APotatoPlayerCharacter::OnAmmoMode(const FInputActionValue& Value)
+{
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+
+
+	if (AmmoPopupWidget && PlayerController)
+	{
+		if (AmmoPopupWidget->IsVisible()) {
+			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+			PlayerController->bShowMouseCursor = false;
+			FInputModeGameOnly InputMode;
+			PlayerController->SetInputMode(InputMode);
+		}
+		else {
+			AmmoPopupWidget->SetVisibility(ESlateVisibility::Visible);
+			PlayerController->bShowMouseCursor = true;
+		}
+	}
+
+
 }
 
 
