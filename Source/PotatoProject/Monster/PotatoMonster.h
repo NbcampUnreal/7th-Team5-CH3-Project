@@ -4,13 +4,16 @@
 #include "GameFramework/Character.h"
 #include "Engine/DataTable.h"
 #include "BehaviorTree/BehaviorTree.h"
-
+#include "Components/WidgetComponent.h"
 #include "../Core/PotatoEnums.h"
 #include "PotatoMonsterFinalStats.h"
 #include "PotatoMonsterAnimSet.h"
 #include "PotatoMonster.generated.h"
 
 class UPotatoCombatComponent;
+class UPotatoMonsterAnimSet;
+class UHealthBar;
+class UCapsuleComponent;
 
 UCLASS()
 class POTATOPROJECT_API APotatoMonster : public ACharacter
@@ -155,6 +158,76 @@ public:
 	float LastHitReactTime = -1000.f;
 
 	FTimerHandle HitReactResumeTH;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	UWidgetComponent* HPBarWidgetComp = nullptr;
+
+	UPROPERTY(Transient)
+	UHealthBar* HPBarWidget = nullptr;
+
+	// 머리 위 추가 여유 (기본 20)
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	float HPBarExtraZ = 20.f;
+
+	// 너무 작은/큰 몬스터 대비 클램프
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	float HPBarMinZ = 80.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	float HPBarMaxZ = 400.f;
+
+	// 예외 몬스터만 BP에서 추가 보정
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	float HPBarPerMonsterOffsetZ = 0.f;
+
+	// HP바 갱신 (Health/MaxHealth 기반)
+	void RefreshHPBar();
+
+	// Mesh Bounds 기반 자동 배치
+	void UpdateHPBarLocation();
+
+
+	UPROPERTY(EditAnywhere, Category = "SFX|Budget")
+	float HitSFXNearDistance = 600.f;
+
+	UPROPERTY(EditAnywhere, Category = "SFX|Budget")
+	float HitSFXFarDistance = 1400.f;
+
+	UPROPERTY(EditAnywhere, Category = "SFX|Budget", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HitSFXFarChance = 0.20f;
+
+	UPROPERTY(EditAnywhere, Category = "SFX|Budget")
+	float DeathSFXNearDistance = 800.f;
+
+	UPROPERTY(EditAnywhere, Category = "SFX|Budget")
+	float DeathSFXFarDistance = 2200.f;
+
+	UPROPERTY(EditAnywhere, Category = "SFX|Budget", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float DeathSFXFarChance = 0.35f;
+
+	// Hit SFX 스팸 방지
+	UPROPERTY(EditAnywhere, Category = "SFX|Hit")
+	float HitSFXCooldown = 0.10f;
+
+	float LastHitSFXTime = -9999.f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Anim|HitReact")
+	float HitReactMinVisibleTime = 0.35f; // 추천: 0.25~0.45
+
+	UPROPERTY(EditDefaultsOnly, Category = "Anim|Death")
+	float DeathMinVisibleTime = 2.0f;     // 너가 원한 최소 노출시간
+
+	UPROPERTY()
+	class APotatoDamageTextPoolActor* DamageTextPool = nullptr;
+
+	int32 DamageStackIndex = 0;
+	float LastDamageTime = 0.f;
+
+	UPROPERTY(EditDefaultsOnly)
+	float DamageStackResetTime = 0.5f;
+
+	UPROPERTY(EditDefaultsOnly)
+	float DamageStackOffsetStep = 18.f;
 
 private:
 		// -------------------------
