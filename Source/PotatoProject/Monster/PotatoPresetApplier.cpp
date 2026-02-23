@@ -75,6 +75,7 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 
     if (TypeRow)
     {
+
         TypeBaseHP = TypeRow->BaseHP;
         TypeBaseAttackDamage = TypeRow->BaseAttackDamage;
         TypeBaseAttackRange = TypeRow->BaseAttackRange;

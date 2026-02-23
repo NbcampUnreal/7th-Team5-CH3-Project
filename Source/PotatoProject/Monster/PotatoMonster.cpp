@@ -53,6 +53,7 @@ void APotatoMonster::ApplyPresetsOnce()
 	{
 		CombatComp->InitFromStats(FinalStats);
 	}
+	SetAnimSet(FinalStats.AnimSet);
 	UE_LOG(LogTemp, Warning, TEXT("[Preset] Monster=%s AnimSet=%s"),
 		*GetName(),
 		*GetNameSafe(AnimSet));
@@ -184,43 +185,69 @@ void APotatoMonster::Die()
 	if (bIsDead) return;
 	bIsDead = true;
 
-	// HitReact 복구 타이머 같은 거 남아있으면 정리
+	// 남아있는 타이머 정리 (HitReact 등)
 	if (GetWorld())
 	{
 		GetWorldTimerManager().ClearTimer(HitReactResumeTH);
 	}
 
-	//  AI/BT 정지
+	// AI/BT 정지
 	StopAIForDead();
 
-	//  이동 완전 정지
+	// 이동 완전 정지
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->StopMovementImmediately();
 		MoveComp->DisableMovement();
 	}
 
+	// 충돌 끄기
 	SetActorEnableCollision(false);
 
-	float Life = 2.0f;
+	// ----------------------------
+	// Death Montage (auto slow down)
+	// ----------------------------
+	float Life = 2.0f;                 // 최소로 남겨둘 시간(보험)
+	const float MinDeathTime = 2.0f;   // 죽음 연출 최소 노출 시간(원하는 값)
 
-	//  죽음 몽타주 재생 + 몽타주 길이 기반 LifeSpan
 	const UPotatoMonsterAnimSet* AS = GetAnimSet();
-
 	if (AS && AS->DeathMontage)
 	{
-		if (UAnimInstance* AnimInst = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+		if (UAnimInstance* AnimInst = (GetMesh() ? GetMesh()->GetAnimInstance() : nullptr))
 		{
-			const float Len = AnimInst->Montage_Play(AS->DeathMontage, 1.0f);
-			UE_LOG(LogTemp, Warning, TEXT("[Die] Montage_Play Len=%.3f Montage=%s AnimBP=%s"),
-				Len,
-				*GetNameSafe(AS->DeathMontage),
-				*GetNameSafe(AnimInst->GetClass()));
-			if (Len > 0.f)
+			// 다른 몽타주(공격/피격 등) 덮어쓰기 방지
+			AnimInst->StopAllMontages(0.05f);
+
+			// 몽타주 기본 길이(자산 기준)
+			const float BaseLen = AS->DeathMontage->GetPlayLength();
+
+			// 기본값: 원래 속도 유지
+			float PlayRate = 1.0f;
+			float FinalLen = BaseLen;
+
+			// 너무 짧으면, 재생속도를 자동으로 줄여서 최소 2초 이상 보이게
+			if (BaseLen > KINDA_SMALL_NUMBER && BaseLen < MinDeathTime)
 			{
-				Life = FMath::Max(Life, Len + 0.2f);
+				PlayRate = BaseLen / MinDeathTime;  // 예: 0.4s → 2.0s 되도록 0.2배속
+				FinalLen = MinDeathTime;
 			}
 
+			const float PlayedLen = AnimInst->Montage_Play(AS->DeathMontage, PlayRate);
+
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Die] BaseLen=%.3f PlayRate=%.3f PlayedLen=%.3f Montage=%s AnimBP=%s"),
+				BaseLen,
+				PlayRate,
+				PlayedLen,
+				*GetNameSafe(AS->DeathMontage),
+				*GetNameSafe(AnimInst->GetClass())
+			);
+
+			// LifeSpan은 "실제로 보장하고 싶은 시간" 기준으로 설정
+			if (FinalLen > 0.f)
+			{
+				Life = FMath::Max(Life, FinalLen + 0.2f);
+			}
 		}
 	}
 
