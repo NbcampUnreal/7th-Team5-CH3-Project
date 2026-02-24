@@ -3,8 +3,12 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "PotatoMonsterFinalStats.h"
+
+#include "FXUtils/PotatoFXUtils.h"
+
 #include "PotatoCombatComponent.generated.h"
 
+class AActor;
 class UAnimMontage;
 class UPotatoMonsterAnimSet;
 
@@ -19,6 +23,7 @@ public:
 	// Stats(=FinalStats) 주입
 	void InitFromStats(const FPotatoMonsterFinalStats& InStats);
 
+	// 공격 요청 (BT/AI에서 호출)
 	UFUNCTION(BlueprintCallable, Category = "Potato|Combat")
 	bool RequestBasicAttack(AActor* Target);
 
@@ -43,20 +48,34 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Potato|Combat")
 	float AttackIntervalExtra = 0.05f;
 
+	// 몽타주 종료 콜백 (안전하게 공격상태 해제)
 	UFUNCTION()
 	void OnBasicAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-	UPROPERTY(EditAnywhere, Category = "Combat|Range")
+	// 사거리 여유 (Bounds 표면 거리 근사에 더함)
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|Range")
 	float AttackRangePadding = 60.f;   // ★ 30~80 추천
 
+	UPROPERTY(Transient)
+	bool bQueuedApplyDamageNextTick = false;
+
+	UPROPERTY(Transient)
+	bool bQueuedFireProjectileNextTick = false;
 private:
+	// =====================
+	// State
+	// =====================
+	UPROPERTY()
 	FPotatoMonsterFinalStats Stats;
 
 	bool bIsAttacking = false;
 	double NextAttackTime = 0.0;
+
 	TWeakObjectPtr<AActor> PendingBasicTarget;
 
-	// ===== Helpers =====
+	// =====================
+	// Helpers
+	// =====================
 	const UPotatoMonsterAnimSet* GetAnimSet() const;
 
 	bool IsTargetInRange(AActor* Target) const;
@@ -70,4 +89,38 @@ private:
 
 	// muzzle 위치 계산
 	bool GetMuzzleTransform(FVector& OutLoc, FRotator& OutRot) const;
+
+	// =====================
+	// SFX control (per-owner)
+	// =====================
+	double LastAttackStartSFXTime = -1.0;
+	double LastAttackHitSFXTime = -1.0;
+	double LastProjectileFireSFXTime = -1.0;
+
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|SFX", meta = (ClampMin = "0.0"))
+	float AttackStartSFXCooldown = 0.05f;
+
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|SFX", meta = (ClampMin = "0.0"))
+	float AttackHitSFXCooldown = 0.05f;
+
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|SFX", meta = (ClampMin = "0.0"))
+	float ProjectileFireSFXCooldown = 0.05f;
+
+	// Distance gate (Monster쪽과 같은 컨셉)
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|SFX")
+	float AttackSFXNearDistance = 1200.f;
+
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|SFX")
+	float AttackSFXFarDistance = 4000.f;
+
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|SFX", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AttackSFXFarChance = 0.35f;
+
+	// Global budget (combat 전용)
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|SFX", meta = (ClampMin = "0.0"))
+	float CombatSFXGlobalWindowSec = 0.08f;
+
+	UPROPERTY(EditAnywhere, Category = "Potato|Combat|SFX", meta = (ClampMin = "1"))
+	int32 CombatSFXGlobalMaxCount = 4;
+
 };

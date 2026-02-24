@@ -10,7 +10,10 @@
 #include "../UI/PotatoDamageTextPoolActor.h"
 #include "Components/WidgetComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "../UI/HealthBar.h"
+
+#include "FXUtils/PotatoFXUtils.h"
 
 // ==============================
 // Static Helpers (CPP Local)
@@ -62,94 +65,24 @@ static void ScheduleTimerSafe(APotatoMonster* M,
 	}
 }
 
-// ------------------------------
-// SFX: Distance Gate + Global Budget + Spawn
-// ------------------------------
-
-// 거리 기반 확률(near=100%, far=FarChance)
-static float ComputeDistanceChance(float Dist, float NearDist, float FarDist, float FarChance)
+// bounds fallback
+static FVector ComputeBoundsTopLocation(APotatoMonster* M, float ZMul, float ZAdd)
 {
-	NearDist = FMath::Max(0.f, NearDist);
-	FarDist = FMath::Max(NearDist + 1.f, FarDist);
-	FarChance = FMath::Clamp(FarChance, 0.f, 1.f);
+	if (!M) return FVector::ZeroVector;
 
-	if (Dist <= NearDist) return 1.0f;
-	if (Dist >= FarDist)  return FarChance;
-
-	const float Alpha = (Dist - NearDist) / (FarDist - NearDist);
-	return FMath::Lerp(1.0f, FarChance, Alpha);
-}
-
-static bool PassDistanceGate(const UObject* WorldContextObject, const FVector& SoundLoc,
-	float NearDist, float FarDist, float FarChance)
-{
-	if (!WorldContextObject) return false;
-
-	const APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(WorldContextObject, 0);
-	if (!PlayerPawn)
+	if (USkeletalMeshComponent* Mesh = M->GetMesh())
 	{
-		// 테스트/특수 상황: 일단 허용
-		return true;
+		const FVector Origin = Mesh->Bounds.Origin;
+		const float Z = Mesh->Bounds.BoxExtent.Z * ZMul + ZAdd;
+		return Origin + FVector(0.f, 0.f, Z);
 	}
 
-	const float Dist = FVector::Dist(PlayerPawn->GetActorLocation(), SoundLoc);
-	const float Chance = ComputeDistanceChance(Dist, NearDist, FarDist, FarChance);
-	return FMath::FRand() <= Chance;
-}
-
-// 전역 시간창 버짓: windowSec 동안 maxCount만 허용
-static bool PassGlobalSFXBudget(float Now, float WindowSec, int32 MaxCount, TArray<float>& Times)
-{
-	// PIE/월드 재시작으로 시간이 역전될 수 있으니 보호
-	static float G_LastNow = 0.f;
-	if (Now + 0.01f < G_LastNow)
+	if (UCapsuleComponent* Cap = M->GetCapsuleComponent())
 	{
-		Times.Reset();
-	}
-	G_LastNow = Now;
-
-	for (int32 i = Times.Num() - 1; i >= 0; --i)
-	{
-		if (Now - Times[i] > WindowSec)
-		{
-			Times.RemoveAtSwap(i, 1, false);
-		}
+		return M->GetActorLocation() + FVector(0.f, 0.f, Cap->GetScaledCapsuleHalfHeight() * ZMul + ZAdd);
 	}
 
-	if (Times.Num() >= MaxCount)
-	{
-		return false;
-	}
-
-	Times.Add(Now);
-	return true;
-}
-
-// 전역 버짓 히스토리
-static TArray<float> G_HitSFXTimes;
-static TArray<float> G_DeathSFXTimes;
-
-// Slot 재생 (랜덤 없음) + Attenuation/Concurrency 적용
-static void SpawnSFXSlotAtLocation(const UObject* WorldContextObject, const FPotatoSFXSlot& Slot, const FVector& Location)
-{
-	if (!WorldContextObject) return;
-	if (!Slot.Sound) return;
-
-	const float Volume = FMath::Max(0.f, Slot.VolumeMultiplier);
-	const float Pitch = FMath::Max(0.01f, Slot.PitchMultiplier);
-
-	UGameplayStatics::SpawnSoundAtLocation(
-		WorldContextObject,
-		Slot.Sound,
-		Location,
-		FRotator::ZeroRotator,
-		Volume,
-		Pitch,
-		0.0f,
-		Slot.Attenuation,
-		Slot.Concurrency,
-		true
-	);
+	return M->GetActorLocation();
 }
 
 // ============================================================
@@ -185,7 +118,6 @@ void APotatoMonster::UpdateHPBarLocation()
 
 	HPBarWidgetComp->SetRelativeLocation(FVector(0.f, 0.f, Z));
 }
-
 
 // ============================================================
 // Constructor / BeginPlay
@@ -225,6 +157,14 @@ void APotatoMonster::BeginPlay()
 				APotatoDamageTextPoolActor::StaticClass()
 			)
 		);
+
+	// 정확한 피격지점 받기
+	OnTakePointDamage.AddDynamic(this, &APotatoMonster::OnMonsterTakePointDamage);
+	OnTakeRadialDamage.AddDynamic(this, &APotatoMonster::OnMonsterTakeRadialDamage);
+
+	bHasLastHitPoint = false;
+	LastHitPointWS = FVector::ZeroVector;
+	LastHitBoneName = NAME_None;
 }
 
 // ============================================================
@@ -287,6 +227,8 @@ float APotatoMonster::TakeDamage(
 
 	Health = FMath::Clamp(Health - Applied, 0.f, MaxHealth);
 	RefreshHPBar();
+
+	// DamageText (기존 유지)
 	if (DamageTextPool)
 	{
 		const float Now = GetWorld()->TimeSeconds;
@@ -318,6 +260,7 @@ float APotatoMonster::TakeDamage(
 
 		DamageStackIndex++;
 	}
+
 	if (Health > 0.f)
 	{
 		TryPlayHitReact();
@@ -331,7 +274,44 @@ float APotatoMonster::TakeDamage(
 }
 
 // ============================================================
-// Hit React
+// 정확한 피격 위치 갱신
+// ============================================================
+
+void APotatoMonster::OnMonsterTakePointDamage(AActor* DamagedActor, float Damage,
+	AController* InstigatedBy, FVector HitLocation, UPrimitiveComponent* FHitComponent,
+	FName BoneName, FVector ShotFromDirection, const UDamageType* DamageType,
+	AActor* DamageCauser)
+{
+	if (bIsDead) return;
+
+	bHasLastHitPoint = true;
+	LastHitPointWS = HitLocation;
+	LastHitBoneName = BoneName;
+}
+
+void APotatoMonster::OnMonsterTakeRadialDamage(AActor* DamagedActor, float Damage,
+	const UDamageType* DamageType, FVector Origin, const FHitResult& HitInfo,
+	AController* InstigatedBy, AActor* DamageCauser)
+{
+	if (bIsDead) return;
+
+	FVector P = Origin;
+
+	if (HitInfo.bBlockingHit)
+	{
+		P = FVector(HitInfo.ImpactPoint);
+	}
+	else if (!HitInfo.ImpactPoint.IsNearlyZero())
+	{
+		P = FVector(HitInfo.ImpactPoint);
+	}
+	bHasLastHitPoint = true;
+	LastHitPointWS = P;
+	LastHitBoneName = HitInfo.BoneName;
+}
+
+// ============================================================
+// Hit React (+ Hit VFX)
 // ============================================================
 
 void APotatoMonster::TryPlayHitReact()
@@ -347,102 +327,119 @@ void APotatoMonster::TryPlayHitReact()
 	UAnimInstance* AnimInst = GetAnimInstanceSafe(this);
 	if (!AnimInst) return;
 
-	const FVector Loc = GetActorLocation();
+	const FVector FallbackHitLoc = ComputeBoundsTopLocation(this, 0.5f, 0.f);
+	const FVector HitLoc = bHasLastHitPoint ? LastHitPointWS : FallbackHitLoc;
 
-	// ------------------------------------------------------------
-	// A) 이미 재생 중이면: 몽타주는 유지 + 스턴만 연장 (+ SFX는 쿨타임/버짓/거리게이트로 제한)
-	// ------------------------------------------------------------
+	// A) 이미 재생 중이면: 스턴만 연장 + 제한적 SFX/VFX
 	if (AnimInst->Montage_IsPlaying(AS->HitReactMontage))
 	{
-		// 이동 정지 유지
 		DisableMovementSafe(this);
 
-		//  연타 타격감용 SFX(너무 스팸 안 되게)
 		if (Now - LastHitSFXTime >= HitSFXCooldown)
 		{
-			const bool bDistanceOK = PassDistanceGate(this, Loc, HitSFXNearDistance, HitSFXFarDistance, HitSFXFarChance);
-			const bool bBudgetOK = PassGlobalSFXBudget(Now, /*Window*/0.08f, /*Max*/4, G_HitSFXTimes);
+			const bool bDistanceOK = PotatoFX::PassDistanceGate(this, GetActorLocation(), HitSFXNearDistance, HitSFXFarDistance, HitSFXFarChance);
+			const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, 0.08f, 4, PotatoFX::EGlobalBudgetChannel::HitSFX);
 
 			if (bDistanceOK && bBudgetOK)
 			{
-				SpawnSFXSlotAtLocation(this, AS->GetHitSFX, Loc);
+				PotatoFX::SpawnSFXSlotAtLocation(this, AS->GetHitSFX, GetActorLocation());
 				LastHitSFXTime = Now;
 			}
 		}
 
-		// 스턴 타이머 연장 (MinVisible 기준으로 길이 보정)
+		const bool bHasHitVFX = AS->HitVFX.HasAnyVFX();
+		if (bHasHitVFX && (Now - LastHitVFXTime >= HitVFXCooldown))
+		{
+			const bool bDistanceOK = PotatoFX::PassDistanceGate(this, HitLoc, HitVFXNearDistance, HitVFXFarDistance, HitVFXFarChance);
+			const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, HitVFXGlobalWindowSec, HitVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::HitVFX);
+
+			if (bDistanceOK && bBudgetOK)
+			{
+				const float Scalar = PotatoFX::ComputeVFXSlotAutoScaleScalar(this, AS->HitVFX);
+				const FVector FinalScale = AS->HitVFX.Scale * Scalar;
+
+				PotatoFX::SpawnVFXSlotAtLocation(this, AS->HitVFX, HitLoc, FRotator::ZeroRotator, FinalScale);
+				LastHitVFXTime = Now;
+			}
+		}
+
 		const float BaseLen = AS->HitReactMontage->GetPlayLength();
 		float FinalLen = BaseLen;
 		ComputeMinVisiblePlayRate(BaseLen, HitReactMinVisibleTime, FinalLen);
 
 		const float StunTime = FMath::Clamp(FinalLen, 0.1f, HitReactMaxStunTime);
 
-		ScheduleTimerSafe(this, HitReactResumeTH,
-			&APotatoMonster::ResumeMovementAfterHitReact,
-			StunTime);
-
+		ScheduleTimerSafe(this, HitReactResumeTH, &APotatoMonster::ResumeMovementAfterHitReact, StunTime);
 		return;
 	}
 
-	// ------------------------------------------------------------
-	// B) 새로 HitReact 시작: 쿨타임으로 "새로 시작"만 제한
-	// ------------------------------------------------------------
+	// B) 새로 시작은 쿨타임 제한
 	if (Now - LastHitReactTime < HitReactCooldown) return;
 	LastHitReactTime = Now;
 
 	DisableMovementSafe(this);
 
-	//  HitReact 시작 SFX 1회 (거리게이트 + 전역버짓)
+	// 시작 SFX 1회
 	{
-		const bool bDistanceOK = PassDistanceGate(this, Loc, HitSFXNearDistance, HitSFXFarDistance, HitSFXFarChance);
-		const bool bBudgetOK = PassGlobalSFXBudget(Now, /*Window*/0.08f, /*Max*/4, G_HitSFXTimes);
+		const bool bDistanceOK = PotatoFX::PassDistanceGate(this, GetActorLocation(), HitSFXNearDistance, HitSFXFarDistance, HitSFXFarChance);
+		const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, 0.08f, 4, PotatoFX::EGlobalBudgetChannel::HitSFX);
 
 		if (bDistanceOK && bBudgetOK)
 		{
-			SpawnSFXSlotAtLocation(this, AS->GetHitSFX, Loc);
+			PotatoFX::SpawnSFXSlotAtLocation(this, AS->GetHitSFX, GetActorLocation());
 			LastHitSFXTime = Now;
 		}
 	}
 
-	// 몽타주 길이 보정(너무 짧으면 느리게 재생해서 최소 노출시간 확보)
+	// 시작 VFX 1회
+	{
+		const bool bHasHitVFX = AS->HitVFX.HasAnyVFX();
+		if (bHasHitVFX && (Now - LastHitVFXTime >= HitVFXCooldown))
+		{
+			const bool bDistanceOK = PotatoFX::PassDistanceGate(this, HitLoc, HitVFXNearDistance, HitVFXFarDistance, HitVFXFarChance);
+			const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, HitVFXGlobalWindowSec, HitVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::HitVFX);
+
+			if (bDistanceOK && bBudgetOK)
+			{
+				const float Scalar = PotatoFX::ComputeVFXSlotAutoScaleScalar(this, AS->HitVFX);
+				const FVector FinalScale = AS->HitVFX.Scale * Scalar;
+
+				PotatoFX::SpawnVFXSlotAtLocation(this, AS->HitVFX, HitLoc, FRotator::ZeroRotator, FinalScale);
+				LastHitVFXTime = Now;
+			}
+		}
+	}
+
+	// 몽타주 길이 보정
 	const float BaseLen = AS->HitReactMontage->GetPlayLength();
 	float FinalLen = BaseLen;
 
 	const float PlayRate = ComputeMinVisiblePlayRate(BaseLen, HitReactMinVisibleTime, FinalLen);
-
 	const float PlayedLen = AnimInst->Montage_Play(AS->HitReactMontage, PlayRate);
 
-	const float EffectiveLen =
-		(PlayedLen > 0.f) ? FMath::Max(PlayedLen, FinalLen) : FinalLen;
+	const float EffectiveLen = (PlayedLen > 0.f) ? FMath::Max(PlayedLen, FinalLen) : FinalLen;
+	const float StunTime = FMath::Clamp(EffectiveLen, 0.1f, HitReactMaxStunTime);
 
-	const float StunTime =
-		FMath::Clamp(EffectiveLen, 0.1f, HitReactMaxStunTime);
-
-	ScheduleTimerSafe(this,
-		HitReactResumeTH,
-		&APotatoMonster::ResumeMovementAfterHitReact,
-		StunTime);
+	ScheduleTimerSafe(this, HitReactResumeTH, &APotatoMonster::ResumeMovementAfterHitReact, StunTime);
 }
 
 void APotatoMonster::ResumeMovementAfterHitReact()
 {
 	if (bIsDead) return;
 
-	if (UCharacterMovementComponent* MoveComp =
-		GetCharacterMovement())
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		MoveComp->SetMovementMode(MOVE_Walking);
 	}
 }
 
 // ============================================================
-// Die
+// Die (+ Death VFX + Ragdoll Fallback)
 // ============================================================
 
 void APotatoMonster::StopAIForDead()
 {
-	if (AAIController* AICon =
-		Cast<AAIController>(GetController()))
+	if (AAIController* AICon = Cast<AAIController>(GetController()))
 	{
 		AICon->StopMovement();
 
@@ -453,6 +450,35 @@ void APotatoMonster::StopAIForDead()
 	}
 }
 
+static void EnableRagdollFallback(APotatoMonster* M)
+{
+	if (!M) return;
+
+	// 캡슐은 끄고, 메쉬가 물리로 굴러가게
+	if (UCapsuleComponent* Cap = M->GetCapsuleComponent())
+	{
+		Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Cap->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
+	}
+
+	if (USkeletalMeshComponent* Mesh = M->GetMesh())
+	{
+		// 캐릭터는 보통 캡슐이 Root라서, 메쉬를 분리해줘야 "즉시 멈춤/튕김"이 덜함
+		Mesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+
+		// Ragdoll 프로파일은 프로젝트 기본값(PhysicsAsset 기준) 사용하는 게 가장 안전
+		Mesh->SetCollisionProfileName(TEXT("Ragdoll"));
+
+		Mesh->SetAllBodiesSimulatePhysics(true);
+		Mesh->SetSimulatePhysics(true);
+		Mesh->WakeAllRigidBodies();
+		Mesh->bBlendPhysics = true;
+
+		// 혹시 남아있는 애니 영향 최소화
+		Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	}
+}
+
 void APotatoMonster::Die()
 {
 	if (bIsDead) return;
@@ -460,21 +486,42 @@ void APotatoMonster::Die()
 
 	UWorld* World = GetWorld();
 	const float Now = World ? World->TimeSeconds : 0.f;
-	const FVector Loc = GetActorLocation();
 
-	//  Death SFX: 1회 + (거리게이트) + (전역버짓) + (Attenuation/Concurrency)
+	const FVector DeathLoc = ComputeBoundsTopLocation(this, 0.2f, 0.f);
+
+	// Death SFX
 	if (const UPotatoMonsterAnimSet* AS0 = GetAnimSet())
 	{
-		const bool bDistanceOK = PassDistanceGate(this, Loc, DeathSFXNearDistance, DeathSFXFarDistance, DeathSFXFarChance);
-		const bool bBudgetOK = PassGlobalSFXBudget(Now, /*Window*/0.12f, /*Max*/2, G_DeathSFXTimes);
+		const bool bDistanceOK = PotatoFX::PassDistanceGate(this, GetActorLocation(), DeathSFXNearDistance, DeathSFXFarDistance, DeathSFXFarChance);
+		const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, 0.12f, 2, PotatoFX::EGlobalBudgetChannel::DeathSFX);
 
 		if (bDistanceOK && bBudgetOK)
 		{
-			SpawnSFXSlotAtLocation(this, AS0->DeathSFX, Loc);
+			PotatoFX::SpawnSFXSlotAtLocation(this, AS0->DeathSFX, GetActorLocation());
 		}
 	}
 
-	// 남아있는 타이머 정리
+	// Death VFX
+	if (const UPotatoMonsterAnimSet* AS0 = GetAnimSet())
+	{
+		const bool bHasDeathVFX = (AS0->DeathVFX.Niagara || AS0->DeathVFX.Cascade);
+		if (bHasDeathVFX && (Now - LastDeathVFXTime >= DeathVFXCooldown))
+		{
+			const bool bDistanceOK = PotatoFX::PassDistanceGate(this, DeathLoc, DeathVFXNearDistance, DeathVFXFarDistance, DeathVFXFarChance);
+			const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, DeathVFXGlobalWindowSec, DeathVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::DeathVFX);
+
+			if (bDistanceOK && bBudgetOK)
+			{
+				const float Scalar = PotatoFX::ComputeVFXSlotAutoScaleScalar(this, AS0->DeathVFX);
+				const FVector FinalScale = AS0->DeathVFX.Scale * Scalar;
+
+				PotatoFX::SpawnVFXSlotAtLocation(this, AS0->DeathVFX, DeathLoc, GetActorRotation(), FinalScale);
+				LastDeathVFXTime = Now;
+			}
+		}
+	}
+
+	// 타이머 정리
 	if (World)
 	{
 		GetWorldTimerManager().ClearTimer(HitReactResumeTH);
@@ -482,16 +529,23 @@ void APotatoMonster::Die()
 
 	StopAIForDead();
 	DisableMovementSafe(this);
-	SetActorEnableCollision(false);
 
+	// UI 숨김
 	if (HPBarWidgetComp)
 	{
 		HPBarWidgetComp->SetHiddenInGame(true);
 	}
 
+	// 충돌은 "기본은 끄되", Ragdoll일 때는 메쉬 물리 충돌로 대체
+	SetActorEnableCollision(false);
+
 	float Life = 2.f;
 
 	const UPotatoMonsterAnimSet* AS = GetAnimSet();
+
+	// --------------------------------------------
+	// (1) DeathMontage 있으면: 기존 몽타주 죽음
+	// --------------------------------------------
 	if (AS && AS->DeathMontage)
 	{
 		if (UAnimInstance* AnimInst = GetAnimInstanceSafe(this))
@@ -501,25 +555,27 @@ void APotatoMonster::Die()
 			const float BaseLen = AS->DeathMontage->GetPlayLength();
 
 			float FinalLen = BaseLen;
-			const float PlayRate =
-				ComputeMinVisiblePlayRate(
-					BaseLen,
-					DeathMinVisibleTime,
-					FinalLen);
+			const float PlayRate = ComputeMinVisiblePlayRate(BaseLen, DeathMinVisibleTime, FinalLen);
 
-			const float PlayedLen =
-				AnimInst->Montage_Play(
-					AS->DeathMontage,
-					PlayRate);
+			const float PlayedLen = AnimInst->Montage_Play(AS->DeathMontage, PlayRate);
 
-			const float EffectiveLen =
-				(PlayedLen > 0.f)
-				? FMath::Max(PlayedLen, FinalLen)
-				: FinalLen;
+			const float EffectiveLen = (PlayedLen > 0.f) ? FMath::Max(PlayedLen, FinalLen) : FinalLen;
 
 			Life = FMath::Max(Life, EffectiveLen + 0.2f);
 		}
+
+		SetLifeSpan(Life);
+		return;
 	}
+
+	// --------------------------------------------
+	// (2) DeathMontage 없으면: Ragdoll Fallback
+	// --------------------------------------------
+	EnableRagdollFallback(this);
+
+	// 너무 오래 남기면 성능/가시성 문제 생길 수 있어서 별도 상한(필요시 변수로 빼도 됨)
+	const float RagdollLife = 3.0f;
+	Life = FMath::Max(Life, RagdollLife);
 
 	SetLifeSpan(Life);
 }
@@ -528,20 +584,21 @@ void APotatoMonster::Die()
 // Lane
 // ============================================================
 
-void APotatoMonster::AdvanceLaneIndex()
-{
-	LaneIndex = FMath::Clamp(
-		LaneIndex + 1,
-		0,
-		LanePoints.Num());
-}
-
 AActor* APotatoMonster::GetCurrentLaneTarget() const
 {
-	return LanePoints.IsValidIndex(LaneIndex)
-		? LanePoints[LaneIndex]
-		: WarehouseActor;
+	return LanePoints.IsValidIndex(LaneIndex) ? LanePoints[LaneIndex] : WarehouseActor;
 }
+
+void APotatoMonster::AdvanceLaneIndex()
+{
+	// 안정: Num-1까지만 유지 (그 다음은 GetCurrentLaneTarget()이 Warehouse로)
+	const int32 MaxIdx = FMath::Max(0, LanePoints.Num() - 1);
+	LaneIndex = FMath::Clamp(LaneIndex + 1, 0, MaxIdx);
+}
+
+// ============================================================
+// AnimSet
+// ============================================================
 
 void APotatoMonster::SetAnimSet(UPotatoMonsterAnimSet* InSet)
 {

@@ -80,6 +80,18 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "AttackTarget|Move")
 	float ApproachExtraOffset = 20.f;
 
+	// Player 관련 BB 키
+	UPROPERTY(EditAnywhere, Category = "Player")
+	FBlackboardKeySelector PlayerActorKey;
+
+	// 플레이어 무시 거리 (몬스터가 Warehouse 근처일 때)
+	UPROPERTY(EditAnywhere, Category = "Player", meta = (ClampMin = "0"))
+	float IgnorePlayerWhenNearWarehouseDist = 900.f;
+
+	// 플레이어 사거리 여유값
+	UPROPERTY(EditAnywhere, Category = "Player", meta = (ClampMin = "0"))
+	float PlayerSenseExtraRange = 0.f;
+
 protected:
 	bool ComputeInAttackRange(APotatoMonster* M, AActor* Target, float Range) const;
 

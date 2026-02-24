@@ -11,11 +11,103 @@ APotatoMonsterSpawner::APotatoMonsterSpawner()
 }
 
 // =========================================================
+// Stage / WaveId Helpers
+// - GameMode에서 StartWave("1")만 호출하면
+//   내부적으로 1-1, 1-2, 1-3 ... 순서로 자동 진행
+// =========================================================
+
+static bool IsStageOnlyName(const FName& InName, int32& OutStage)
+{
+    const FString S = InName.ToString().TrimStartAndEnd();
+    if (S.Contains(TEXT("-"))) return false;
+    if (!S.IsNumeric()) return false;
+
+    OutStage = FCString::Atoi(*S);
+    return OutStage > 0;
+}
+
+static FName MakeStageWaveId(int32 Stage, int32 Sub)
+{
+    return FName(*FString::Printf(TEXT("%d-%d"), Stage, Sub));
+}
+
+bool APotatoMonsterSpawner::HasMetaRow(FName WaveId) const
+{
+    return WaveMetaTable && WaveMetaTable->FindRow<FPotatoWaveMetaRow>(WaveId, TEXT("HasMetaRow")) != nullptr;
+}
+
+bool APotatoMonsterSpawner::ResolveFirstWaveForStage(int32 Stage, FName& OutWaveId, int32& OutSub)
+{
+    // stage의 첫 웨이브는 기본적으로 1부터 스캔
+    int32& NextIdx = NextSubWaveIndexByStage.FindOrAdd(Stage);
+    if (NextIdx <= 0) NextIdx = 1;
+
+    const int32 ScanMax = NextIdx + 50; // 안전장치
+    for (int32 Sub = NextIdx; Sub <= ScanMax; ++Sub)
+    {
+        FName Candidate = MakeStageWaveId(Stage, Sub);
+        if (HasMetaRow(Candidate))
+        {
+            OutWaveId = Candidate;
+            OutSub = Sub;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool APotatoMonsterSpawner::ResolveNextWaveForActiveStage(FName& OutWaveId, int32& OutSub)
+{
+    if (ActiveStage <= 0) return false;
+    return ResolveFirstWaveForStage(ActiveStage, OutWaveId, OutSub);
+}
+
+// =========================================================
 // Public API
 // =========================================================
 
 void APotatoMonsterSpawner::StartWave(FName WaveId)
 {
+    // ---------------------------------------------------------
+    // 입력이 "1" 같은 stage-only면 -> 1-1/1-2/... 자동 진행 모드
+    // ---------------------------------------------------------
+    int32 Stage = INDEX_NONE;
+    if (IsStageOnlyName(WaveId, Stage))
+    {
+        if (!WaveMetaTable || !WaveSpawnTable)
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[Spawner] Wave tables missing"));
+            return;
+        }
+
+        FName ResolvedWaveId = NAME_None;
+        int32 ResolvedSub = INDEX_NONE;
+
+        if (!ResolveFirstWaveForStage(Stage, ResolvedWaveId, ResolvedSub))
+        {
+            UE_LOG(LogTemp, Warning, TEXT("[Spawner] No wave found for Stage=%d (expected %d-1, %d-2, ...)"),
+                Stage, Stage, Stage);
+            return;
+        }
+
+        // stage 상태 기록 (자동 진행 ON)
+        ActiveStage = Stage;
+        ActiveSubWave = ResolvedSub;
+        bStageAutoProgress = true;
+
+        WaveId = ResolvedWaveId;
+
+        UE_LOG(LogTemp, Log, TEXT("[Spawner] Stage input resolved | Stage=%d -> WaveId=%s"),
+            Stage, *WaveId.ToString());
+    }
+    else
+    {
+        // 명시 WaveId(예: 1-2)로 시작하면 자동 진행 OFF (원하면 ON으로 바꿔도 됨)
+        bStageAutoProgress = false;
+        ActiveStage = INDEX_NONE;
+        ActiveSubWave = INDEX_NONE;
+    }
+
     // 이전 웨이브 강제 중단(스폰 중지 + 남은 몬스터 제거)
     StopWave();
 
@@ -127,6 +219,41 @@ void APotatoMonsterSpawner::EndWave(EPotatoWaveEndReason Reason, bool bClearMons
 
     UE_LOG(LogTemp, Warning, TEXT("[Spawner] Wave %s ended | Reason=%d | ClearMonsters=%d"),
         *EndedWave.ToString(), (int32)Reason, bClearMonsters ? 1 : 0);
+
+    // =========================================================
+    // 자동 진행: Cleared면 다음 1-x를 찾아서 자동 StartWave
+    // (GameMode는 StartWave("1") 한 번만 호출하면 됨)
+    // =========================================================
+    if (bStageAutoProgress && Reason == EPotatoWaveEndReason::Cleared && ActiveStage > 0)
+    {
+        // "클리어"일 때만 next index 갱신
+        int32& NextIdx = NextSubWaveIndexByStage.FindOrAdd(ActiveStage);
+        NextIdx = FMath::Max(NextIdx, ActiveSubWave + 1);
+
+        FName NextWaveId = NAME_None;
+        int32 NextSub = INDEX_NONE;
+
+        if (ResolveNextWaveForActiveStage(NextWaveId, NextSub))
+        {
+            ActiveSubWave = NextSub;
+
+            UE_LOG(LogTemp, Warning, TEXT("[Spawner] Auto progress -> NextWave=%s"), *NextWaveId.ToString());
+
+            // 바로 다음 웨이브 시작
+            StartWave(NextWaveId);
+            return;
+        }
+
+        // 더 이상 1-x가 없으면 stage 종료
+        UE_LOG(LogTemp, Warning, TEXT("[Spawner] Stage %d finished (no more waves)"), ActiveStage);
+
+        // 필요하면 델리게이트/이벤트로 GameMode에 알림:
+        // OnStageEnded.Broadcast(ActiveStage);
+
+        bStageAutoProgress = false;
+        ActiveStage = INDEX_NONE;
+        ActiveSubWave = INDEX_NONE;
+    }
 
     // 여기서 필요하면 델리게이트/이벤트로 GameMode에 알림:
     // OnWaveEnded.Broadcast(EndedWave, Reason);
@@ -346,10 +473,7 @@ void APotatoMonsterSpawner::HandleSpawnedMonsterDestroyed(AActor* DestroyedActor
 
     AliveCount = FMath::Max(0, AliveCount - 1);
 
-    // 죽은 몬스터는 배열에서 나중에 한 번에 정리해도 됨 (TWeakObjectPtr라 안전)
-    // 필요하면 여기서 Compact 해도 됨.
-
-    //  스폰이 끝났고, 살아있는 몬스터가 0이면 웨이브 클리어(몬스터 제거는 이미 0이라 불필요)
+    //  스폰이 끝났고, 살아있는 몬스터가 0이면 웨이브 클리어
     if (bSpawnFinished && AliveCount <= 0)
     {
         EndWave(EPotatoWaveEndReason::Cleared, /*bClearMonsters=*/false);
