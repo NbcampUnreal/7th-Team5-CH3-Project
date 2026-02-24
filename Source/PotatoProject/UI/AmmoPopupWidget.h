@@ -26,8 +26,10 @@ public:
     UFUNCTION(BlueprintCallable, Category = "AmmoPopup")
     void InitPopup(UPotatoWeaponComponent* InWeaponComp);
 
-
+    // 탄환 변경
+    void ChangeAmmo(int index);
     //bool IsSetActive;
+    void RefreshAll();
 protected:
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
@@ -93,6 +95,8 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UButton> CloseButton;
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UButton> ChargeButton;
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UImage> AmmoImage;
     UPROPERTY(EditAnywhere, Category = "UI")
     TArray<TObjectPtr<UTexture2D>> AmmoTextures; // 바꿀 텍스트를 에디터에서 할당
@@ -134,6 +138,8 @@ private:
     // 탄약 현재/최대 텍스트 전체 갱신
     void RefreshAmmoDisplay();
 
+
+
     // 에디터에서 설정할 무기 DataAsset 레퍼런스
     // WeaponSlots 순서: [0]=감자, [1]=옥수수, [2]=호박, [3]=당근
     UPROPERTY(EditDefaultsOnly, Category = "AmmoPopup|Setup")
@@ -159,4 +165,6 @@ private:
     TObjectPtr<UPotatoResourceManager> ResourceManager;
 
     int32 PendingAmmoCount = 0;
+
+    FString NowAmmo = "감자";
 };

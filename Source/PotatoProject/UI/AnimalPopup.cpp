@@ -129,7 +129,15 @@ void UAnimalPopup::OnSlaughterButtonClicked()
 
 void UAnimalPopup::OnCloseButtonClicked()
 {
-    RemoveFromParent();
+    APlayerController* PlayerController = Cast<APlayerController>(GetWorld()->GetFirstPlayerController());
+    if (PlayerController)
+    {
+        SetVisibility(ESlateVisibility::Hidden);
+        PlayerController->bShowMouseCursor = false;
+        FInputModeGameOnly InputMode;
+        PlayerController->SetInputMode(InputMode);
+    }
+    //RemoveFromParent();
 }
 
 // 리스트 아이템 선택

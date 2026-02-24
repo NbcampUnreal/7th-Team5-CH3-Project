@@ -30,8 +30,11 @@ void UAmmoPopupWidget::NativeConstruct()
         }
     }
     if (CloseButton) {
-        //IsSetActive = false;
         CloseButton->OnClicked.AddDynamic(this, &UAmmoPopupWidget::OnCloseButtonClicked);
+    }
+    if (ChargeButton)
+    {
+        ChargeButton->OnClicked.AddDynamic(this, &UAmmoPopupWidget::OnChargeButtonClicked);
     }
 }
 
@@ -51,6 +54,15 @@ void UAmmoPopupWidget::InitPopup(UPotatoWeaponComponent* InWeaponComp)
     // 기본 선택: 감자
     SelectedWeaponData = PotatoWeaponData;
 
+    //int test = SelectedWeaponData->MaxAmmoSize;
+    //GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("PotatoWeaponData: %d!"), test));
+    RefreshResourceDisplay();
+    RefreshAmmoDisplay();
+    RefreshSelectionPanel();
+}
+
+void UAmmoPopupWidget::RefreshAll()
+{
     RefreshResourceDisplay();
     RefreshAmmoDisplay();
     RefreshSelectionPanel();
@@ -103,14 +115,26 @@ void UAmmoPopupWidget::OnCloseButtonClicked()
 
 void UAmmoPopupWidget::OnChargeButtonClicked()
 {
-    if (!WeaponComp || !SelectedWeaponData || !ResourceManager || PendingAmmoCount <= 0) return;
+    if (!WeaponComp)  GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("WeaponComp!")));
+    if (!SelectedWeaponData)   GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("SelectedWeaponData!")));
+    if (!ResourceManager)   GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("ResourceManager!")));
 
+   
+    if (!WeaponComp || !SelectedWeaponData || !ResourceManager ) return;
+    if(PendingAmmoCount <= 0)
+    {
+        ChargeButton->SetToolTipText(FText::FromString(TEXT("교환할 자원이 없습니다.")));
+        return;
+    }
+
+    GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("charge!1")));
     const int32 TotalCost = PendingAmmoCount * SelectedWeaponData->AmmoCraftingCost;
     if (!ResourceManager->RemoveResource(EResourceType::Crop, TotalCost)) return;
 
     WeaponComp->AddAmmoToWeapon(SelectedWeaponData, PendingAmmoCount);
 
     if (SliderValue) SliderValue->SetValue(0.f);
+    GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("charge!2")));
     RefreshAmmoDisplay();
     RefreshSelectionPanel();
 }
@@ -120,14 +144,16 @@ void UAmmoPopupWidget::OnChargeButtonClicked()
 void UAmmoPopupWidget::OnSliderValueChanged(float Value)
 {
     if (Slider) Slider->SetPercent(Value);
-    int Conval = (int)(Value*1000);
-    int Proval = (int)(Value*3000);
-    FString Constring = FString(TEXT("감자 %d개"), Value);
+    //PendingAmmoCount = (int)(Value *100);
+    //int Conval = (int)(Value*100);
+    //int Proval = (int)(Value*300);
+    //if(SelectedWeaponData->AmmoCraftingCost)
     //ConsumeCrop->SetText(FText::FromString(Constring));
-    ConsumeCrop->SetText(FText::Format(FText::FromString(TEXT("감자{0}개")), Conval));
-    //FString Prostring = FString(TEXT("탄약 %d발"), Value);
-    //ProductionAmmo->SetText(FText::FromString(Prostring));
-    ProductionAmmo->SetText(FText::Format(FText::FromString(TEXT("탄약{0}발")), Proval));
+    
+    //ConsumeCrop->SetText(FText::Format(FText::FromString(TEXT("감자{0}개")), Conval)); //NowAmmo
+    //ProductionAmmo->SetText(FText::Format(FText::FromString(TEXT("탄약{0}발")), Proval));
+    //if (ProductionAmmo) ProductionAmmo->SetText(FText::AsNumber(PendingAmmoCount));
+    //if (ConsumeCrop)    ConsumeCrop->SetText(FText::AsNumber(PendingAmmoCount * SelectedWeaponData->AmmoCraftingCost));
     RefreshSelectionPanel();
 }
 
@@ -140,13 +166,16 @@ void UAmmoPopupWidget::RefreshSelectionPanel()
     }
 
     // 선택 무기 기준 빈 슬롯 계산
-    const FWeaponAmmoState* State = WeaponComp ? WeaponComp->AmmoMap.Find(SelectedWeaponData) : nullptr;
-    const int32 Current = State ? (State->CurrentAmmo + State->ReserveAmmo) : 0;
-    const int32 MaxCharge = FMath::Max(SelectedWeaponData->MaxAmmoSize - Current, 0);
+    //const FWeaponAmmoState* State = WeaponComp ? WeaponComp->AmmoMap.Find(SelectedWeaponData) : nullptr;
+    //const int32 Current = State ? (State->CurrentAmmo + State->ReserveAmmo) : 0;
+    //const int32 MaxCharge = FMath::Max(SelectedWeaponData->MaxAmmoSize - Current, 0);
+
+    int MaxCharge = SelectedWeaponData->MaxAmmoSize;
+    //GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("확인?: %d"), test));
 
     const float Ratio = SliderValue ? SliderValue->GetValue() : 0.f;
     PendingAmmoCount = FMath::RoundToInt(Ratio * MaxCharge);
-
+    //GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("PendingAmmoCount: %.2f, %d"), Ratio, MaxCharge));
     // 충전량 / 비용
     if (ProductionAmmo) ProductionAmmo->SetText(FText::AsNumber(PendingAmmoCount));
     if (ConsumeCrop)    ConsumeCrop->SetText(FText::AsNumber(PendingAmmoCount * SelectedWeaponData->AmmoCraftingCost));
@@ -198,7 +227,6 @@ void UAmmoPopupWidget::RefreshAmmoDisplay()
 void UAmmoPopupWidget::OnResourceChanged(EResourceType Type, int32 NewValue)
 {
     //GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Type!")));
-
     switch (Type)
     {
         case EResourceType::Wood:      
@@ -206,15 +234,47 @@ void UAmmoPopupWidget::OnResourceChanged(EResourceType Type, int32 NewValue)
             //if(Ammo)
             break;
         case EResourceType::Stone:     
-            if (StoneAmount) StoneAmount->SetText(FText::AsNumber(NewValue));     
+            if (StoneAmount) StoneAmount->SetText(FText::AsNumber(NewValue));  
             break;
         case EResourceType::Crop:     
-            if (CropAmount) 
-                CropAmount->SetText(FText::AsNumber(NewValue));           
+            if (CropAmount) CropAmount->SetText(FText::AsNumber(NewValue));   
             break;
         case EResourceType::Livestock: 
-            if (LivestockAmount) 
-                LivestockAmount->SetText(FText::AsNumber(NewValue)); 
+            if (LivestockAmount) LivestockAmount->SetText(FText::AsNumber(NewValue)); 
             break;
     }
+}
+
+void UAmmoPopupWidget::ChangeAmmo(int index)
+{
+    if (AmmoImage) AmmoImage->SetBrushFromTexture(AmmoTextures[index]);
+
+    switch (index)
+    {
+    case 0:
+        OnPotatoButtonClicked();
+        //SelectedWeaponData = PotatoWeaponData;
+        //if (MinusCropAmount) MinusCropAmount->SetText(FText::Format(FText::FromString(TEXT("-1"))));
+        //if (PlusAmmoAmount) PlusAmmoAmount->SetText(FText::Format(FText::FromString(TEXT("+1"))));
+        break;
+    case 1:
+        OnCornButtonClicked();
+        //SelectedWeaponData = CornWeaponData;
+        //if (MinusCropAmount) MinusCropAmount->SetText(FText::Format(FText::FromString(TEXT("-1"))));
+        //if (PlusAmmoAmount) PlusAmmoAmount->SetText(FText::Format(FText::FromString(TEXT("+1"))));
+        break;
+    case 2:
+        OnPumpkinButtonClicked();
+        //SelectedWeaponData = PumpkinWeaponData;
+        //if (MinusCropAmount) MinusCropAmount->SetText(FText::Format(FText::FromString(TEXT("-1"))));
+        //if (PlusAmmoAmount) PlusAmmoAmount->SetText(FText::Format(FText::FromString(TEXT("+3"))));
+        break;
+    case 3:
+        OnCarrotButtonClicked();
+        SelectedWeaponData = CarrotWeaponData;
+        //if (MinusCropAmount) MinusCropAmount->SetText(FText::Format(FText::FromString(TEXT("-1"))));
+        //if (PlusAmmoAmount) PlusAmmoAmount->SetText(FText::Format(FText::FromString(TEXT("+1"))));
+        break;
+    }
+    //RefreshSelectionPanel();
 }

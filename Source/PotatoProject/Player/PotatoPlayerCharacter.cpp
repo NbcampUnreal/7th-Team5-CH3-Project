@@ -9,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "../Core/PotatoGameMode.h" 
 #include "../UI/AmmoPopupWidget.h"
+#include "../UI/AnimalPopup.h"
 
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
@@ -57,13 +58,22 @@ void APotatoPlayerCharacter::BeginPlay()
 	Super::BeginPlay();
 	if (AmmoPopupClass)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo! a")));
 		AmmoPopupWidget = CreateWidget<UAmmoPopupWidget>(GetWorld(), AmmoPopupClass);
+		AmmoPopupWidget->InitPopup(WeaponComponent);
 		if (AmmoPopupWidget)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo! b")));
 			AmmoPopupWidget->AddToViewport();
 			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+	if (AnimalPopupClass)
+	{
+		AnimalPopupWidget = CreateWidget<UAnimalPopup>(GetWorld(), AnimalPopupClass);
+		//AnimalPopupWidget->InitPopup();
+		if (AnimalPopupWidget)
+		{
+			AnimalPopupWidget->AddToViewport();
+			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }
@@ -210,6 +220,17 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					&APotatoPlayerCharacter::OnAmmoMode
 				);
 			}
+			if (PlayerController->BarnAction)
+			{
+				EnhancedInput->BindAction(
+					PlayerController->BarnAction,
+					ETriggerEvent::Started,
+					this,
+					&APotatoPlayerCharacter::OnBarnMode
+				);
+			}
+
+
 		}
 	}
 }
@@ -250,7 +271,9 @@ void APotatoPlayerCharacter::StopJump(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Look(const FInputActionValue& Value)
 {
-	if (GetController() != nullptr && AmmoPopupWidget && !AmmoPopupWidget->IsVisible())
+	bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
+	bool IsAnimalWidget= AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
+	if (GetController() != nullptr && IsAmmoWidget && IsAnimalWidget)
 	{
 		const FVector2D LookAxisVector = Value.Get<FVector2D>();
 		AddControllerYawInput(LookAxisVector.X);
@@ -314,7 +337,9 @@ void APotatoPlayerCharacter::CameraZoom(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 {
-	if (WeaponComponent && AmmoPopupWidget && !AmmoPopupWidget->IsVisible())
+	bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
+	bool IsAnimalWidget = AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
+	if (WeaponComponent && IsAmmoWidget && IsAnimalWidget)
 	{
 		WeaponComponent->Fire();
 	}
@@ -330,7 +355,7 @@ void APotatoPlayerCharacter::Reload(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::WeaponChange(const FInputActionValue& Value)
 {
-	if (Value.Get<bool>() && WeaponComponent)
+	if (Value.Get<bool>() )
 	{
 		APlayerController* PlayerController = Cast<APlayerController>(GetController());
 		if (!PlayerController)
@@ -357,10 +382,11 @@ void APotatoPlayerCharacter::WeaponChange(const FInputActionValue& Value)
 			SlotIndex = 3;
 		}
 		
-		if (AmmoPopupWidget && AmmoPopupWidget->IsVisible()) {
-			//1 2 3 4로 탄환충전할 거 선택
+		if (AmmoPopupWidget ) { //&& AmmoPopupWidget->IsVisible()
+			//0 1 2 3 탄환충전할 거 선택
+			AmmoPopupWidget->ChangeAmmo(SlotIndex);
 		}
-		else {
+		if(WeaponComponent){
 			WeaponComponent->EquipWeapon(SlotIndex);
 		}
 		
@@ -404,6 +430,7 @@ void APotatoPlayerCharacter::OnAmmoMode(const FInputActionValue& Value)
 		else {
 			AmmoPopupWidget->SetVisibility(ESlateVisibility::Visible);
 			PlayerController->bShowMouseCursor = true;
+			AmmoPopupWidget->RefreshAll();
 		}
 	}
 
@@ -438,4 +465,26 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
 	}
 
 	return ActualDamage;
+}
+
+
+void APotatoPlayerCharacter::OnBarnMode(const FInputActionValue& Value)
+{
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("OnBarnMode:!")));
+	if (AnimalPopupWidget && PlayerController)
+	{
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("OnBarnMode:2")));
+		if (AnimalPopupWidget->IsVisible()) {
+			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+			PlayerController->bShowMouseCursor = false;
+			FInputModeGameOnly InputMode;
+			PlayerController->SetInputMode(InputMode);
+		}
+		else {
+			AnimalPopupWidget->SetVisibility(ESlateVisibility::Visible);
+			PlayerController->bShowMouseCursor = true;
+			//AnimalPopupWidget->RefreshAll();
+		}
+	}
 }
