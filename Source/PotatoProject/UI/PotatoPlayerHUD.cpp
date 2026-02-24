@@ -1,6 +1,6 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-#include "UI/PlayerHUD.h"
+#include "UI/PotatoPlayerHUD.h"
 
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
@@ -22,12 +22,12 @@
 // Lifecycle
 // ============================================================
 
-void UPlayerHUD::NativeConstruct()
+void UPotatoPlayerHUD::NativeConstruct()
 {
 	Super::NativeConstruct();
 
 	// BuildSlot Border 배열 초기화 (WBP 슬롯 순서와 동일)
-	BuildSlotBorders = { Border_2, Border_3, Border_4, Border_5 };
+	BuildSlotBorders = {Border_2, Border_3, Border_4, Border_5};
 
 	// 플레이어 캐시
 	CachedPlayer = Cast<APotatoPlayerCharacter>(GetOwningPlayerPawn());
@@ -51,10 +51,25 @@ void UPlayerHUD::NativeConstruct()
 	RefreshResourceText();
 	RefreshStorageHP();
 	RefreshClockNeedle(0.0f);
-	RefreshWeaponSelectBox();
+	
+	// 델리게이트 바인딩
+	if (CachedPlayer)
+	{
+		if (UPotatoWeaponComponent* WeaponComp = CachedPlayer->FindComponentByClass<UPotatoWeaponComponent>())
+		{
+			WeaponComp->OnWeaponChanged.AddUObject(this, &UPotatoPlayerHUD::HandleWeaponChanged);
+			WeaponComp->OnAmmoChanged.AddUObject(this, &UPotatoPlayerHUD::HandleAmmoChanged);
+			
+			if (WeaponComp->CurrentWeaponData)
+			{
+				HandleWeaponChanged(WeaponComp->CurrentWeaponData);
+				WeaponComp->BroadcastAmmoState();
+			}
+		}
+	}
 }
 
-void UPlayerHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
+void UPotatoPlayerHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
@@ -62,17 +77,15 @@ void UPlayerHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	RefreshStorageHP();
 	RefreshClockNeedle(InDeltaTime);
 	RefreshTimeText();
-	RefreshAmmoText();
 	RefreshHPText();
 	RefreshBuildModePanel();
-	RefreshWeaponSelectBox();
 }
 
 // ============================================================
 // Public API
 // ============================================================
 
-void UPlayerHUD::SetMessageText(const FText& InText, bool bVisible)
+void UPotatoPlayerHUD::SetMessageText(const FText& InText, bool bVisible)
 {
 	if (MessageText)
 	{
@@ -81,7 +94,7 @@ void UPlayerHUD::SetMessageText(const FText& InText, bool bVisible)
 	}
 }
 
-void UPlayerHUD::RefreshStorageHP()
+void UPotatoPlayerHUD::RefreshStorageHP()
 {
 	if (!StorageHPBar || !WarehouseStructure) return;
 
@@ -94,10 +107,59 @@ void UPlayerHUD::RefreshStorageHP()
 }
 
 // ============================================================
+// Event Handler
+// ============================================================
+
+void UPotatoPlayerHUD::HandleWeaponChanged(const UPotatoWeaponData* NewWeaponData)
+{
+	// TODO: 크로스헤어 업데이트
+
+	// 슬롯 UI 하이라이트 업데이트
+	UPotatoWeaponComponent* WeaponComp = GetWeaponComp();
+	if (!WeaponComp)
+	{
+		return;
+	}
+
+	// 빌드 모드 중에는 건물 슬롯이 동일 Border를 점유하므로 무기 강조를 적용하지 않습니다.
+	UBuildingSystemComponent* BuildComp = GetBuildComp();
+	if (BuildComp && BuildComp->bIsBuildMode)
+	{
+		return;
+	}
+
+	const int32 WeaponIdx = WeaponComp->CurrentWeaponIndex;
+
+	// WBP에서 각 Border의 배경색 RGB는 이미 칠해져 있습니다 (감자=황색, 옥수수=녹색 등).
+	// 여기서는 알파 값만 조정하여 선택/비선택 상태를 표현합니다.
+	// GetBrushColor()로 현재 색을 읽고, A만 덮어써서 다시 SetBrushColor()합니다.
+	for (int32 i = 0; i < BuildSlotBorders.Num(); ++i)
+	{
+		UBorder* Border = BuildSlotBorders[i];
+		if (!Border)
+		{
+			continue;
+		}
+
+		FLinearColor CurrentColor = Border->GetBrushColor();
+		CurrentColor.A = (i == WeaponIdx) ? WeaponSlotSelectedAlpha : WeaponSlotDefaultAlpha;
+		Border->SetBrushColor(CurrentColor);
+	}
+}
+
+void UPotatoPlayerHUD::HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo)
+{
+	if (Ammo)
+	{
+		Ammo->SetText(FText::Format(NSLOCTEXT("HUD", "Ammo", "{0} / {1}"), CurrentAmmo, ReserveAmmo));
+	}
+}
+
+// ============================================================
 // Internal Refresh
 // ============================================================
 
-void UPlayerHUD::RefreshResourceText()
+void UPotatoPlayerHUD::RefreshResourceText()
 {
 	UPotatoResourceManager* RM = GetWorld()->GetSubsystem<UPotatoResourceManager>();
 	if (!RM) return;
@@ -105,7 +167,7 @@ void UPlayerHUD::RefreshResourceText()
 	auto MakeText = [&](EResourceType Type) -> FText
 	{
 		const int32 Amount = RM->GetResource(Type);
-		const int32 Rate   = RM->GetTotalProductionPerMinute(Type);
+		const int32 Rate = RM->GetTotalProductionPerMinute(Type);
 		if (Rate > 0)
 		{
 			return FText::Format(NSLOCTEXT("HUD", "ResRate", "{0}(+{1}/분)"), Amount, Rate);
@@ -113,19 +175,19 @@ void UPlayerHUD::RefreshResourceText()
 		return FText::AsNumber(Amount);
 	};
 
-	if (ResourceWood)      ResourceWood->SetText(MakeText(EResourceType::Wood));
-	if (ResourceStone)     ResourceStone->SetText(MakeText(EResourceType::Stone));
-	if (ResourceCrop)      ResourceCrop->SetText(MakeText(EResourceType::Crop));
+	if (ResourceWood) ResourceWood->SetText(MakeText(EResourceType::Wood));
+	if (ResourceStone) ResourceStone->SetText(MakeText(EResourceType::Stone));
+	if (ResourceCrop) ResourceCrop->SetText(MakeText(EResourceType::Crop));
 	if (ResourceLivestock) ResourceLivestock->SetText(MakeText(EResourceType::Livestock));
 
 	// 미니 자원 행
-	if (WoodAmount)      WoodAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Wood)));
-	if (StoneAmount)     StoneAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Stone)));
-	if (CropAmount)      CropAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Crop)));
+	if (WoodAmount) WoodAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Wood)));
+	if (StoneAmount) StoneAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Stone)));
+	if (CropAmount) CropAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Crop)));
 	if (LivestockAmount) LivestockAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Livestock)));
 }
 
-void UPlayerHUD::RefreshClockNeedle(float DeltaTime)
+void UPotatoPlayerHUD::RefreshClockNeedle(float DeltaTime)
 {
 	if (!DayClockNeedle) return;
 
@@ -160,7 +222,7 @@ void UPlayerHUD::RefreshClockNeedle(float DeltaTime)
 	DayClockNeedle->SetRenderTransform(Transform);
 }
 
-void UPlayerHUD::RefreshBuildModePanel()
+void UPotatoPlayerHUD::RefreshBuildModePanel()
 {
 	UBuildingSystemComponent* BuildComp = GetBuildComp();
 
@@ -179,36 +241,11 @@ void UPlayerHUD::RefreshBuildModePanel()
 	for (int32 i = 0; i < BuildSlotBorders.Num(); ++i)
 	{
 		SetBorderColor(BuildSlotBorders[i],
-			(i == SelectedIdx) ? BuildSlotSelectedColor : BuildSlotDefaultColor);
+		               (i == SelectedIdx) ? BuildSlotSelectedColor : BuildSlotDefaultColor);
 	}
 }
 
-void UPlayerHUD::RefreshWeaponSelectBox()
-{
-	UPotatoWeaponComponent* WeaponComp = GetWeaponComp();
-	if (!WeaponComp) return;
-
-	// 빌드 모드 중에는 건물 슬롯이 동일 Border를 점유하므로 무기 강조를 적용하지 않습니다.
-	UBuildingSystemComponent* BuildComp = GetBuildComp();
-	if (BuildComp && BuildComp->bIsBuildMode) return;
-
-	const int32 WeaponIdx = WeaponComp->CurrentWeaponIndex;
-
-	// WBP에서 각 Border의 배경색 RGB는 이미 칠해져 있습니다 (감자=황색, 옥수수=녹색 등).
-	// 여기서는 알파 값만 조정하여 선택/비선택 상태를 표현합니다.
-	// GetBrushColor()로 현재 색을 읽고, A만 덮어써서 다시 SetBrushColor()합니다.
-	for (int32 i = 0; i < BuildSlotBorders.Num(); ++i)
-	{
-		UBorder* Border = BuildSlotBorders[i];
-		if (!Border) continue;
-
-		FLinearColor CurrentColor = Border->GetBrushColor();
-		CurrentColor.A = (i == WeaponIdx) ? WeaponSlotSelectedAlpha : WeaponSlotDefaultAlpha;
-		Border->SetBrushColor(CurrentColor);
-	}
-}
-
-void UPlayerHUD::RefreshTimeText()
+void UPotatoPlayerHUD::RefreshTimeText()
 {
 	UPotatoDayNightCycle* DNC = GetWorld()->GetSubsystem<UPotatoDayNightCycle>();
 	if (!DNC) return;
@@ -233,26 +270,7 @@ void UPlayerHUD::RefreshTimeText()
 	}
 }
 
-void UPlayerHUD::RefreshAmmoText()
-{
-	UPotatoWeaponComponent* WeaponComp = GetWeaponComp();
-	if (!WeaponComp || !Ammo) return;
-
-	if (UPotatoWeaponData* WD = WeaponComp->CurrentWeaponData.Get())
-	{
-		// TMap 키가 TObjectPtr이므로 TObjectPtr로 Find합니다.
-		const TObjectPtr<UPotatoWeaponData> KeyPtr(WD);
-		const FWeaponAmmoState* State = WeaponComp->AmmoMap.Find(KeyPtr);
-		if (State)
-		{
-			Ammo->SetText(
-				FText::Format(NSLOCTEXT("HUD", "Ammo", "{0} / {1}"),
-					State->CurrentAmmo, State->ReserveAmmo));
-		}
-	}
-}
-
-void UPlayerHUD::RefreshHPText()
+void UPotatoPlayerHUD::RefreshHPText()
 {
 	if (!HP || !CachedPlayer) return;
 
@@ -266,19 +284,19 @@ void UPlayerHUD::RefreshHPText()
 // Helpers
 // ============================================================
 
-void UPlayerHUD::SetBorderColor(UBorder* InBorder, const FLinearColor& InColor)
+void UPotatoPlayerHUD::SetBorderColor(UBorder* InBorder, const FLinearColor& InColor)
 {
 	if (!InBorder) return;
 	InBorder->SetBrushColor(InColor);
 }
 
-UBuildingSystemComponent* UPlayerHUD::GetBuildComp() const
+UBuildingSystemComponent* UPotatoPlayerHUD::GetBuildComp() const
 {
 	if (!CachedPlayer) return nullptr;
 	return CachedPlayer->FindComponentByClass<UBuildingSystemComponent>();
 }
 
-UPotatoWeaponComponent* UPlayerHUD::GetWeaponComp() const
+UPotatoWeaponComponent* UPotatoPlayerHUD::GetWeaponComp() const
 {
 	if (!CachedPlayer) return nullptr;
 	return CachedPlayer->FindComponentByClass<UPotatoWeaponComponent>();

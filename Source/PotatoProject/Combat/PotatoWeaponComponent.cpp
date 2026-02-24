@@ -127,7 +127,6 @@ void UPotatoWeaponComponent::EquipWeapon(int32 SlotIndex)
 	// 이미 동일한 무기를 들고 있다면 아무것도 하지 않음
 	if (CurrentWeaponData == NewData)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("이미 동일한 무기를 장착하고 있습니다!")));
 		return;
 	}
 
@@ -153,15 +152,19 @@ void UPotatoWeaponComponent::EquipWeapon(int32 SlotIndex)
 	if (bIsNeedToSpawnNew && NewData->WeaponActorClass)
 	{
 		SpawnWeapon(NewData->WeaponActorClass);
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("새로운 무기 외형을 스폰합니다.")));
 	}
 
 	CurrentWeaponIndex = SlotIndex;
 	CurrentWeaponData = NewData;
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
-	                                 FString::Printf(
-		                                 TEXT("EquipWeapon 성공! 현재 무기: %s, 인덱스 번호: %d"), *NewData->WeaponName.ToString(),
-		                                 SlotIndex));
+	
+	// 무기 변경 브로드캐스트
+	if (OnWeaponChanged.IsBound())
+	{
+		OnWeaponChanged.Broadcast(CurrentWeaponData);
+	}
+	
+	// 새 무기에 대한 탄약 브로드캐스트
+	BroadcastAmmoState();
 }
 
 bool UPotatoWeaponComponent::CanFire() const
@@ -227,11 +230,8 @@ void UPotatoWeaponComponent::Fire()
 	}
 
 	State.CurrentAmmo--;
+	BroadcastAmmoState();
 	LastFireTime = GetWorld()->GetTimeSeconds(); // 발사 직후 타임스탬프 업데이트
-	GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan,
-	                                 FString::Printf(
-		                                 TEXT("Bang! %d/%d"), State.CurrentAmmo,
-		                                 CurrentWeaponData->MaxAmmoSize));
 
 	// =================================================================
 	// Game Feel
@@ -332,12 +332,8 @@ void UPotatoWeaponComponent::FinishReload()
 
 	State.CurrentAmmo += AmmoToTransfer;
 	State.ReserveAmmo -= AmmoToTransfer;
-
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green,
-	                                 FString::Printf(
-		                                 TEXT("장전 완료! %d/%d (예비 탄약: %d)"), State.CurrentAmmo,
-		                                 CurrentWeaponData->MaxAmmoSize, State.ReserveAmmo));
-
+	
+	BroadcastAmmoState();
 	CancelReload();
 }
 
@@ -419,6 +415,18 @@ FVector UPotatoWeaponComponent::GetCrosshairTargetLocation() const
 void UPotatoWeaponComponent::UpdateCachedWalkSpeed(float NewSpeed)
 {
 	CachedWalkSpeed = NewSpeed;
+}
+
+void UPotatoWeaponComponent::BroadcastAmmoState()
+{
+	if (CurrentWeaponData && AmmoMap.Contains(CurrentWeaponData))
+	{
+		const FWeaponAmmoState& State = AmmoMap[CurrentWeaponData];
+		if (OnAmmoChanged.IsBound())
+		{
+			OnAmmoChanged.Broadcast(State.CurrentAmmo, State.ReserveAmmo);
+		}
+	}
 }
 
 void UPotatoWeaponComponent::FireProjectile(const FVector& TargetLocation)

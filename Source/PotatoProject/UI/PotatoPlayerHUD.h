@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
 #include "Core/PotatoEnums.h"
-#include "PlayerHUD.generated.h"
+#include "PotatoPlayerHUD.generated.h"
 
 class UProgressBar;
 class UTextBlock;
@@ -16,6 +16,7 @@ class APotatoPlayerCharacter;
 class APotatoGameMode;
 class UBuildingSystemComponent;
 class UPotatoWeaponComponent;
+class UPotatoWeaponData;
 class UPotatoDayNightCycle;
 class UPotatoResourceManager;
 
@@ -29,7 +30,7 @@ class UPotatoResourceManager;
  * 4. WeaponSelectBox(HorizontalBox_0, Border_2~5): 선택 무기 Border 강조(초록)
  */
 UCLASS()
-class POTATOPROJECT_API UPlayerHUD : public UUserWidget
+class POTATOPROJECT_API UPotatoPlayerHUD : public UUserWidget
 {
 	GENERATED_BODY()
 
@@ -83,9 +84,9 @@ public:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UTextBlock> Ammo;
 
-    /** 플레이어 체력 */
-    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-    TObjectPtr<UTextBlock> HP;
+	/** 플레이어 체력 */
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+	TObjectPtr<UTextBlock> HP;
 
 	// ---- 안내 메시지 ----
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
@@ -106,16 +107,16 @@ public:
 
 	/** 건물 슬롯 Border 배열 (순서: LumberMill/Mine/Farm/Barn/Fence/Barrel/SpikeFence/Wagon/StoneFence) */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UBorder> Border_2;   // 슬롯 0 – LumberMill
+	TObjectPtr<UBorder> Border_2; // 슬롯 0 – LumberMill
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UBorder> Border_3;   // 슬롯 1 – Mine
+	TObjectPtr<UBorder> Border_3; // 슬롯 1 – Mine
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UBorder> Border_4;   // 슬롯 2 – Farm
+	TObjectPtr<UBorder> Border_4; // 슬롯 2 – Farm
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UBorder> Border_5;   // 슬롯 3 – Barn
+	TObjectPtr<UBorder> Border_5; // 슬롯 3 – Barn
 
 	// ---- 무기 선택 박스 ----
 	/** 무기 슬롯 Border 배열 (HorizontalBox_0 내부: 감자/옥수수/호박/당근) */
@@ -147,14 +148,16 @@ public:
 	 * 무기 슬롯: 선택된 Border의 알파 값 (0~1).
 	 * WBP에서 칠해 놓은 배경 색의 RGB는 그대로 유지되고 알파만 이 값으로 덮어씁니다.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Weapon", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Weapon",
+		meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
 	float WeaponSlotSelectedAlpha = 1.0f;
 
 	/**
 	 * 무기 슬롯: 비선택 Border의 알파 값 (0~1).
 	 * 낮은 값으로 설정하면 선택되지 않은 슬롯이 반투명하게 보입니다.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Weapon", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Weapon",
+		meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
 	float WeaponSlotDefaultAlpha = 0.35f;
 
 	/** 시계 바늘 최소 각도(낮 시작) */
@@ -178,8 +181,12 @@ public:
 	void RefreshStorageHP();
 
 	// ================================================================
-	// Internal
+	// Event Handler & Internal
 	// ================================================================
+protected:
+	void HandleWeaponChanged(const UPotatoWeaponData* NewWeaponData);
+	void HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo);
+
 private:
 	/** 자원 텍스트 "현재량(+생산속도/분)" 갱신 */
 	void RefreshResourceText();
@@ -190,14 +197,8 @@ private:
 	/** 빌드 모드 패널 표시/선택 슬롯 강조 갱신 */
 	void RefreshBuildModePanel();
 
-	/** 무기 선택 슬롯 강조 갱신 */
-	void RefreshWeaponSelectBox();
-
 	/** 남은 시간 텍스트 갱신 */
 	void RefreshTimeText();
-
-	/** 탄약 텍스트 갱신 */
-	void RefreshAmmoText();
 
 	/** 플레이어 HP 텍스트 갱신 */
 	void RefreshHPText();

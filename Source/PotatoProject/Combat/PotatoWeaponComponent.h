@@ -8,6 +8,9 @@
 class UPotatoWeaponData;
 class APotatoWeapon;
 
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponChangedDelegate, const UPotatoWeaponData* /*NewWeaponData*/);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAmmoChangedDelegate, int32 /*CurrentAmmo*/, int32 /*ReserveAmmo*/);
+
 USTRUCT(BlueprintType)
 struct FWeaponAmmoState
 {
@@ -86,6 +89,12 @@ public:
     float ReloadWalkSpeedScale = 0.7;
     
     void UpdateCachedWalkSpeed(float NewSpeed);
+    
+    /** 현재 탄약 상태를 브로드캐스트하기 위한 헬퍼 함수 */
+    void BroadcastAmmoState();
+    
+    FOnWeaponChangedDelegate OnWeaponChanged;
+    FOnAmmoChangedDelegate OnAmmoChanged;
     
     // =================================================================
     // Ammo System
