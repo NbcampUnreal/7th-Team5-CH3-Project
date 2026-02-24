@@ -12,13 +12,17 @@ class POTATOPROJECT_API UCircleCrosshairWidget : public UPotatoCrosshairBase
 	GENERATED_BODY()
 
 public:
+	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 protected:
 	// TODO: WBP_CircleCrosshair에서 바인딩 필요
 	UPROPERTY(meta = (BindWidget))
-	UImage* CircleImage;
+	TObjectPtr<UImage> CircleImage;
+	
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic> CircleMaterial;
 	
 	UPROPERTY(EditAnywhere, Category = "Crosshair")
-	float SpreadScaling = 15.0f;
+	float RadiusScaleFactor = 0.005f;
 };

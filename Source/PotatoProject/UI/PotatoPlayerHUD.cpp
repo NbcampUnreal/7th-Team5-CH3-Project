@@ -52,6 +52,28 @@ void UPotatoPlayerHUD::NativeConstruct()
 	RefreshStorageHP();
 	RefreshClockNeedle(0.0f);
 	
+	// 크로스헤어 위젯 생성
+	if (CrosshairContainer)
+	{
+		auto CreateAndAdd = [&](TSubclassOf<UPotatoCrosshairBase> Class, ECrosshairType Type)
+		{
+			if (Class)
+			{
+				UPotatoCrosshairBase* Widget = CreateWidget<UPotatoCrosshairBase>(this, Class);
+				if (Widget)
+				{
+					CrosshairContainer->AddChild(Widget);
+					Widget->SetVisibility(ESlateVisibility::Hidden);
+					CrosshairIntances.Add(Type, Widget);
+				}
+			}
+		};
+		CreateAndAdd(ArcSpreadCrosshairClass, ECrosshairType::ArcSpread);
+		CreateAndAdd(LineSpreadCrosshairClass, ECrosshairType::LineSpread);
+		CreateAndAdd(CircleCrosshairClass, ECrosshairType::Circle);
+		CreateAndAdd(StaticCrosshairClass, ECrosshairType::Static);
+	}
+	
 	// 델리게이트 바인딩
 	if (CachedPlayer)
 	{
@@ -112,7 +134,10 @@ void UPotatoPlayerHUD::RefreshStorageHP()
 
 void UPotatoPlayerHUD::HandleWeaponChanged(const UPotatoWeaponData* NewWeaponData)
 {
-	// TODO: 크로스헤어 업데이트
+	if (!NewWeaponData)
+	{
+		return;
+	}
 
 	// 슬롯 UI 하이라이트 업데이트
 	UPotatoWeaponComponent* WeaponComp = GetWeaponComp();
@@ -144,6 +169,20 @@ void UPotatoPlayerHUD::HandleWeaponChanged(const UPotatoWeaponData* NewWeaponDat
 		FLinearColor CurrentColor = Border->GetBrushColor();
 		CurrentColor.A = (i == WeaponIdx) ? WeaponSlotSelectedAlpha : WeaponSlotDefaultAlpha;
 		Border->SetBrushColor(CurrentColor);
+	}
+	
+	// 크로스헤어 전환 로직
+	ECrosshairType TargetType = NewWeaponData->CrosshairType;
+	for (auto& Instance : CrosshairIntances)
+	{
+		if (Instance.Value)
+		{
+			Instance.Value->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+	if (CrosshairIntances.Contains(TargetType))
+	{
+		CrosshairIntances[TargetType]->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 }
 

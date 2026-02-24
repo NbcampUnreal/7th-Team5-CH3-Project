@@ -16,14 +16,14 @@ public:
 protected:
 	// TODO: WBP_SpreadCrosshair에서 바인딩 필요
 	UPROPERTY(meta = (BindWidget))
-	UImage* CrosshairTop;
+	TObjectPtr<UImage> CrosshairTop;
 	
 	UPROPERTY(meta = (BindWidget))
-	UImage* CrosshairBottom;
+	TObjectPtr<UImage> CrosshairBottom;
 	
 	UPROPERTY(meta = (BindWidget))
-	UImage* CrosshairLeft;
+	TObjectPtr<UImage> CrosshairLeft;
 	
 	UPROPERTY(meta = (BindWidget))
-	UImage* CrosshairRight;
+	TObjectPtr<UImage> CrosshairRight;
 };

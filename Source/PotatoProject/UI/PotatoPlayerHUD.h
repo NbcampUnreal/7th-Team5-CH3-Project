@@ -3,8 +3,10 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "PotatoCrosshairBase.h"
 #include "Blueprint/UserWidget.h"
 #include "Core/PotatoEnums.h"
+#include "Combat/PotatoWeaponData.h"
 #include "PotatoPlayerHUD.generated.h"
 
 class UProgressBar;
@@ -15,6 +17,7 @@ class APotatoPlaceableStructure;
 class APotatoPlayerCharacter;
 class APotatoGameMode;
 class UBuildingSystemComponent;
+class UPotatoCrosshairBase;
 class UPotatoWeaponComponent;
 class UPotatoWeaponData;
 class UPotatoDayNightCycle;
@@ -167,6 +170,27 @@ public:
 	/** 시계 바늘 최대 각도(밤 끝) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Clock")
 	float ClockNeedleMaxAngle = 80.0f;
+	
+	// ================================================================
+	// Crosshair
+	// ================================================================
+protected:
+	UPROPERTY(EditDefaultsOnly, Category = "Crosshairs")
+	TSubclassOf<UPotatoCrosshairBase> ArcSpreadCrosshairClass; // 감자
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Crosshairs")
+	TSubclassOf<UPotatoCrosshairBase> LineSpreadCrosshairClass; // 옥수수
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Crosshairs")
+	TSubclassOf<UPotatoCrosshairBase> CircleCrosshairClass;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Crosshairs")
+	TSubclassOf<UPotatoCrosshairBase> StaticCrosshairClass;
+	
+	TMap<ECrosshairType, TObjectPtr<UPotatoCrosshairBase>> CrosshairIntances;
+	
+	UPROPERTY(meta = (BindWidget))
+	class UPanelWidget* CrosshairContainer;
 
 	// ================================================================
 	// Public API

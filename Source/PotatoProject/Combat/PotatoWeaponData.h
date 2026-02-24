@@ -18,7 +18,8 @@ enum class EWeaponFireType : uint8
 UENUM(BlueprintType)
 enum class ECrosshairType : uint8
 {
-	Spread UMETA(DisplayName = "Spread"), // 감자, 옥수수
+	ArcSpread UMETA(DisplayName = "ArcSpread"), // 감자
+	LineSpread UMETA(DisplayName = "LineSpread"), // 옥수수
 	Circle UMETA(DisplayName = "Circle"), // 당근
 	Static UMETA(DisplayName = "Static"), // 호박
 };
