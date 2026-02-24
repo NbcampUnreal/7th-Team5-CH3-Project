@@ -57,11 +57,10 @@ void APotatoPlayerCharacter::BeginPlay()
 	Super::BeginPlay();
 	if (AmmoPopupClass)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo! a")));
 		AmmoPopupWidget = CreateWidget<UAmmoPopupWidget>(GetWorld(), AmmoPopupClass);
+		AmmoPopupWidget->InitPopup(WeaponComponent);
 		if (AmmoPopupWidget)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Ammo! b")));
 			AmmoPopupWidget->AddToViewport();
 			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 		}

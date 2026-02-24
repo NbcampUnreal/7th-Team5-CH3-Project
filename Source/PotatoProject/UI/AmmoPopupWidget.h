@@ -94,6 +94,8 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UButton> CloseButton;
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UButton> ChargeButton;
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UImage> AmmoImage;
     UPROPERTY(EditAnywhere, Category = "UI")
     TArray<TObjectPtr<UTexture2D>> AmmoTextures; // 바꿀 텍스트를 에디터에서 할당
