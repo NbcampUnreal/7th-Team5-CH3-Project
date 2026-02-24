@@ -9,6 +9,7 @@ class UBuildingSystemComponent;
 class USpringArmComponent;
 class UPotatoWeaponComponent;
 class UAmmoPopupWidget;
+class UAnimalPopup;
 
 struct FInputActionValue;
 
@@ -66,9 +67,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	TSubclassOf<UUserWidget> AmmoPopupClass;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> AnimalPopupClass;
+
 	// 생성된 위젯을 참조할 변수
 	UPROPERTY()
 	UAmmoPopupWidget* AmmoPopupWidget;
+	UPROPERTY()
+	UAnimalPopup* AnimalPopupWidget;
 	
 private:
 	float TargetCameraDistance;
@@ -117,7 +123,8 @@ protected:
 	void OnToggleBuildMode(const FInputActionValue& Value);
 	UFUNCTION()
 	void OnAmmoMode(const FInputActionValue& Value);
-
+	UFUNCTION()
+	void OnBarnMode(const FInputActionValue& Value);
 	UFUNCTION()
 	void OnDeath();
 	};

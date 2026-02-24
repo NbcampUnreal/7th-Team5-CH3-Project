@@ -9,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "../Core/PotatoGameMode.h" 
 #include "../UI/AmmoPopupWidget.h"
+#include "../UI/AnimalPopup.h"
 
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
@@ -63,6 +64,16 @@ void APotatoPlayerCharacter::BeginPlay()
 		{
 			AmmoPopupWidget->AddToViewport();
 			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+	if (AnimalPopupClass)
+	{
+		AnimalPopupWidget = CreateWidget<UAnimalPopup>(GetWorld(), AnimalPopupClass);
+		//AnimalPopupWidget->InitPopup();
+		if (AnimalPopupWidget)
+		{
+			AnimalPopupWidget->AddToViewport();
+			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }
@@ -209,6 +220,17 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					&APotatoPlayerCharacter::OnAmmoMode
 				);
 			}
+			if (PlayerController->BarnAction)
+			{
+				EnhancedInput->BindAction(
+					PlayerController->BarnAction,
+					ETriggerEvent::Started,
+					this,
+					&APotatoPlayerCharacter::OnBarnMode
+				);
+			}
+
+
 		}
 	}
 }
@@ -439,4 +461,26 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
 	}
 
 	return ActualDamage;
+}
+
+
+void APotatoPlayerCharacter::OnBarnMode(const FInputActionValue& Value)
+{
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+
+
+	if (AnimalPopupWidget && PlayerController)
+	{
+		if (AnimalPopupWidget->IsVisible()) {
+			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+			PlayerController->bShowMouseCursor = false;
+			FInputModeGameOnly InputMode;
+			PlayerController->SetInputMode(InputMode);
+		}
+		else {
+			AnimalPopupWidget->SetVisibility(ESlateVisibility::Visible);
+			PlayerController->bShowMouseCursor = true;
+			//AnimalPopupWidget->RefreshAll();
+		}
+	}
 }
