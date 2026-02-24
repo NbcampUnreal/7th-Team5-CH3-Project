@@ -76,6 +76,12 @@ protected:
 	UPROPERTY()
 	UAnimalPopup* AnimalPopupWidget;
 	
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+    TSubclassOf<UUserWidget> PauseMenuClass;
+
+    UPROPERTY()
+    TObjectPtr<UUserWidget> PauseMenuWidget;
+
 private:
 	float TargetCameraDistance;
 	
@@ -125,6 +131,10 @@ protected:
 	void OnAmmoMode(const FInputActionValue& Value);
 	UFUNCTION()
 	void OnBarnMode(const FInputActionValue& Value);
+
+    UFUNCTION()
+    void OnPauseGame(const FInputActionValue& Value);
+
 	UFUNCTION()
 	void OnDeath();
-	};
+};

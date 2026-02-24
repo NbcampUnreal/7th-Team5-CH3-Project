@@ -10,9 +10,9 @@ void UResultScreen::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	if (Button_GoToMainMenu)
+	if (Button_Continue)
 	{
-		Button_GoToMainMenu->OnClicked.AddDynamic(this, &UResultScreen::OnContinueClicked);
+		Button_Continue->OnClicked.AddDynamic(this, &UResultScreen::OnContinueClicked);
 	}
 }
 

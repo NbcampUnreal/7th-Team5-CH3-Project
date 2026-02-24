@@ -18,6 +18,9 @@ class POTATOPROJECT_API UPauseMenu : public UUserWidget
 protected:
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    
+    // 키 입력 가로채기
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // == PausePanel 위젯 ==================================
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
@@ -27,7 +30,7 @@ protected:
     TObjectPtr<UButton> Button_Start;           // 게임 재개
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-    TObjectPtr<UButton> Button_DayRestart;      // Day 다시 시작 (다이얼로그 열기)
+    TObjectPtr<UButton> Button_RestartGame;      // Day 다시 시작 (다이얼로그 열기)
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UButton> Button_GoToMainMenu;    // 메인 메뉴로
@@ -37,7 +40,7 @@ protected:
     TObjectPtr<UCanvasPanel> DialogPanel;
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-    TObjectPtr<UTextBlock> GameOverMessage_1;   // 확인 메시지
+    TObjectPtr<UTextBlock> DialogText;   // 확인 메시지
 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UButton> ButtonYes;              // 예 — Day 재시작 실행
@@ -46,11 +49,14 @@ protected:
     TObjectPtr<UButton> ButtonNo;               // 아니오 — 다이얼로그 닫기
 
 private:
+    TFunction<void()> PendingDialogAction;  // "예" 클릭 시 실행할 함수
+
+private:
     UFUNCTION()
     void OnResumeClicked();
 
     UFUNCTION()
-    void OnDayRestartClicked();     // DialogPanel 열기
+    void OnRestartGameClicked();     // DialogPanel 열기
 
     UFUNCTION()
     void OnGoToMainMenuClicked();
@@ -62,4 +68,6 @@ private:
     void OnDialogNoClicked();       // DialogPanel 닫기
 
     void ShowDialog(bool bShow);
+
+    void SetMessageText(const FText& InText);
 };

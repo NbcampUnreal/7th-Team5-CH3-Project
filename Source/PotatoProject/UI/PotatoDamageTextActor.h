@@ -40,10 +40,10 @@ protected:
 	float BaseRiseSpeed = 60.f;
 
 private:
-	UPROPERTY()
+	UPROPERTY(VisibleAnywhere, Category = "DamageText|UI")
 	UWidgetComponent* WidgetComp = nullptr;
 
-	UPROPERTY()
+    UPROPERTY(VisibleAnywhere, Category = "DamageText|UI")
 	UPotatoDamageTextWidget* Widget = nullptr;
 
 	FPotatoDamageTextFinished OnFinished;

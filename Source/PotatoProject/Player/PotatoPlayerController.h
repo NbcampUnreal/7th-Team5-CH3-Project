@@ -6,6 +6,7 @@
 
 class UInputMappingContext;
 class UInputAction;
+class UUserWidget;
 
 UCLASS()
 class POTATOPROJECT_API APotatoPlayerController : public APlayerController
@@ -45,9 +46,14 @@ public:
 	UInputAction* AmmoAction;
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
 	UInputAction* BarnAction;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
+    UInputAction* PauseAction;
+
 	// functions
 public:
 	APotatoPlayerController();
 	
 	virtual void BeginPlay() override;
+    void SetUIMode(bool bEnable, UUserWidget* FocusWidget = nullptr);
 };

@@ -10,7 +10,7 @@
 #include "../Core/PotatoGameMode.h" 
 #include "../UI/AmmoPopupWidget.h"
 #include "../UI/AnimalPopup.h"
-
+#include "UI/PauseMenu.h"
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
 {
@@ -76,6 +76,16 @@ void APotatoPlayerCharacter::BeginPlay()
 			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
+
+    if (PauseMenuClass)
+    {
+        PauseMenuWidget = CreateWidget<UUserWidget>(GetWorld(), PauseMenuClass);
+        if (PauseMenuWidget)
+        {
+            PauseMenuWidget->AddToViewport();
+            PauseMenuWidget->SetVisibility(ESlateVisibility::Hidden);
+        }
+    }
 }
 
 void APotatoPlayerCharacter::Tick(float DeltaTime)
@@ -231,6 +241,16 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 			}
 
 
+
+            if (PlayerController->PauseAction)
+            {
+                EnhancedInput->BindAction(
+                    PlayerController->PauseAction,
+                    ETriggerEvent::Started,
+                    this,
+                    &APotatoPlayerCharacter::OnPauseGame
+                );
+            }
 		}
 	}
 }
@@ -435,6 +455,23 @@ void APotatoPlayerCharacter::OnAmmoMode(const FInputActionValue& Value)
 	}
 
 
+}
+
+void APotatoPlayerCharacter::OnPauseGame(const FInputActionValue& Value)
+{
+    APotatoPlayerController* PlayerController = Cast<APotatoPlayerController>(GetController());
+    if (!PlayerController && !PauseMenuClass)
+    {
+        return;
+    }
+
+    UPauseMenu* PauseMenu = CreateWidget<UPauseMenu>(GetWorld(), PauseMenuClass);
+    if (PauseMenu)
+    {
+        PlayerController->SetPause(true);
+        PauseMenu->AddToViewport();
+        PlayerController->SetUIMode(true, PauseMenu);
+    }
 }
 
 

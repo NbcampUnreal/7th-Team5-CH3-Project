@@ -56,7 +56,7 @@ public:
 
 	/** "계속" 버튼 */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UButton> Button_GoToMainMenu;
+	TObjectPtr<UButton> Button_Continue;
 
 	/**
 	 * 획득 보상 영역 Border (내부에 WBP_StackItem x5 배치)
@@ -64,14 +64,14 @@ public:
 	 *       교체하거나, WBP에서 직접 StackItem을 bIsVariable=True로 변경하세요.
 	 */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UBorder> Border_0;
+	TObjectPtr<UBorder> GainReward;
 
 	/**
 	 * 유지비 소모 영역 Border (내부에 WBP_StackItem x5 배치)
 	 * TODO: 위와 동일
 	 */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UBorder> Border;
+	TObjectPtr<UBorder> ConsumeCost;
 
 private:
 	UFUNCTION()

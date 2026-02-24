@@ -9,11 +9,15 @@ APotatoDamageTextActor::APotatoDamageTextActor()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+    USceneComponent* SceneRoot = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+    RootComponent = SceneRoot;
+
 	WidgetComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("WidgetComp"));
-	RootComponent = WidgetComp;
+    WidgetComp->SetupAttachment(RootComponent);
 
 	// 기본 설정
-	WidgetComp->SetWidgetSpace(EWidgetSpace::World);
+	//WidgetComp->SetWidgetSpace(EWidgetSpace::World);
+    WidgetComp->SetWidgetSpace(EWidgetSpace::Screen);
 	WidgetComp->SetDrawAtDesiredSize(true);
 	WidgetComp->SetPivot(FVector2D(0.5f, 0.5f));
 	WidgetComp->SetTwoSided(true);

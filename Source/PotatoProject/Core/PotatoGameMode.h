@@ -27,7 +27,7 @@ public:
 
     void StartGame();
     void EndGame(bool IsGameClear);
-    void CheckVictoryCondition();
+    bool CheckVictoryCondition();
 
 protected:
     virtual void BeginPlay() override;

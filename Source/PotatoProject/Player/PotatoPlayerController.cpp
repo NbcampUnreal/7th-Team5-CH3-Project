@@ -1,5 +1,6 @@
 #include "PotatoPlayerController.h"
 #include "EnhancedInputSubsystems.h"
+#include "Blueprint/UserWidget.h"
 
 APotatoPlayerController::APotatoPlayerController()
 	: InputMappingContext(nullptr),
@@ -25,4 +26,25 @@ void APotatoPlayerController::BeginPlay()
 			}
 		}
 	}
+}
+
+void APotatoPlayerController::SetUIMode(bool bEnable, UUserWidget* FocusWidget)
+{
+    if (bEnable)
+    {
+        FInputModeUIOnly InputMode;
+        if (FocusWidget)
+        {
+            InputMode.SetWidgetToFocus(FocusWidget->TakeWidget());
+        }
+
+        SetInputMode(InputMode);
+        bShowMouseCursor = true;
+    }
+    else
+    {
+        FInputModeGameOnly InputMode;
+        SetInputMode(InputMode);
+        bShowMouseCursor = false;
+    }
 }

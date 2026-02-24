@@ -139,7 +139,11 @@ void APotatoGameMode::StartResultPhase()
     OnResultPhase.Broadcast();
 
     CurrentDay++;
-    CheckVictoryCondition();
+    if (CheckVictoryCondition()) 
+    {
+        EndGame(true);
+        return;
+    }
 
     //보상 어떤식으로 줘야 할지 논의 필요
     ResourceManager->AddResource(EResourceType::Wood, 1);
@@ -193,12 +197,14 @@ void APotatoGameMode::EndGame(bool IsGameClear)
     }
 }
 
-void  APotatoGameMode::CheckVictoryCondition()
+bool APotatoGameMode::CheckVictoryCondition()
 {
     if (CurrentDay > 10)
     {
-        EndGame(true);
+        return true;
     }
+
+    return false;
 }
 
 void APotatoGameMode::OnHouseDestroyed(AActor* DestroyedActor)
