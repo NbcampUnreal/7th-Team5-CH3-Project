@@ -271,7 +271,9 @@ void APotatoPlayerCharacter::StopJump(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Look(const FInputActionValue& Value)
 {
-	if (GetController() != nullptr && AmmoPopupWidget && !AmmoPopupWidget->IsVisible())
+	bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
+	bool IsAnimalWidget= AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
+	if (GetController() != nullptr && IsAmmoWidget && IsAnimalWidget)
 	{
 		const FVector2D LookAxisVector = Value.Get<FVector2D>();
 		AddControllerYawInput(LookAxisVector.X);
@@ -335,7 +337,9 @@ void APotatoPlayerCharacter::CameraZoom(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 {
-	if (WeaponComponent && AmmoPopupWidget && !AmmoPopupWidget->IsVisible())
+	bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
+	bool IsAnimalWidget = AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
+	if (WeaponComponent && IsAmmoWidget && IsAnimalWidget)
 	{
 		WeaponComponent->Fire();
 	}
@@ -467,10 +471,10 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
 void APotatoPlayerCharacter::OnBarnMode(const FInputActionValue& Value)
 {
 	APlayerController* PlayerController = Cast<APlayerController>(GetController());
-
-
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("OnBarnMode:!")));
 	if (AnimalPopupWidget && PlayerController)
 	{
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("OnBarnMode:2")));
 		if (AnimalPopupWidget->IsVisible()) {
 			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 			PlayerController->bShowMouseCursor = false;

@@ -30,16 +30,12 @@ void UAmmoPopupWidget::NativeConstruct()
         }
     }
     if (CloseButton) {
-        //IsSetActive = false;
         CloseButton->OnClicked.AddDynamic(this, &UAmmoPopupWidget::OnCloseButtonClicked);
     }
     if (ChargeButton)
     {
         ChargeButton->OnClicked.AddDynamic(this, &UAmmoPopupWidget::OnChargeButtonClicked);
     }
-
-    //SelectedWeaponData = PotatoWeaponData;
-    //InitPopup();
 }
 
 void UAmmoPopupWidget::NativeDestruct()
