@@ -1,4 +1,4 @@
-#include "PotatoGameMode.h"
+﻿#include "PotatoGameMode.h"
 #include "PotatoDayNightCycle.h"
 #include "PotatoResourceManager.h"
 #include "Subsystems/WorldSubsystem.h"
@@ -121,7 +121,7 @@ void APotatoGameMode::StartNightPhase()
             *GetNameSafe(MonsterSpawner),
             *GetNameSafe(MonsterSpawner ? MonsterSpawner->GetClass() : nullptr));
         GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("start Wave!")));
-        FString WaveString = FString::FromInt(CurrentDay) + TEXT("-1");
+        FString WaveString = FString::FromInt(CurrentDay);
 
         // 2. FName으로 변환 (필요한 경우)
         FName s = FName(*WaveString);
