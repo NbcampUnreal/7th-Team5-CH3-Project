@@ -125,4 +125,21 @@ public:
     APotatoMonster* SpawnOne(EMonsterType Type, EMonsterRank Rank, FName SpawnGroup);
     FVector GetSpawnLocationByGroup(FName SpawnGroup) const;
 
+private:
+     UPROPERTY(Transient)
+     TMap<int32, int32> NextSubWaveIndexByStage;
+
+    UPROPERTY(Transient)
+    int32 ActiveStage = INDEX_NONE;
+
+    UPROPERTY(Transient)
+    int32 ActiveSubWave = INDEX_NONE;
+
+    UPROPERTY(Transient)
+    bool bStageAutoProgress = false;
+
+    bool HasMetaRow(FName WaveId) const;
+    bool ResolveFirstWaveForStage(int32 Stage, FName& OutWaveId, int32& OutSub);
+    bool ResolveNextWaveForActiveStage(FName& OutWaveId, int32& OutSub);
+
 };

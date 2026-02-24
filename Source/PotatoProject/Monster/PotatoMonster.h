@@ -5,6 +5,7 @@
 #include "Engine/DataTable.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "Components/WidgetComponent.h"
+#include "Engine/EngineTypes.h"
 #include "../Core/PotatoEnums.h"
 #include "PotatoMonsterFinalStats.h"
 #include "PotatoMonsterAnimSet.h"
@@ -147,46 +148,48 @@ public:
 
 	void SetAnimSet(UPotatoMonsterAnimSet* InSet);
 
-
-	// ===== HitReact Tuning =====
+	// =========================
+	// HitReact Tuning
+	// =========================
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|HitReact", meta = (AllowPrivateAccess = "true"))
 	float HitReactCooldown = 0.25f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Anim|HitReact", meta = (AllowPrivateAccess = "true"))
-	float HitReactMaxStunTime = 0.6f; // 너무 길어지지 않게 클램프용
+	float HitReactMaxStunTime = 0.6f;
 
-	float LastHitReactTime = -1000.f;
+	UPROPERTY(EditDefaultsOnly, Category = "Anim|HitReact")
+	float HitReactMinVisibleTime = 0.35f;
 
-	FTimerHandle HitReactResumeTH;
+	UPROPERTY(EditDefaultsOnly, Category = "Anim|Death")
+	float DeathMinVisibleTime = 2.0f;
 
+	// =========================
+	// UI
+	// =========================
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
-	UWidgetComponent* HPBarWidgetComp = nullptr;
+	TObjectPtr<UWidgetComponent> HPBarWidgetComp = nullptr; // ✅ TObjectPtr로 통일
 
 	UPROPERTY(Transient)
-	UHealthBar* HPBarWidget = nullptr;
+	TObjectPtr<UHealthBar> HPBarWidget = nullptr;
 
-	// 머리 위 추가 여유 (기본 20)
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	float HPBarExtraZ = 20.f;
 
-	// 너무 작은/큰 몬스터 대비 클램프
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	float HPBarMinZ = 80.f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	float HPBarMaxZ = 400.f;
 
-	// 예외 몬스터만 BP에서 추가 보정
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	float HPBarPerMonsterOffsetZ = 0.f;
 
-	// HP바 갱신 (Health/MaxHealth 기반)
 	void RefreshHPBar();
-
-	// Mesh Bounds 기반 자동 배치
 	void UpdateHPBarLocation();
 
-
+	// =========================
+	// SFX Budget
+	// =========================
 	UPROPERTY(EditAnywhere, Category = "SFX|Budget")
 	float HitSFXNearDistance = 600.f;
 
@@ -205,23 +208,53 @@ public:
 	UPROPERTY(EditAnywhere, Category = "SFX|Budget", meta = (ClampMin = "0.0", ClampMax = "1.0"))
 	float DeathSFXFarChance = 0.35f;
 
-	// Hit SFX 스팸 방지
 	UPROPERTY(EditAnywhere, Category = "SFX|Hit")
 	float HitSFXCooldown = 0.10f;
 
-	float LastHitSFXTime = -9999.f;
+	// =========================
+	// VFX Budget (최소)
+	// =========================
+	UPROPERTY(EditAnywhere, Category = "VFX|Hit")
+	float HitVFXCooldown = 0.06f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Anim|HitReact")
-	float HitReactMinVisibleTime = 0.35f; // 추천: 0.25~0.45
+	UPROPERTY(EditAnywhere, Category = "VFX|Hit")
+	float HitVFXNearDistance = 600.f;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Anim|Death")
-	float DeathMinVisibleTime = 2.0f;     // 너가 원한 최소 노출시간
+	UPROPERTY(EditAnywhere, Category = "VFX|Hit")
+	float HitVFXFarDistance = 1400.f;
 
+	UPROPERTY(EditAnywhere, Category = "VFX|Hit", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float HitVFXFarChance = 0.25f;
+
+	UPROPERTY(EditAnywhere, Category = "VFX|Hit")
+	float HitVFXGlobalWindowSec = 0.10f;
+
+	UPROPERTY(EditAnywhere, Category = "VFX|Hit")
+	int32 HitVFXGlobalMaxCount = 6;
+
+	UPROPERTY(EditAnywhere, Category = "VFX|Death")
+	float DeathVFXCooldown = 0.20f;
+
+	UPROPERTY(EditAnywhere, Category = "VFX|Death")
+	float DeathVFXNearDistance = 800.f;
+
+	UPROPERTY(EditAnywhere, Category = "VFX|Death")
+	float DeathVFXFarDistance = 2200.f;
+
+	UPROPERTY(EditAnywhere, Category = "VFX|Death", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float DeathVFXFarChance = 0.35f;
+
+	UPROPERTY(EditAnywhere, Category = "VFX|Death")
+	float DeathVFXGlobalWindowSec = 0.25f;
+
+	UPROPERTY(EditAnywhere, Category = "VFX|Death")
+	int32 DeathVFXGlobalMaxCount = 3;
+
+	// =========================
+	// Damage Text
+	// =========================
 	UPROPERTY()
-	class APotatoDamageTextPoolActor* DamageTextPool = nullptr;
-
-	int32 DamageStackIndex = 0;
-	float LastDamageTime = 0.f;
+	TObjectPtr<class APotatoDamageTextPoolActor> DamageTextPool = nullptr;
 
 	UPROPERTY(EditDefaultsOnly)
 	float DamageStackResetTime = 0.5f;
@@ -230,15 +263,45 @@ public:
 	float DamageStackOffsetStep = 18.f;
 
 private:
-		// -------------------------
-		// Hit React Helpers
-		// -------------------------
-		void TryPlayHitReact();
-		void ResumeMovementAfterHitReact();
+	// -------------------------
+	// Hit React Helpers
+	// -------------------------
+	void TryPlayHitReact();
+	void ResumeMovementAfterHitReact();
 
-		// -------------------------
-		// AI Stop Helper
-		// -------------------------
-		void StopAIForDead();
+	// -------------------------
+	// AI Stop Helper
+	// -------------------------
+	void StopAIForDead();
 
+	// -------------------------
+	// TakeDamage delegates (HitLocation 수집)
+	// -------------------------
+	UFUNCTION()
+	void OnMonsterTakePointDamage(AActor* DamagedActor, float Damage,
+		AController* InstigatedBy, FVector HitLocation, UPrimitiveComponent* FHitComponent,
+		FName BoneName, FVector ShotFromDirection, const UDamageType* DamageType,
+		AActor* DamageCauser);
+
+	UFUNCTION()
+	void OnMonsterTakeRadialDamage(AActor* DamagedActor, float Damage,
+		const UDamageType* DamageType, FVector Origin, const FHitResult& HitInfo,
+		AController* InstigatedBy, AActor* DamageCauser);
+
+	// -------------------------
+	// Runtime State (non-UPROPERTY)
+	// -------------------------
+	float LastHitReactTime = -1000.f;
+	float LastHitSFXTime = -9999.f;
+	float LastHitVFXTime = -9999.f;
+	float LastDeathVFXTime = -9999.f;
+
+	FTimerHandle HitReactResumeTH;
+
+	int32 DamageStackIndex = 0;
+	float LastDamageTime = 0.f;
+
+	bool bHasLastHitPoint = false;
+	FVector LastHitPointWS = FVector::ZeroVector;
+	FName LastHitBoneName = NAME_None;
 };

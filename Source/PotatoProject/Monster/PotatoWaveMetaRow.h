@@ -24,7 +24,7 @@ struct FPotatoWaveMetaRow : public FTableRowBase
     // 0이면 제한 없음 같은 룰 가능
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wave")
     float TimeLimit = 0.f;
-
+    
     // 웨이브 시작 전 대기
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Wave")
     float PreDelay = 0.f;

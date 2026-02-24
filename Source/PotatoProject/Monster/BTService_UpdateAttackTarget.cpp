@@ -1,10 +1,14 @@
-﻿// BTService_UpdateAttackTarget.cpp (FINAL INTEGRATED)
-// - Lane-follow 우선
-// - 레인/웨어하우스 목표 방향 corridor 상 "앞을 막는" 파괴가능 구조물만 블로커로 선정
-// - 캡슐/레인폭이 다양해도 동작하도록 corridor 폭/판정 동적화
-// - 블로커 타겟 선정 시 우회 시작을 끊기 위해(필요 시) 타겟 변경 순간 StopMovement 1회
-// - 레인 모드 + 타겟이 Warehouse(기본)면 MoveGoalLocation은 Clear -> 레인 MoveTo가 우선 실행
-// - 블로커(또는 레인 모드가 아닌 Warehouse 접근)일 때만 MoveGoalLocation(접근점) 세팅
+﻿// ============================================================================
+// BTService_UpdateAttackTarget.cpp (FINAL + Player Targeting)
+// - 기존 Orthodox 로직 유지
+// - Player 타겟팅 추가:
+//    * (사거리 안) 블로커(파괴가능 구조물) 우선
+//    * 블로커가 사거리 안이 아니면, 플레이어가 사거리 안일 때 플레이어로 전환
+//    * 플레이어가 사거리 밖이면 기본(warehouse/blocker)
+//    * 몬스터가 Warehouse 근처면 플레이어 무시하고 Warehouse로 진행
+// - BT는 "플레이어 추격 MoveTo 브랜치"를 추가한다고 가정(선택지 B)
+//   => Service는 플레이어 타겟일 때 MoveGoalLocation을 세팅해준다.
+// ============================================================================
 
 #include "BTService_UpdateAttackTarget.h"
 
@@ -18,6 +22,9 @@
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
 #include "Engine/OverlapResult.h"
+
+#include "Kismet/GameplayStatics.h"
+#include "GameFramework/Pawn.h"
 
 #include "PotatoMonster.h"
 #include "Building/PotatoPlaceableStructure.h"
@@ -151,17 +158,34 @@ static float GetMonsterCapsuleRadiusSafe(const APotatoMonster* M, float Fallback
 	return Fallback;
 }
 
+// ---- Player helpers ----
+static APawn* GetPlayerPawnSafe(UWorld* World)
+{
+	if (!World) return nullptr;
+	APawn* P = UGameplayStatics::GetPlayerPawn(World, 0);
+	return IsValid(P) ? P : nullptr;
+}
+
+static bool IsValidAttackablePlayer(const APotatoMonster* M, const APawn* PlayerPawn)
+{
+	if (!M || !IsValid(PlayerPawn)) return false;
+	if (!PlayerPawn->CanBeDamaged()) return false;
+	if (PlayerPawn == M) return false;
+	return true;
+}
+
 // =========================================================
 // Service
 // =========================================================
 
 UBTService_UpdateAttackTarget::UBTService_UpdateAttackTarget()
 {
-	NodeName = TEXT("Update AttackTarget (Orthodox)");
+	NodeName = TEXT("Update AttackTarget (Orthodox + Player)");
 	Interval = 0.15f;
 
 	AttackTargetKey.SelectedKeyName = TEXT("CurrentTarget");
 	InAttackRangeKey.SelectedKeyName = TEXT("bInAttackRange");
+	PlayerActorKey.SelectedKeyName = TEXT("PlayerActor");
 }
 
 uint16 UBTService_UpdateAttackTarget::GetInstanceMemorySize() const
@@ -203,8 +227,6 @@ bool UBTService_UpdateAttackTarget::ComputeInAttackRange(APotatoMonster* M, AAct
 
 // ---------------------------------------------------------
 //  FINAL: Dynamic corridor blocker picker
-//  - corridor width: capsule 기반(레인폭 몰라도 OK)
-//  - 전방성(dot) + 선분거리 + 앞쪽거리(Along) 기반으로 "먼저 막는" 블로커 우선
 // ---------------------------------------------------------
 AActor* UBTService_UpdateAttackTarget::FindBestBlockerOnCorridor(
 	APotatoMonster* M,
@@ -217,15 +239,13 @@ AActor* UBTService_UpdateAttackTarget::FindBestBlockerOnCorridor(
 
 	const FVector MyLoc = M->GetActorLocation();
 
-	// 내 캡슐 기반 corridor 폭 (레인 폭/몬스터 종류 달라도 대응)
 	const float MyRadius = GetMonsterCapsuleRadiusSafe(M, 34.f);
-	const float CorridorWidth = FMath::Max(80.f, MyRadius * 2.2f + 30.f); // 튜닝: 2.2~3.0, +20~60
+	const float CorridorWidth = FMath::Max(80.f, MyRadius * 2.2f + 30.f);
 
 	const FVector Goal2D(CorridorGoalLoc.X, CorridorGoalLoc.Y, MyLoc.Z);
 	FVector ToGoal2D = (Goal2D - MyLoc).GetSafeNormal2D();
 	if (ToGoal2D.IsNearlyZero())
 	{
-		// goal이 거의 같은 위치면 corridor 판단 불가
 		return nullptr;
 	}
 
@@ -267,24 +287,19 @@ AActor* UBTService_UpdateAttackTarget::FindBestBlockerOnCorridor(
 
 		const FVector SLoc2D(SPoint2D.X, SPoint2D.Y, MyLoc.Z);
 
-		// 1) 전방성: 목표 방향 앞에 있는 것만
 		const FVector ToStruct2D = (SLoc2D - MyLoc).GetSafeNormal2D();
 		const float ForwardDot = FVector::DotProduct(ToGoal2D, ToStruct2D);
-		if (ForwardDot < 0.0f) // 더 빡세게 하려면 0.3~0.5
+		if (ForwardDot < 0.0f)
 			continue;
 
-		// 2) corridor(내->goal 선분)에서 벗어난 정도
 		const float SegDist = DistancePointToSegment2D(SLoc2D, MyLoc, Goal2D);
 		if (SegDist > CorridorWidth)
 			continue;
 
-		// 3) goal 방향으로 얼마나 앞에 있는가(작을수록 먼저 막는다)
 		const float Along = FVector::DotProduct((SLoc2D - MyLoc), ToGoal2D);
 		if (Along < 0.f)
 			continue;
 
-		// 4) 점수: 중심에 가까운 놈 + 더 앞쪽에서 막는 놈
-		//    SegDist를 강하게 가중해서 corridor 중심에서 벗어난 애 배제
 		const float Score = SegDist * 10000.f + Along;
 
 		if (Score < BestScore)
@@ -309,7 +324,6 @@ bool UBTService_UpdateAttackTarget::ShouldKeepCurrentStructureTarget(
 	if (!S->StructureData->bIsDestructible) return false;
 	if (S->CurrentHealth <= 0.f) return false;
 
-	// KeepWidth도 동적으로: 내 캡슐 기반 + 여유
 	const float MyRadius = GetMonsterCapsuleRadiusSafe(M, 34.f);
 	const float CorridorWidth = FMath::Max(80.f, MyRadius * 2.2f + 30.f);
 	const float KeepWidth = CorridorWidth + FMath::Max(0.f, KeepTargetExtraWidth);
@@ -343,7 +357,7 @@ void UBTService_UpdateAttackTarget::UpdateBlockedState(
 		return;
 	}
 
-	const float Delta = Mem.LastDistToMoveTarget2D - Dist; // 전진하면 +
+	const float Delta = Mem.LastDistToMoveTarget2D - Dist;
 	if (Delta < NoProgressMinDelta)
 	{
 		Mem.NoProgressTime += DeltaSeconds;
@@ -358,7 +372,7 @@ void UBTService_UpdateAttackTarget::UpdateBlockedState(
 }
 
 // ---------------------------------------------------------
-//  FINAL: TickNode Integrated
+//  FINAL: TickNode Integrated + Player
 // ---------------------------------------------------------
 void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
 {
@@ -394,7 +408,7 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	AActor* LaneMoveTarget = nullptr;
 	if (bIsLaneMode)
 	{
-		LaneMoveTarget = Cast<AActor>(BB->GetValueAsObject(TEXT("MoveTarget"))); // 레인 포인트 키
+		LaneMoveTarget = Cast<AActor>(BB->GetValueAsObject(TEXT("MoveTarget")));
 	}
 
 	const FVector MyLoc = M->GetActorLocation();
@@ -403,7 +417,7 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 		(IsValid(Warehouse) ? Warehouse->GetActorLocation() : MyLoc);
 
 	// =========================================================
-	// 3) 막힘 감지(옵션) - CorridorGoalLoc 기준
+	// 3) 막힘 감지(옵션)
 	// =========================================================
 	if (Mem)
 	{
@@ -411,6 +425,32 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	}
 
 	const float Range = M->FinalStats.AttackRange;
+
+	// =========================================================
+	// 3.5) Player 확보 + "Warehouse 근처면 무시"
+	// =========================================================
+	APawn* PlayerPawn = GetPlayerPawnSafe(M->GetWorld());
+	const bool bHasPlayer = IsValidAttackablePlayer(M, PlayerPawn);
+
+	// Blackboard에 PlayerActor 항상 세팅 (없으면 Clear)
+	if (PlayerActorKey.SelectedKeyName != NAME_None)
+	{
+		if (bHasPlayer)
+		{
+			BB->SetValueAsObject(PlayerActorKey.SelectedKeyName, PlayerPawn);
+		}
+		else
+		{
+			BB->ClearValue(PlayerActorKey.SelectedKeyName);
+		}
+	}
+
+	const float DistToWarehouse2D =
+		IsValid(Warehouse) ? FVector::Dist2D(MyLoc, Warehouse->GetActorLocation()) : BIG_NUMBER;
+
+	const bool bIgnorePlayerNearWarehouse =
+		IsValid(Warehouse) && (DistToWarehouse2D <= IgnorePlayerWhenNearWarehouseDist);
+
 
 	// =========================================================
 	// 4) 공격 중이면 타겟 재선정 잠금
@@ -422,7 +462,8 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 
 	if (bIsAttacking && IsValid(Current))
 	{
-		if (Current == Warehouse || IsAliveDestructibleStructure(Current))
+		const bool bCurrentIsPlayer = (bHasPlayer && Current == PlayerPawn);
+		if (bCurrentIsPlayer || Current == Warehouse || IsAliveDestructibleStructure(Current))
 		{
 			Target = Current;
 		}
@@ -435,19 +476,17 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	{
 		Target = Warehouse;
 
-		// 현재 구조물 타겟 유지(지금도 corridor 위에 있으면 유지)
 		if (IsValid(Current) && Current != Warehouse && ShouldKeepCurrentStructureTarget(M, Current, CorridorGoalLoc))
 		{
 			Target = Current;
 		}
 		else
 		{
-			// 레인 폭/캡슐이 다양하니 레인 모드에서는 최소 탐색 반경을 크게 잡아 "우회 시작 전" 발견
 			float SearchRange = FMath::Max(Range + CorridorSearchExtraRange, MinCorridorSearchRange);
 
 			if (bIsLaneMode)
 			{
-				SearchRange = FMath::Max(SearchRange, 800.f); //  테스트 기본값(레벨 스케일에 맞춰 600~1200 조정)
+				SearchRange = FMath::Max(SearchRange, 800.f);
 			}
 
 			if (Mem && Mem->bBlocked)
@@ -463,28 +502,47 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	}
 
 	// =========================================================
-	// 6) 사거리
+	// 6) 플레이어 override (규칙)
+	//  - (사거리 안) 블로커가 있으면 블로커 우선
+	//  - 블로커가 (사거리 안)이 아니면, 플레이어가 사거리 안일 때 플레이어로 전환
+	//  - Warehouse 근처면 플레이어 무시
 	// =========================================================
-	const bool bInRange = IsValid(Target) ? ComputeInAttackRange(M, Target, Range) : false;
-
-	BB->SetValueAsObject(AttackTargetKey.SelectedKeyName, Target);
-	BB->SetValueAsBool(InAttackRangeKey.SelectedKeyName, bInRange);
-
 	const bool bTargetIsWarehouse = (IsValid(Target) && IsValid(Warehouse) && Target == Warehouse);
 	const bool bTargetIsBlocker = (IsValid(Target) && Target != Warehouse && IsAliveDestructibleStructure(Target));
 
+	bool bTargetInRange = IsValid(Target) ? ComputeInAttackRange(M, Target, Range) : false;
+	const bool bBlockerInRange = (bTargetIsBlocker && bTargetInRange);
+
+	// 플레이어 사거리 판정(무시 조건이면 false)
+	const float PlayerCheckRange = Range + PlayerSenseExtraRange;
+	const bool bPlayerInRange =
+		(!bIgnorePlayerNearWarehouse && bHasPlayer)
+		? ComputeInAttackRange(M, PlayerPawn, PlayerCheckRange)
+		: false;
+
+	// ✅ 장애물이 사거리 안이면 플레이어 무시
+	if (!bBlockerInRange && bPlayerInRange)
+	{
+		Target = PlayerPawn;
+		bTargetInRange = true;
+	}
+
 	// =========================================================
-	// 7) Target 변경 순간 "우회 시작" 끊기 (선택이지만 추천)
-	//    - 너무 자주 StopMovement()하면 떨릴 수 있으니 "타겟 변경"일 때만
+	// 7) BB 반영
 	// =========================================================
+	BB->SetValueAsObject(AttackTargetKey.SelectedKeyName, Target);
+	BB->SetValueAsBool(InAttackRangeKey.SelectedKeyName, bTargetInRange);
+
+	const bool bTargetIsPlayer = (bHasPlayer && IsValid(Target) && Target == PlayerPawn);
+	const bool bFinalTargetIsWarehouse = (IsValid(Target) && IsValid(Warehouse) && Target == Warehouse);
+	const bool bFinalTargetIsBlocker = (IsValid(Target) && Target != Warehouse && IsAliveDestructibleStructure(Target));
+
+	// (선택) 타겟 변경 순간 StopMovement(블로커 새로 잡을 때만)
 	if (Mem)
 	{
-		// FUpdateAttackTargetMemory에 아래가 없으면 헤더에 추가 필요:
-		// TWeakObjectPtr<AActor> LastTarget;
 		if (Mem->LastTarget.Get() != Target)
 		{
-			// 블로커를 새로 잡은 순간이면 path를 끊어 우회 시작을 방지
-			if (bTargetIsBlocker)
+			if (bFinalTargetIsBlocker)
 			{
 				AIC->StopMovement();
 			}
@@ -493,37 +551,49 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	}
 
 	// =========================================================
-	// 8) MoveGoalLocation 운영 규칙 (전투/접근 전용)
+	// 8) MoveGoalLocation 운영 규칙
 	//
 	//  - Target 유효 X      : Clear
-	//  - 사거리 안(bInRange): StopMovement + 현재 위치로 고정
+	//  - 사거리 안          : StopMovement + 현재 위치로 고정
 	//  - 사거리 밖          :
-	//      * 레인모드 + 타겟이 Warehouse(기본) => Clear (레인 MoveTarget 우선)
+	//      * 플레이어 타겟  : 항상 ApproachPoint 세팅 (BT의 추격 브랜치가 사용)
+	//      * 레인모드 + 타겟이 Warehouse(기본) => Clear (레인 MoveTo 우선)
 	//      * blocker 타겟 or (레인모드가 아님) => ApproachPoint 세팅
 	// =========================================================
 	if (!IsValid(Target))
 	{
 		BB->ClearValue(MoveGoalLocationKeyName);
 	}
-	else if (bInRange)
+	else if (bTargetInRange)
 	{
-		// 사거리 들어온 순간, 우회 경로 타기 전에 이동 끊기
 		AIC->StopMovement();
 		BB->SetValueAsVector(MoveGoalLocationKeyName, MyLoc);
 	}
 	else
 	{
-		// 레인 따라가는 중 + 타겟이 Warehouse(기본)면 MoveGoalLocation은 비워둔다
-		// -> BT 레인 이동(MoveTo: MoveTarget)만 타게 됨
-		if (bIsLaneMode && bTargetIsWarehouse && !bTargetIsBlocker)
+		const float CapsuleR = GetMonsterCapsuleRadiusSafe(M, 34.f);
+		const float Extra = CapsuleR + ApproachExtraOffset;
+
+		// ✅ 플레이어 추격용
+		if (bTargetIsPlayer)
+		{
+			FVector Approach;
+			if (ComputeApproachPoint2D(M, Target, Extra, Approach))
+			{
+				BB->SetValueAsVector(MoveGoalLocationKeyName, Approach);
+			}
+			else
+			{
+				BB->SetValueAsVector(MoveGoalLocationKeyName, Target->GetActorLocation());
+			}
+		}
+		// 레인 따라가는 중 + Warehouse 기본이면 MoveGoalLocation은 비움
+		else if (bIsLaneMode && bFinalTargetIsWarehouse && !bFinalTargetIsBlocker)
 		{
 			BB->ClearValue(MoveGoalLocationKeyName);
 		}
 		else
 		{
-			const float CapsuleR = GetMonsterCapsuleRadiusSafe(M, 34.f);
-			const float Extra = CapsuleR + ApproachExtraOffset;
-
 			FVector Approach;
 			if (ComputeApproachPoint2D(M, Target, Extra, Approach))
 			{

@@ -20,7 +20,6 @@ enum class EMonsterType : uint8
 	None UMETA(DisplayName = "None"),
 	Rat UMETA(DisplayName = "들쥐"),
 	Snake UMETA(DisplayName = "뱀"),
-	Monkey UMETA(DisplayName = "원숭이"),
 	MushroomSmile UMETA(DisplayName = "웃는버섯"),
 	Skeleton UMETA(DisplayName = "스켈레톤"),
 	Cactus UMETA(DisplayName = "선인장"),
@@ -29,6 +28,7 @@ enum class EMonsterType : uint8
 	Slime UMETA(DisplayName = "슬라임"),
 	TurtleShell UMETA(DisplayName = "가시거북"),
 	Mimic UMETA(DisplayName = "미믹"),
+	Spider UMETA(DisplayName = "거미")
 };
 
 
