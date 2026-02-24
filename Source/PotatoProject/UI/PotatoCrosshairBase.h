@@ -2,32 +2,22 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "PotatoCrosshairWidget.generated.h"
+#include "PotatoCrosshairBase.generated.h"
 
-class UImage;
 class APotatoPlayerCharacter;
+class UPotatoWeaponComponent;
 
 UCLASS()
-class POTATOPROJECT_API UPotatoCrosshairWidget : public UUserWidget
+class POTATOPROJECT_API UPotatoCrosshairBase : public UUserWidget
 {
 	GENERATED_BODY()
-	
+
 public:
 	virtual void NativeConstruct() override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
-	
+
 protected:
-	UPROPERTY(meta = (BindWidget))
-	UImage* CrosshairTop;
-	
-	UPROPERTY(meta = (BindWidget))
-	UImage* CrosshairBottom;
-	
-	UPROPERTY(meta = (BindWidget))
-	UImage* CrosshairLeft;
-	
-	UPROPERTY(meta = (BindWidget))
-	UImage* CrosshairRight;
+	float CalculateCurrentSpread(float DeltaTime);
 	
 	UPROPERTY(EditAnywhere, Category = "Crosshair")
 	float BaseSpread = 10.0f;
@@ -36,14 +26,22 @@ protected:
 	float VelocitySpreadMultiplier = 1.0f;
 	
 	UPROPERTY(EditAnywhere, Category = "Crosshair")
-	float FiringSpread = 50.0f;
+	float FiringSpread = 10.0f;
+	
+	UPROPERTY(EditAnywhere, Category = "Crosshair")
+	float JumpingSpread = 10.0f;
+	
+	UPROPERTY(EditAnywhere, Category = "Crosshair")
+	float FiringSpreadDuration = 0.15f;
 	
 	UPROPERTY(EditAnywhere, Category = "Crosshair")
 	float SpreadInterpSpeed = 15.0f;
 	
-private:
-	UPROPERTY();
-	APotatoPlayerCharacter* PlayerCharacter;
+	UPROPERTY()
+	TObjectPtr<APotatoPlayerCharacter> PlayerCharacter;
 	
-	float CurrentSpread;
+	UPROPERTY()
+	TObjectPtr<UPotatoWeaponComponent> WeaponComponent;
+	
+	float CurrentSpreadValue;
 };

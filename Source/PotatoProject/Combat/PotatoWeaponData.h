@@ -15,6 +15,14 @@ enum class EWeaponFireType : uint8
 	Hitscan UMETA(DisplayName = "Hitscan")
 };
 
+UENUM(BlueprintType)
+enum class ECrosshairType : uint8
+{
+	Spread UMETA(DisplayName = "Spread"), // 감자, 옥수수
+	Circle UMETA(DisplayName = "Circle"), // 당근
+	Static UMETA(DisplayName = "Static"), // 호박
+};
+
 UCLASS()
 class POTATOPROJECT_API UPotatoWeaponData : public UPrimaryDataAsset
 {
@@ -26,6 +34,9 @@ public:
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
 	UTexture2D* Icon;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
+	ECrosshairType CrosshairType;
 	
 	// =================================================================
 	// 공통 스탯
