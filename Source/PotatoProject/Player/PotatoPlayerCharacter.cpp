@@ -12,6 +12,7 @@
 #include "../UI/AnimalPopup.h"
 #include "UI/PauseMenu.h"
 #include "Components/CapsuleComponent.h"
+#include "../Building/PotatoAnimalManagementComp.h"
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
 {
@@ -46,6 +47,7 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 	// Create weapon component
 	WeaponComponent = CreateDefaultSubobject<UPotatoWeaponComponent>(TEXT("WeaponComponent"));
 
+	//AnimalManagementComp = CreateDefaultSubobject<UPotatoAnimalManagementComp>(TEXT("AnimalComponent"));;
 	//빌드모드 가능여부
 	IsBuildingMode = true;
 
@@ -76,7 +78,10 @@ void APotatoPlayerCharacter::BeginPlay()
 	if (AnimalPopupClass)
 	{
 		AnimalPopupWidget = CreateWidget<UAnimalPopup>(GetWorld(), AnimalPopupClass);
-		//AnimalPopupWidget->InitPopup();
+		/*if(AnimalManagementComp)
+		{
+			AnimalPopupWidget->InitPopup(AnimalManagementComp);
+		}*/
 		if (AnimalPopupWidget)
 		{
 			AnimalPopupWidget->AddToViewport();
@@ -518,6 +523,11 @@ void APotatoPlayerCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp,
 
 	if (OtherActor && (OtherActor != this) && OtherActor->GetName().Contains(TEXT("BP_TestBarn")))
 	{
+		UPotatoAnimalManagementComp* ManagementComp = OtherActor->FindComponentByClass<UPotatoAnimalManagementComp>();
+		if (ManagementComp)
+		{
+			AnimalPopupWidget->InitPopup(ManagementComp);
+		}
 		IsBarnMode = true;
 		//GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("Barn에 닿았습니다!"));
 

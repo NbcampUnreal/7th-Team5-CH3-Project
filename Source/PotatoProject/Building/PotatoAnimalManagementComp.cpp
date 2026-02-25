@@ -16,7 +16,7 @@ UPotatoAnimalManagementComp::UPotatoAnimalManagementComp()
 void UPotatoAnimalManagementComp::BeginPlay()
 {
     Super::BeginPlay();
-
+    //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("animalComp!"));
     // Owner Actor에서 BoxComponent 자동 탐색 & 캐싱
     if (AActor* Owner = GetOwner())
     {

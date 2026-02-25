@@ -10,6 +10,7 @@ class USpringArmComponent;
 class UPotatoWeaponComponent;
 class UAmmoPopupWidget;
 class UAnimalPopup;
+class UPotatoAnimalManagementComp;
 
 struct FInputActionValue;
 
@@ -31,7 +32,8 @@ private:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UPotatoWeaponComponent* WeaponComponent;
-
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	//UPotatoAnimalManagementComp* AnimalManagementComp;
 
 protected:
 	// Camera Settings
