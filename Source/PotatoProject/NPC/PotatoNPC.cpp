@@ -58,6 +58,7 @@ bool APotatoNPC::TryPayMaintenance()
 		return false;
 	}
 
+    ResourceManager->RemoveResource(EResourceType::Livestock, MaintenanceCostLivestock);
 	return true;
 }
 

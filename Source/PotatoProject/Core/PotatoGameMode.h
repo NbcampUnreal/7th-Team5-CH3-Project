@@ -10,7 +10,7 @@ class UPotatoResourceManager;
 class APotatoPlayerCharacter;
 class APotatoMonsterSpawner;
 class APotatoAnimalController;
-class APotatoNPC;
+class APotatoRewardGenerator;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDayPhase);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNightPhase);
@@ -41,6 +41,9 @@ private:
     UPotatoDayNightCycle* DayNightSystem;
     
     int32 CurrentDay = 1;
+
+    // 게임 시작 직 후 첫 번째 StartDayPhase이 호출 될 때 CurrentDay 증가 시키지 않음
+    bool bIsFirstDay = true;
 
 public:
     // -- Day-night cycle BP 설정용입니다. --
@@ -129,7 +132,13 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "Spawner")
     TObjectPtr<AActor> WarehouseActor;
-    UPROPERTY(EditAnywhere, Category = "Spawner")
-    TArray<TObjectPtr<APotatoNPC>> NPCs;
+
+    UPROPERTY()
+    APotatoRewardGenerator* RewardGenerator;
+
+public:
+    UFUNCTION(BlueprintPure, Category = "Reward")
+    APotatoRewardGenerator* GetRewardGenerator() const { return RewardGenerator; }
+
 #pragma endregion ResourceSystem
 };

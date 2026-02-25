@@ -7,6 +7,8 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Core/PotatoProductionComponent.h"
 #include "Core/PotatoResourceManager.h"
+#include "Core/PotatoRewardGenerator.h"
+#include "Core/PotatoGameMode.h"
 
 UPotatoNPCManagementComp::UPotatoNPCManagementComp()
 {
@@ -29,10 +31,39 @@ void UPotatoNPCManagementComp::BeginPlay()
             *GetNameSafe(GetOwner()));
     }
 
+    // RewardGenerator에 등록 (GameMode 참조 경유)
+    if (UWorld* World = GetWorld())
+    {
+        if (APotatoGameMode* GM = Cast<APotatoGameMode>(World->GetAuthGameMode()))
+        {
+            if (APotatoRewardGenerator* RG = GM->GetRewardGenerator())
+            {
+                RG->RegisterNPCManagementComp(this);
+            }
+        }
+    }
+
     GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
     {
         HireNPC(ENPCType::Lumberjack);
     });
+}
+
+void UPotatoNPCManagementComp::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    // RewardGenerator에서 등록 해제
+    if (UWorld* World = GetWorld())
+    {
+        if (APotatoGameMode* GM = Cast<APotatoGameMode>(World->GetAuthGameMode()))
+        {
+            if (APotatoRewardGenerator* RG = GM->GetRewardGenerator())
+            {
+                RG->UnregisterNPCManagementComp(this);
+            }
+        }
+    }
+
+    Super::EndPlay(EndPlayReason);
 }
 
 bool UPotatoNPCManagementComp::HireNPC(ENPCType NPCType)
@@ -123,9 +154,47 @@ void UPotatoNPCManagementComp::FireNPC(APotatoNPC* NPC)
         return;
     }
 
-    NPC->ProductionComp->Refund();
-
     // 3. 리스트에서 제거 및 Destroy
     AssignedNPCs.Remove(NPC);
-    NPC->Destroy();
+    NPC->Retire();
+}
+
+int32 UPotatoNPCManagementComp::ProcessNPCMaintenance(int32& OutRetiredCount)
+{
+    int32 TotalPaid = 0;
+    TArray<APotatoNPC*> NPCsToRetire;
+
+    for (APotatoNPC* NPC : AssignedNPCs)
+    {
+        if (!NPC) 
+        {
+            continue;
+        }
+
+        if (NPC->TryPayMaintenance())
+        {
+            // 지급 성공 시
+            TotalPaid += NPC->GetMaintenanceCost();
+            UE_LOG(LogTemp, Log, TEXT("Paid maintenance for NPC [%s]: %d"), *GetNameSafe(NPC), NPC->GetMaintenanceCost());
+        }
+        else
+        {
+            // 지급 실패 시(퇴직)
+            NPCsToRetire.Add(NPC);
+            UE_LOG(LogTemp, Log, TEXT("Failed to pay maintenance for NPC [%s]. Marking for retirement."), *GetNameSafe(NPC));
+        }
+    }
+
+    // 퇴직 처리 (리스트에서 제거 + Destroy)
+    for (APotatoNPC* NPC : NPCsToRetire)
+    {
+        if (NPC)
+        {
+            AssignedNPCs.Remove(NPC);
+            NPC->Destroy();
+        }
+    }
+
+    OutRetiredCount = NPCsToRetire.Num();
+    return TotalPaid;
 }

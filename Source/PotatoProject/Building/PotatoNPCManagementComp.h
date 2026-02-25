@@ -20,6 +20,7 @@ public:
 
 protected:
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
     UPROPERTY(EditAnywhere, Category = "Config")
@@ -41,6 +42,11 @@ public:
     UFUNCTION(BlueprintCallable)
     bool HireNPC(ENPCType NPCType);
 
+    // 해고는 기획 볼륨상 삭제되었음 - 레거시 코드
     UFUNCTION(BlueprintCallable)
     void FireNPC(APotatoNPC* NPC);
+
+    // RewardGenerator에서 유지비용 지불 시도할 때 참조하는 함수
+    UFUNCTION()
+    int32 ProcessNPCMaintenance(int32& OutRetiredCount);
 };

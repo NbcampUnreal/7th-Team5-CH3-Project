@@ -33,8 +33,12 @@ public:
 	 * @param InKilledElite      처치한 정예 몬스터 수
 	 * @param InKilledBoss       처치한 보스 몬스터 수
 	 */
-	UFUNCTION(BlueprintCallable, Category = "ResultScreen")
-	void InitScreen(int32 InCurrentDay, int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss);
+	void InitScreen(
+		int32 InCurrentDay,
+		int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss,
+		int32 InWoodReward, int32 InStoneReward, int32 InCropReward, int32 InLivestockReward,
+		int32 InTotalMaintenance,
+		int32 InRetiredNPCCount);
 
 	// ---- BindWidgets ----
 
@@ -59,7 +63,7 @@ public:
 	TObjectPtr<UButton> Button_Continue;
 
 	/**
-	 * 획득 보상 영역 Border (내부에 WBP_StackItem x5 배치)
+	 * 획득 보상 영역 Border
 	 * TODO: StackItem 동적 생성이 필요한 경우 이 Border의 Content를 HorizontalBox로
 	 *       교체하거나, WBP에서 직접 StackItem을 bIsVariable=True로 변경하세요.
 	 */
@@ -68,7 +72,7 @@ public:
 
 	/**
 	 * 유지비 소모 영역 Border (내부에 WBP_StackItem x5 배치)
-	 * TODO: 위와 동일
+     * TODO: 퇴직한 NPC의 경우 NPC 이미지와 더불어 Count로 출력됩니다. 이 경우에도 StackItem 동적 생성이 필요할 수 있습니다.
 	 */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UBorder> ConsumeCost;

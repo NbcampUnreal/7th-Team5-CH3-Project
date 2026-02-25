@@ -1,18 +1,19 @@
 ﻿#include "PotatoGameMode.h"
 #include "PotatoDayNightCycle.h"
 #include "PotatoResourceManager.h"
+#include "PotatoRewardGenerator.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h" 
 #include "../Player/PotatoPlayerCharacter.h" 
 #include "../Monster/PotatoMonsterSpawner.h" 
 #include "../Animal/PotatoAnimalController.h"
-#include "../NPC/PotatoNPC.h"
 #include "../Core/PotatoEnums.h"
+#include "Core/PotatoGameStateBase.h"
 
 APotatoGameMode::APotatoGameMode() 
 {
-    
+    GameStateClass = APotatoGameStateBase::StaticClass();
 }
 
 void APotatoGameMode::BeginPlay()
@@ -65,7 +66,16 @@ void APotatoGameMode::StartGame()
             break;
         }
     }
-    
+
+    if (!RewardGenerator)
+    {
+        for (TActorIterator<APotatoRewardGenerator> It(GetWorld()); It; ++It)
+        {
+            RewardGenerator = *It;
+            break;
+        }
+    }
+
     UClass* WarehouseClass = StaticLoadClass(AActor::StaticClass(), nullptr, TEXT("/Game/LHW/BluePrints/BP_WareHouse.BP_WareHouse"));
     if (!WarehouseActor)
     {
@@ -84,7 +94,20 @@ void APotatoGameMode::StartGame()
 
 void APotatoGameMode::StartDayPhase()
 {
-   
+    if (bIsFirstDay)
+    {
+        bIsFirstDay = false;
+    }
+    else
+    {
+        if (CheckVictoryCondition())
+        {
+            EndGame(true);
+            return;
+        }
+        CurrentDay++;
+    }
+    UE_LOG(LogTemp, Log, TEXT("DayPhase %d"), CurrentDay);
     // 게임 로직 관련 넣고싶은 기능들을
     OnDayPhase.Broadcast();
     if (PlayerCharacter) {
@@ -137,47 +160,6 @@ void APotatoGameMode::StartNightPhase()
 void APotatoGameMode::StartResultPhase()
 {
     OnResultPhase.Broadcast();
-
-    CurrentDay++;
-    if (CheckVictoryCondition()) 
-    {
-        EndGame(true);
-        return;
-    }
-
-    //보상 어떤식으로 줘야 할지 논의 필요
-    ResourceManager->AddResource(EResourceType::Wood, 1);
-    ResourceManager->AddResource(EResourceType::Stone, 1);
-    ResourceManager->AddResource(EResourceType::Crop, 1);
-    ResourceManager->AddResource(EResourceType::Livestock, 1);
-    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("나무: %d"), ResourceManager->GetResource(EResourceType::Wood)));
-    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("광석: %d"), ResourceManager->GetResource(EResourceType::Stone )));
-    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("농작물: %d"), ResourceManager->GetResource(EResourceType::Crop)));
-    GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan, FString::Printf(TEXT("축산물: %d"), ResourceManager->GetResource(EResourceType::Livestock)));
-
-
-    ///NPC가 추가될 때 마다 관리하는 array에 추가하는 코드로 바꿔야 할 듯.
-    if (NPCs.IsEmpty())
-    {
-        for (TActorIterator<APotatoNPC> It(GetWorld()); It; ++It)
-        {
-            auto tmp = *It;
-            if (tmp)
-            {
-                NPCs.Add(tmp);
-            }
-            //break;
-        }
-    }
-    //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan,FString::Printf(TEXT("npc 수: %d"), NPCs.Num()));
-    for (int i = 0; i < NPCs.Num(); i++)
-    {
-        bool npcTryPay = NPCs[i]->TryPayMaintenance();
-        GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Cyan,
-            FString::Printf(TEXT("유지비용지불시도: %s"), *LexToString(npcTryPay)));
-    }
-    // 보상 지급 및 결과 UI 표시?
-
 }
 
 void APotatoGameMode::EndGame(bool IsGameClear)

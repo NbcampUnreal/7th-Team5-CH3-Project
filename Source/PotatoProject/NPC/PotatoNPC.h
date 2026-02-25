@@ -20,6 +20,7 @@ public:
 protected:
 	virtual void BeginPlay() override;
 
+
 public:	
 	// Working State (Idle/Working)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "NPC|Runtime")
@@ -53,7 +54,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "NPC|Economy")
 	bool TryPayMaintenance();
 
-	// 퇴직: 건물 제거 + 환급 + Destroy
+	// 퇴직: 건물 제거 + Destroy
     UFUNCTION(BlueprintCallable, Category = "NPC|Runtime")
 	void Retire();
+
+// Getter
+public:
+    UFUNCTION(BlueprintPure, Category = "NPC|Economy")
+    int32 GetMaintenanceCost() const { return MaintenanceCostLivestock; }
 };

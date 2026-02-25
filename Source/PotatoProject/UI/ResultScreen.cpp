@@ -1,10 +1,14 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
 #include "UI/ResultScreen.h"
-
 #include "Components/TextBlock.h"
 #include "Components/Button.h"
 #include "Components/Border.h"
+#include "Components/HorizontalBox.h"
+#include "Components/HorizontalBoxSlot.h"
+#include "Core/PotatoDayRewardRow.h"
+#include "Player/PotatoPlayerController.h"
+#include "Kismet/GameplayStatics.h"
 
 void UResultScreen::NativeConstruct()
 {
@@ -16,7 +20,12 @@ void UResultScreen::NativeConstruct()
 	}
 }
 
-void UResultScreen::InitScreen(int32 InCurrentDay, int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss)
+void UResultScreen::InitScreen(
+	int32 InCurrentDay,
+	int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss,
+	int32 InWoodReward, int32 InStoneReward, int32 InCropReward, int32 InLivestockReward,
+	int32 InTotalMaintenance,
+	int32 InRetiredNPCCount)
 {
 	// "Day N 생존 성공!" 타이틀
 	if (RemainingTime)
@@ -27,29 +36,57 @@ void UResultScreen::InitScreen(int32 InCurrentDay, int32 InKilledMonster, int32 
 	}
 
 	// 전투 통계
-	if (KilledMonster)
-	{
-		KilledMonster->SetText(FText::AsNumber(InKilledMonster));
-	}
-	if (KilledElite)
-	{
-		KilledElite->SetText(FText::AsNumber(InKilledElite));
-	}
-	if (KilledBoss)
-	{
-		KilledBoss->SetText(FText::AsNumber(InKilledBoss));
-	}
+	if (KilledMonster) KilledMonster->SetText(FText::AsNumber(InKilledMonster));
+	if (KilledElite)   KilledElite->SetText(FText::AsNumber(InKilledElite));
+	if (KilledBoss)    KilledBoss->SetText(FText::AsNumber(InKilledBoss));
 
-	// TODO: Border_0 / Border 내부 StackItem들에 보상/유지비 데이터 설정
-	// WBP에서 StackItem 인스턴스들이 bIsVariable=False이므로 현재 C++에서 직접 접근 불가.
-	// 방법 1) WBP 에디터에서 각 WBP_StackItem의 bIsVariable=True로 변경 후 BindWidget 추가
-	// 방법 2) 이 함수에서 동적으로 UStackItem 위젯을 생성하여 HorizontalBox에 AddChild
+	// GainReward Border — 보상 항목을 텍스트로 표시
+	//if (GainReward)
+	//{
+	//	UHorizontalBox* RewardBox = NewObject<UHorizontalBox>(this);
+	//	auto AddRewardEntry = [&](const FString& Label, int32 Value)
+	//	{
+	//		if (Value <= 0) return;
+	//		UTextBlock* Text = NewObject<UTextBlock>(this);
+	//		Text->SetText(FText::FromString(FString::Printf(TEXT("%s: %d  "), *Label, Value)));
+	//		UHorizontalBoxSlot* Slot = RewardBox->AddChildToHorizontalBox(Text);
+	//		Slot->SetPadding(FMargin(4.f, 0.f));
+	//	};
+	//	AddRewardEntry(TEXT("나무"), InWoodReward);
+	//	AddRewardEntry(TEXT("광석"), InStoneReward);
+	//	AddRewardEntry(TEXT("농작물"), InCropReward);
+	//	AddRewardEntry(TEXT("축산물"), InLivestockReward);
+	//	GainReward->SetContent(RewardBox);
+	//}
+
+	//// ConsumeCost Border — 유지비 + 퇴직 NPC 수 표시
+	//if (ConsumeCost)
+	//{
+	//	UHorizontalBox* CostBox = NewObject<UHorizontalBox>(this);
+
+	//	UTextBlock* MaintenanceText = NewObject<UTextBlock>(this);
+	//	MaintenanceText->SetText(FText::FromString(FString::Printf(TEXT("유지비: %d  "), InTotalMaintenance)));
+	//	UHorizontalBoxSlot* MSlot = CostBox->AddChildToHorizontalBox(MaintenanceText);
+	//	MSlot->SetPadding(FMargin(4.f, 0.f));
+
+	//	if (InRetiredNPCCount > 0)
+	//	{
+	//		UTextBlock* RetiredText = NewObject<UTextBlock>(this);
+	//		RetiredText->SetText(FText::FromString(FString::Printf(TEXT("퇴직 NPC: %d"), InRetiredNPCCount)));
+	//		UHorizontalBoxSlot* RSlot = CostBox->AddChildToHorizontalBox(RetiredText);
+	//		RSlot->SetPadding(FMargin(4.f, 0.f));
+	//	}
+
+	//	ConsumeCost->SetContent(CostBox);
+	//}
 }
 
 void UResultScreen::OnContinueClicked()
 {
-	// TODO: GameMode에 다음 Day 진행 요청 (예: StartDayPhase 호출)
-	// APotatoGameMode* GM = Cast<APotatoGameMode>(UGameplayStatics::GetGameMode(this));
-	// if (GM) GM->StartDayPhase();
+	if (APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetOwningPlayer()))
+	{
+		PC->SetUIMode(false);
+	}
+
 	RemoveFromParent();
 }
