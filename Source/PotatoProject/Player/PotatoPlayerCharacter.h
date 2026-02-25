@@ -10,6 +10,8 @@ class USpringArmComponent;
 class UPotatoWeaponComponent;
 class UAmmoPopupWidget;
 class UAnimalPopup;
+class UNPCPopup;
+class UPotatoAnimalManagementComp;
 
 struct FInputActionValue;
 
@@ -31,7 +33,8 @@ private:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UPotatoWeaponComponent* WeaponComponent;
-
+	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
+	//UPotatoAnimalManagementComp* AnimalManagementComp;
 
 protected:
 	// Camera Settings
@@ -75,6 +78,8 @@ protected:
 	UAmmoPopupWidget* AmmoPopupWidget;
 	UPROPERTY()
 	UAnimalPopup* AnimalPopupWidget;
+	//UPROPERTY()
+	//UNPCPopup* NPCPopupWidget;
 	
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
     TSubclassOf<UUserWidget> PauseMenuClass;
@@ -86,6 +91,8 @@ private:
 	float TargetCameraDistance;
 	
 	bool IsBuildingMode;
+
+	bool IsBarnMode;
 	// Functions
 	//bool IsAmmoProduct;
 public:
@@ -102,6 +109,14 @@ protected:
 	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+
+	UFUNCTION()
+	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
+		bool bFromSweep, const FHitResult& SweepResult);
+	UFUNCTION()
+	void OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 	// Input Handlers
 	UFUNCTION()
 	void Move(const FInputActionValue& Value);

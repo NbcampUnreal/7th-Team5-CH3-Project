@@ -26,17 +26,7 @@ void UAnimalPopup::NativeConstruct()
     if (SlaughterButton) SlaughterButton->OnClicked.AddDynamic(this, &UAnimalPopup::OnSlaughterButtonClicked);
     if (CloseButton)           CloseButton->OnClicked.AddDynamic(this, &UAnimalPopup::OnCloseButtonClicked);
 
-    // ScrollBox 안의 AnimalListItem 자식들에 델리게이트 바인딩
-    if (AnimalList)
-    {
-        for (int32 i = 0; i < AnimalList->GetChildrenCount(); ++i)
-        {
-            if (UAnimalListItem* Item = Cast<UAnimalListItem>(AnimalList->GetChildAt(i)))
-            {
-                Item->OnItemSelected.AddDynamic(this, &UAnimalPopup::OnAnimalItemSelected);
-            }
-        }
-    }
+    
 }
 
 void UAnimalPopup::NativeDestruct()
@@ -54,6 +44,20 @@ void UAnimalPopup::NativeDestruct()
 
 void UAnimalPopup::InitPopup(UPotatoAnimalManagementComp* InManagementComp)
 {
+    
+
+    // ScrollBox 안의 AnimalListItem 자식들에 델리게이트 바인딩
+    /*if (AnimalList)
+    {
+        AnimalList->ClearChildren();
+        for (int32 i = 0; i < AnimalList->GetChildrenCount(); ++i)
+        {
+            if (UAnimalListItem* Item = Cast<UAnimalListItem>(AnimalList->GetChildAt(i)))
+            {
+                Item->OnItemSelected.AddDynamic(this, &UAnimalPopup::OnAnimalItemSelected);
+            }
+        }
+    }*/
     ManagementComp = InManagementComp;
     SelectedListItem = nullptr;
 
@@ -170,16 +174,37 @@ void UAnimalPopup::RefreshAnimalList()
     if (!AnimalList || !ManagementComp) return;
 
     const TArray<TObjectPtr<APotatoAnimal>>& Animals = ManagementComp->AssignedAnimals;
-
-    for (int32 i = 0; i < AnimalList->GetChildrenCount(); ++i)
+    if (AnimalListItemClass)
     {
-        UAnimalListItem* Item = Cast<UAnimalListItem>(AnimalList->GetChildAt(i));
-        if (!Item) continue;
-
-        APotatoAnimal* Animal = Animals.IsValidIndex(i) ? Animals[i].Get() : nullptr;
-        Item->SetAnimalData(Animal);
-        Item->SetSelected(false);
+        //바인딩 먼저 해제
+        TArray<UWidget*> AllChildren = AnimalList->GetAllChildren();
+        for (UWidget* Child : AllChildren)
+        {
+            if (UAnimalListItem* Item = Cast<UAnimalListItem>(Child))
+            {
+                Item->OnItemSelected.RemoveDynamic(this, &UAnimalPopup::OnAnimalItemSelected);
+            }
+        }
+        AnimalList->ClearChildren();
+        //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("AnimalListItemClass"));
+        int Animalnum = ManagementComp->AssignedAnimals.Num();
+        for (int i = 0; i < Animalnum; i++)
+        {
+            //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("Animalnum: %d"), Animalnum));
+            UAnimalListItem* NewItem = CreateWidget<UAnimalListItem>(GetWorld(), AnimalListItemClass);
+            AnimalList->AddChild(NewItem);
+            APotatoAnimal* animal = ManagementComp->AssignedAnimals[i].Get();
+            if (animal)
+            {
+                NewItem->SetAnimalData(animal);
+                NewItem->OnItemSelected.AddDynamic(this, &UAnimalPopup::OnAnimalItemSelected);
+                NewItem->SetSelected(false);
+            }
+            
+        }
     }
+
+ 
 
     SelectedListItem = nullptr;
 }

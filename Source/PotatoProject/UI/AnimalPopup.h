@@ -118,6 +118,9 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UButton> SlaughterButton;    // 도축
 
+    //instance할 class 원본
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+    TSubclassOf<UAnimalListItem> AnimalListItemClass;
 private:
     // 이벤트 핸들러
     UFUNCTION()

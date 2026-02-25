@@ -65,14 +65,17 @@ void UAnimalListItem::ShowAnimalData(APotatoAnimal* InAnimal)
     switch (InAnimal->AnimalType)
     {
     case EAnimalType::Cow:
+        //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("소")));
         AnimalName = FText::FromString(TEXT("[소]"));
         Icon = CowIcon;
         break;
     case EAnimalType::Pig:
+        //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("돼지")));
         AnimalName = FText::FromString(TEXT("[돼지]"));
         Icon = PigIcon;
         break;
     case EAnimalType::Chicken:
+        //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, FString::Printf(TEXT("닭")));
         AnimalName = FText::FromString(TEXT("[닭]"));
         Icon = ChickenIcon;
         break;
