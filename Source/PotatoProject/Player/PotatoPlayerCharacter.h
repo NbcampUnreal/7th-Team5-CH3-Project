@@ -15,6 +15,8 @@ class UPotatoAnimalManagementComp;
 
 struct FInputActionValue;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPlayerHPChanged, float, CurrentHP, float, MaxHP);
+
 UCLASS()
 class POTATOPROJECT_API APotatoPlayerCharacter : public ACharacter
 {
@@ -63,9 +65,27 @@ protected:
 	//최대 체력
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float MaxHP = 100.0f;
+	
 	//현재 체력
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float CurrentHP = 100.0f;
+	
+	/** 피격 반응 쿨다운 (초) */
+	UPROPERTY(EditDefaultsOnly, Category = "Combat")
+	float HitReactionCooldown = 2.0f;
+	
+	// 피격 반응
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Audio")
+	TArray<USoundBase*> PainSounds;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Animation")
+	UAnimMontage* HitReactMontage;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Animation")
+	UAnimMontage* DeathMontage;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Camera")
+	TSubclassOf<UCameraShakeBase> HitCameraShakeClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	TSubclassOf<UUserWidget> AmmoPopupClass;
@@ -89,12 +109,14 @@ protected:
 
 private:
 	float TargetCameraDistance;
-	
 	bool IsBuildingMode;
 
 	bool IsBarnMode;
 	// Functions
+	float LastHitReactionTime = -10.0f;
 	//bool IsAmmoProduct;
+	
+	// Functions
 public:
 	APotatoPlayerCharacter();
 	
@@ -102,6 +124,11 @@ public:
 
 	float GetCurrentHP() const { return CurrentHP; }
 	float GetMaxHP() const { return MaxHP; }
+	
+	// Delegate Instances
+public:
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnPlayerHPChanged OnHPChanged;
 	
 protected:
 	virtual void BeginPlay() override;
@@ -117,6 +144,7 @@ protected:
 	UFUNCTION()
 	void OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
+		
 	// Input Handlers
 	UFUNCTION()
 	void Move(const FInputActionValue& Value);

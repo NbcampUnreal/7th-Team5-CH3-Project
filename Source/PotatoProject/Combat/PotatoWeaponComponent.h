@@ -135,6 +135,8 @@ private:
     
     /** 사운드, 파티클, 카메라 흔들림 및 반동 처리 */
     void PlayFireEffects();
+    
+    float GetRandomPitch(float SoundPitchRandomness);
 
     FVector GetMuzzleLocation() const;
     FVector GetCrosshairTargetLocation() const;

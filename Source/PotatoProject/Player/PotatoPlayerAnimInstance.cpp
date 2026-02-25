@@ -61,4 +61,7 @@ void UPotatoPlayerAnimInstance::NativeUpdateAnimation(float DeltaTime)
 		bIsInCombatStance = WeaponComponent->IsInCombatStance();
 	}
 	
+	// 6. Should Use Combat Upper Body
+	bShouldUseCombatUpperBody = bIsInCombatStance || bIsFalling;
+	
 }

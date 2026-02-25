@@ -61,6 +61,12 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 		GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &APotatoPlayerCharacter::OnOverlapBegin);
 		GetCapsuleComponent()->OnComponentEndOverlap.AddDynamic(this, &APotatoPlayerCharacter::OnOverlapEnd);
 	}
+
+	// 초기 HP 브로드캐스트
+	if (OnHPChanged.IsBound())
+	{
+		OnHPChanged.Broadcast(CurrentHP, MaxHP);
+	}
 }
 
 void APotatoPlayerCharacter::BeginPlay()
@@ -495,7 +501,7 @@ void APotatoPlayerCharacter::OnDeath()
 	{
 		GameMode->EndGame(false);
 	}
-	//캐릭터 죽는 애니메이션 실행필요
+	// TODO: 사망 애니메이션 추가
 }
 
 float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -505,15 +511,54 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
 	if (ActualDamage > 0.0f)
 	{
 		CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
-
-		///UE_LOG(LogTemp, Warning, TEXT("Remaining Health: %f"), CurrentHealth);
-
+		//UE_LOG(LogTemp, Warning, TEXT("Remaining Health: %f"), CurrentHealth);
+		
+		if (OnHPChanged.IsBound())
+		{
+			OnHPChanged.Broadcast(CurrentHP, MaxHP);
+		}
+		
 		if (CurrentHP <= 0.0f)
 		{
 			OnDeath();
 		}
+		
+		// 피격 사운드 및 애니메이션 재생
+		float CurrentTime = GetWorld()->GetTimeSeconds();
+		
+		if (CurrentTime - LastHitReactionTime >= HitReactionCooldown)
+		{
+			// 1. 사운드 재생
+			if (PainSounds.Num() > 0)
+			{
+				int32 RandomIndex = FMath::RandRange(0, PainSounds.Num() - 1);
+				USoundBase* SelectedSound = PainSounds[RandomIndex];
+				
+				if (SelectedSound)
+				{
+					UGameplayStatics::PlaySoundAtLocation(this, SelectedSound, GetActorLocation());
+				}
+			}
+			
+			// 2. 애니메이션 재생
+			if (HitReactMontage)
+			{
+				PlayAnimMontage(HitReactMontage);
+			}
+			
+			// 3. Camera Shake
+			if (HitCameraShakeClass)
+			{
+				APlayerController* PlayerController = Cast<APlayerController>(GetController());
+				if (PlayerController)
+				{
+					PlayerController->ClientStartCameraShake(HitCameraShakeClass);
+				}
+			}
+			
+			LastHitReactionTime = CurrentTime;
+		}
 	}
-
 	return ActualDamage;
 }
 

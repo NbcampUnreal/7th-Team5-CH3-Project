@@ -43,4 +43,7 @@ protected:
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Combat")
 	bool bIsInCombatStance;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Combat")
+	bool bShouldUseCombatUpperBody;
 };

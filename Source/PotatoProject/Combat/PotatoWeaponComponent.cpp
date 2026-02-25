@@ -142,14 +142,13 @@ void UPotatoWeaponComponent::EquipWeapon(int32 SlotIndex)
 		}
 	}
 
-	// 필요한 경우 이전 무기를 파괴
+	// 필요한 경우 이전 무기를 파괴하고 새로운 무기를 스폰
 	if (bIsNeedToSpawnNew && CurrentWeaponActor)
 	{
 		CurrentWeaponActor->Destroy();
 		CurrentWeaponActor = nullptr;
 	}
 
-	// 필요한 경우 새로운 무기를 스폰
 	if (bIsNeedToSpawnNew && NewData->WeaponActorClass)
 	{
 		SpawnWeapon(NewData->WeaponActorClass);
@@ -166,6 +165,26 @@ void UPotatoWeaponComponent::EquipWeapon(int32 SlotIndex)
 	
 	// 새 무기에 대한 탄약 브로드캐스트
 	BroadcastAmmoState();
+	
+	// 사운드 및 애니메이션 재생
+	if (CurrentWeaponData->EquipSound)
+	{
+		float RandomPitch = GetRandomPitch(CurrentWeaponData->EquipSoundPitchRandomness);
+		UGameplayStatics::PlaySoundAtLocation(this, CurrentWeaponData->EquipSound, GetMuzzleLocation(), 1.0f, RandomPitch);
+	}
+	
+	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+	if (!OwnerCharacter)
+	{
+		return;
+	}
+	
+	if (CurrentWeaponData->EquipMontage)
+	{
+		OwnerCharacter->PlayAnimMontage(CurrentWeaponData->EquipMontage);
+	}
+		
+	LastFireTime = GetWorld()->GetTimeSeconds(); // Equip 직후 타임스탬프 업데이트
 }
 
 bool UPotatoWeaponComponent::CanFire() const
@@ -275,19 +294,19 @@ void UPotatoWeaponComponent::StartReload()
 	// 이미 가득 차 있는지 확인
 	if (State.CurrentAmmo >= CurrentWeaponData->MaxAmmoSize)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("탄창이 꽉 찼습니다!"));
+		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("탄창이 꽉 찼습니다!"));
 		return;
 	}
 
 	// 예비 탄약이 있는지 확인
 	if (State.ReserveAmmo <= 0)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("예비 탄약이 없습니다!"));
+		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("예비 탄약이 없습니다!"));
 		return;
 	}
 
 	CurrentState = EWeaponState::Reloading;
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Reloading...(이동 속도 감소)"));
+	// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, TEXT("Reloading...(이동 속도 감소)"));
 	
 	ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
 	if (!OwnerCharacter)
@@ -312,10 +331,14 @@ void UPotatoWeaponComponent::StartReload()
 		false
 	);
 	
-	// 애니메이션 처리
 	if (CurrentWeaponData->ReloadMontage)
 	{
 		OwnerCharacter->PlayAnimMontage(CurrentWeaponData->ReloadMontage);
+	}
+	
+	if (CurrentWeaponData->ReloadSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, CurrentWeaponData->ReloadSound, GetMuzzleLocation());
 	}
 }
 
@@ -629,14 +652,8 @@ void UPotatoWeaponComponent::SpawnHitscanVisual(const FHitResult& HitResult, con
 	
 	if (CurrentWeaponData->ImpactSound)
 	{
-		float RandomPitch = 1.0f;
-		if (CurrentWeaponData->FireSoundPitchRandomness > 0.0f)
-		{
-			float MinPitch = 1.0f - CurrentWeaponData->FireSoundPitchRandomness;
-			float MaxPitch = 1.0f + CurrentWeaponData->FireSoundPitchRandomness;
-			RandomPitch = FMath::RandRange(MinPitch, MaxPitch);
-		}
-		UGameplayStatics::PlaySoundAtLocation(this, CurrentWeaponData->ImpactSound, HitResult.Location, RandomPitch);
+		float RandomPitch = GetRandomPitch(CurrentWeaponData->FireSoundPitchRandomness);
+		UGameplayStatics::PlaySoundAtLocation(this, CurrentWeaponData->ImpactSound, HitResult.Location, 1.0f, RandomPitch);
 	}
 }
 
@@ -650,13 +667,7 @@ void UPotatoWeaponComponent::PlayFireEffects()
 	// 1. 사운드 재생 (랜덤 피치 적용)
 	if (CurrentWeaponData->FireSound)
 	{
-		float RandomPitch = 1.0f;
-		if (CurrentWeaponData->FireSoundPitchRandomness > 0.0f)
-		{
-			float MinPitch = 1.0f - CurrentWeaponData->FireSoundPitchRandomness;
-			float MaxPitch = 1.0f + CurrentWeaponData->FireSoundPitchRandomness;
-			RandomPitch = FMath::RandRange(MinPitch, MaxPitch);
-		}
+		float RandomPitch = GetRandomPitch(CurrentWeaponData->FireSoundPitchRandomness);
 		UGameplayStatics::PlaySoundAtLocation(this, CurrentWeaponData->FireSound, GetMuzzleLocation(), 1.0f,
 		                                      RandomPitch);
 	}
@@ -711,4 +722,18 @@ void UPotatoWeaponComponent::PlayFireEffects()
 		OwnerCharacter->PlayAnimMontage(CurrentWeaponData->FireMontage);
 	}
 	
+}
+
+float UPotatoWeaponComponent::GetRandomPitch(float SoundPitchRandomness)
+{
+	float RandomPitch = 1.0f;
+	
+	if (SoundPitchRandomness > 0.0f)
+	{
+		float MinPitch = 1.0f - SoundPitchRandomness;
+		float MaxPitch = 1.0f + SoundPitchRandomness;
+		return RandomPitch = FMath::RandRange(MinPitch, MaxPitch);
+	}
+	
+	return RandomPitch;
 }

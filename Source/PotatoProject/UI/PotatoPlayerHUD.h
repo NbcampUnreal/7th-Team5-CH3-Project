@@ -191,6 +191,18 @@ protected:
 	
 	UPROPERTY(meta = (BindWidget))
 	class UPanelWidget* CrosshairContainer;
+	
+	// ================================================================
+	// Ammo Visual Settings
+	// ================================================================
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Ammo")
+	FLinearColor NormalAmmoColor = FLinearColor::White;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Ammo")
+	FLinearColor LowAmmoColor = FLinearColor(0.9f, 0.2f, 0.2f, 1.0f);
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Ammo")
+	float LowAmmoPercentage = 0.25f;
 
 	// ================================================================
 	// Public API
@@ -208,13 +220,16 @@ public:
 	// Event Handler & Internal
 	// ================================================================
 protected:
+	UFUNCTION()
+	void HandleHPChanged(float CurrentHP, float MaxHP);
+	
+	UFUNCTION()
+	void HandleResourceChanged(EResourceType Type, int32 NewValue);
+	
 	void HandleWeaponChanged(const UPotatoWeaponData* NewWeaponData);
 	void HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo);
 
 private:
-	/** 자원 텍스트 "현재량(+생산속도/분)" 갱신 */
-	void RefreshResourceText();
-
 	/** 시계 바늘 각도 갱신 */
 	void RefreshClockNeedle(float DeltaTime);
 
@@ -223,10 +238,7 @@ private:
 
 	/** 남은 시간 텍스트 갱신 */
 	void RefreshTimeText();
-
-	/** 플레이어 HP 텍스트 갱신 */
-	void RefreshHPText();
-
+	
 	/** Border의 BrushColor를 설정합니다. */
 	void SetBorderColor(UBorder* InBorder, const FLinearColor& InColor);
 
