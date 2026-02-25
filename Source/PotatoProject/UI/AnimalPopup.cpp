@@ -176,6 +176,15 @@ void UAnimalPopup::RefreshAnimalList()
     const TArray<TObjectPtr<APotatoAnimal>>& Animals = ManagementComp->AssignedAnimals;
     if (AnimalListItemClass)
     {
+        //바인딩 먼저 해제
+        TArray<UWidget*> AllChildren = AnimalList->GetAllChildren();
+        for (UWidget* Child : AllChildren)
+        {
+            if (UAnimalListItem* Item = Cast<UAnimalListItem>(Child))
+            {
+                Item->OnItemSelected.RemoveDynamic(this, &UAnimalPopup::OnAnimalItemSelected);
+            }
+        }
         AnimalList->ClearChildren();
         //GEngine->AddOnScreenDebugMessage(-1, 5.f, FColor::Green, TEXT("AnimalListItemClass"));
         int Animalnum = ManagementComp->AssignedAnimals.Num();
