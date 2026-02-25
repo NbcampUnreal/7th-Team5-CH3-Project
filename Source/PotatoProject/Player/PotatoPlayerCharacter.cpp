@@ -507,8 +507,43 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
 		{
 			OnDeath();
 		}
+		
+		// 피격 사운드 및 애니메이션 재생
+		float CurrentTime = GetWorld()->GetTimeSeconds();
+		
+		if (CurrentTime - LastHitReactionTime >= HitReactionCooldown)
+		{
+			// 1. 사운드 재생
+			if (PainSounds.Num() > 0)
+			{
+				int32 RandomIndex = FMath::RandRange(0, PainSounds.Num() - 1);
+				USoundBase* SelectedSound = PainSounds[RandomIndex];
+				
+				if (SelectedSound)
+				{
+					UGameplayStatics::PlaySoundAtLocation(this, SelectedSound, GetActorLocation());
+				}
+			}
+			
+			// 2. 애니메이션 재생
+			if (HitReactMontage)
+			{
+				PlayAnimMontage(HitReactMontage);
+			}
+			
+			// 3. Camera Shake
+			if (HitCameraShakeClass)
+			{
+				APlayerController* PlayerController = Cast<APlayerController>(GetController());
+				if (PlayerController)
+				{
+					PlayerController->ClientStartCameraShake(HitCameraShakeClass);
+				}
+			}
+			
+			LastHitReactionTime = CurrentTime;
+		}
 	}
-
 	return ActualDamage;
 }
 

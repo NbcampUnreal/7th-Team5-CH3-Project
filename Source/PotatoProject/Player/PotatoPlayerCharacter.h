@@ -62,9 +62,27 @@ protected:
 	//최대 체력
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float MaxHP = 100.0f;
+	
 	//현재 체력
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float CurrentHP = 100.0f;
+	
+	/** 피격 반응 쿨다운 (초) */
+	UPROPERTY(EditDefaultsOnly, Category = "Combat")
+	float HitReactionCooldown = 2.0f;
+	
+	// 피격 반응
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Audio")
+	TArray<USoundBase*> PainSounds;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Animation")
+	UAnimMontage* HitReactMontage;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Animation")
+	UAnimMontage* DeathMontage;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Camera")
+	TSubclassOf<UCameraShakeBase> HitCameraShakeClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	TSubclassOf<UUserWidget> AmmoPopupClass;
@@ -87,6 +105,7 @@ protected:
 private:
 	float TargetCameraDistance;
 	bool IsBuildingMode;
+	float LastHitReactionTime = -10.0f;
 	//bool IsAmmoProduct;
 	
 	// Functions
