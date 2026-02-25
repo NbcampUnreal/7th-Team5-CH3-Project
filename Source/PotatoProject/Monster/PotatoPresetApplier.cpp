@@ -1,8 +1,12 @@
 ﻿#include "PotatoPresetApplier.h"
+
+#include "Engine/AssetManager.h"
 #include "Engine/DataTable.h"
 #include "Engine/StreamableManager.h"
-#include "Engine/AssetManager.h"
 #include "PotatoMonsterAnimSet.h"
+#include "PotatoMonsterTypePresetRow.h"
+#include "PotatoMonsterRankPresetRow.h"
+#include "PotatoMonsterSpecialSkillPresetRow.h"
 #include "UObject/UnrealType.h"
 
 // forward
@@ -54,9 +58,12 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
     FName TypeDefaultSkillId = NAME_None;
 
     Out.BehaviorTree = DefaultBehaviorTree;
-
-    // AnimSet 기본값
     Out.AnimSet = nullptr;
+
+    //  Proc 기본값(가장 안전한 디폴트)
+    Out.bEnableOnAttackSpecialProc = true;
+    Out.OnAttackSpecialChance = 0.20f;
+    Out.OnAttackSpecialProcCooldown = 1.50f;
 
     // -------------------------
     // 1) TypePreset 로드
@@ -75,7 +82,6 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 
     if (TypeRow)
     {
-
         TypeBaseHP = TypeRow->BaseHP;
         TypeBaseAttackDamage = TypeRow->BaseAttackDamage;
         TypeBaseAttackRange = TypeRow->BaseAttackRange;
@@ -83,8 +89,7 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
         TypeIsRanged = TypeRow->bIsRanged;
         TypeDefaultSkillId = TypeRow->DefaultSpecialSkillId;
 
-        //  AnimSet 로드/주입 (Type 기준)
-        // TypeRow에 AnimSet(TSoftObjectPtr)이 추가되어 있다는 전제
+        // AnimSet 로드/주입 (Type 기준)
         Out.AnimSet = LoadAnimSetSync(TypeRow->AnimSet);
 
         // BT override
@@ -109,9 +114,7 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
     Out.AttackDamage = TypeBaseAttackDamage;
     Out.AttackRange = TypeBaseAttackRange;
 
-    //  원거리 여부 “정답”을 통일하는 정책
-    // - 추천: AnimSet이 있으면 AnimSet->bIsRanged가 정답
-    // - AnimSet이 없으면 기존 TypeRow의 bIsRanged로 fallback
+    // 원거리 여부 “정답” 통일
     Out.bIsRanged = (Out.AnimSet != nullptr) ? Out.AnimSet->bIsRanged : TypeIsRanged;
 
     // WaveBaseHP가 있으면 TypeBaseHP 대신 베이스로 사용(현재 정책 유지)
@@ -141,10 +144,13 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
         Out.AppliedMoveSpeedRatio = 0.6f;
         Out.MoveSpeed = PlayerReferenceSpeed * Out.AppliedMoveSpeedRatio * TypeMoveSpeedMul;
         Out.StructureDamageMultiplier = 1.f;
+
         Out.SpecialSkillId = NAME_None;
         Out.SpecialLogic = EMonsterSpecialLogic::None;
         Out.SpecialCooldown = 0.f;
         Out.SpecialDamageMultiplier = 1.f;
+
+        // Proc는 위 기본값 유지
         return Out;
     }
 
@@ -168,6 +174,25 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
     RankSpecialDmgMul = RankRow->SpecialDamageMultiplier;
 
     // -------------------------
+    //  Proc 주입 규칙
+    //   - 기본: Rank 값 적용
+    //   - 단, TypeRow가 있고 bOverrideOnAttackSpecialProc=true면 Type가 최우선
+    // -------------------------
+    Out.bEnableOnAttackSpecialProc = RankRow->bEnableOnAttackSpecialProc;
+    Out.OnAttackSpecialChance = RankRow->OnAttackSpecialChance;
+    Out.OnAttackSpecialProcCooldown = RankRow->OnAttackSpecialProcCooldown;
+
+    if (TypeRow && TypeRow->bOverrideOnAttackSpecialProc)
+    {
+        Out.bEnableOnAttackSpecialProc = TypeRow->bEnableOnAttackSpecialProc;
+        Out.OnAttackSpecialChance = TypeRow->OnAttackSpecialChance;
+        Out.OnAttackSpecialProcCooldown = TypeRow->OnAttackSpecialProcCooldown;
+    }
+
+    Out.OnAttackSpecialChance = FMath::Clamp(Out.OnAttackSpecialChance, 0.f, 1.f);
+    Out.OnAttackSpecialProcCooldown = FMath::Max(0.f, Out.OnAttackSpecialProcCooldown);
+
+    // -------------------------
     // 3) SpecialSkillId 결정 (Type > Rank)
     // -------------------------
     Out.SpecialSkillId =
@@ -180,7 +205,7 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
     Out.SpecialDamageMultiplier = 1.f;
 
     // -------------------------
-    // 4) SpecialSkillPreset 적용 (수치/로직)
+    // 4) SpecialSkillPreset 적용 (수치/로직) - 기존 정책 유지
     // -------------------------
     if (Out.SpecialSkillId != NAME_None && SpecialSkillPresetTable)
     {
@@ -207,7 +232,7 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
     return Out;
 }
 
-//  AnimSet 로드(동기)
+// AnimSet 로드(동기)
 static UPotatoMonsterAnimSet* LoadAnimSetSync(const TSoftObjectPtr<UPotatoMonsterAnimSet>& SoftPtr)
 {
     if (SoftPtr.IsNull()) return nullptr;

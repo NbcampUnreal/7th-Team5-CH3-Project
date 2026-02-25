@@ -136,6 +136,7 @@ APotatoMonster::APotatoMonster()
 	HPBarWidgetComp->SetWidgetSpace(EWidgetSpace::Screen);
 	HPBarWidgetComp->SetDrawAtDesiredSize(true);
 	HPBarWidgetComp->SetPivot(FVector2D(0.5f, 0.f));
+	SpecialSkillComp = CreateDefaultSubobject<USpecialSkillComponent>(TEXT("SpecialSkillComp"));
 }
 
 void APotatoMonster::BeginPlay()
@@ -202,7 +203,7 @@ void APotatoMonster::ApplyPresetsOnce()
 	{
 		CombatComp->InitFromStats(FinalStats);
 	}
-
+ 
 	SetAnimSet(FinalStats.AnimSet);
 
 	UpdateHPBarLocation();
@@ -227,7 +228,24 @@ float APotatoMonster::TakeDamage(
 
 	Health = FMath::Clamp(Health - Applied, 0.f, MaxHealth);
 	RefreshHPBar();
+	if (SpecialSkillComp && !SpecialSkill_OnHit.IsNone())
+	{
+		// 타겟 후보: DamageCauser가 있으면 그걸, 없으면 EventInstigator의 Pawn
+		AActor* Target = DamageCauser;
 
+		if (!Target && EventInstigator)
+		{
+			Target = EventInstigator->GetPawn();
+		}
+
+		// 그래도 없으면 현재 타겟(네 BB/멤버가 있다면)
+		// if (!Target) Target = CurrentTarget; // 있으면 사용
+
+		if (IsValid(Target))
+		{
+			SpecialSkillComp->TryStartSkill(SpecialSkill_OnHit, Target);
+		}
+	}
 	// DamageText (기존 유지)
 	if (DamageTextPool)
 	{
@@ -260,6 +278,8 @@ float APotatoMonster::TakeDamage(
 
 		DamageStackIndex++;
 	}
+	
+	
 
 	if (Health > 0.f)
 	{
@@ -483,12 +503,19 @@ void APotatoMonster::Die()
 {
 	if (bIsDead) return;
 	bIsDead = true;
-
+	if (SpecialSkillComp && !SpecialSkill_OnDeath.IsNone())
+	{
+		// 분열은 Target이 꼭 필요 없으면 Self로 넘겨도 됨
+		SpecialSkillComp->TryStartSkill(SpecialSkill_OnDeath, this);
+	}
 	UWorld* World = GetWorld();
 	const float Now = World ? World->TimeSeconds : 0.f;
 
 	const FVector DeathLoc = ComputeBoundsTopLocation(this, 0.2f, 0.f);
-
+	if (SpecialSkillComp)
+	{
+		SpecialSkillComp->CancelSkill(ESpecialSkillCancelReason::Forced);
+	}
 	// Death SFX
 	if (const UPotatoMonsterAnimSet* AS0 = GetAnimSet())
 	{

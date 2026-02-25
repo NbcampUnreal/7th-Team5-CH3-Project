@@ -101,7 +101,6 @@ void APotatoAIController::OnPossess(APawn* InPawn)
         {
             AActor* FirstTarget = (Monster->LanePoints.Num() > 0) ? Monster->GetCurrentLaneTarget() : nullptr;
             if (!IsValid(FirstTarget)) FirstTarget = Monster->WarehouseActor;
-
             if (IsValid(FirstTarget)) BB->SetValueAsObject(Key_MoveTarget, FirstTarget);
             else BB->ClearValue(Key_MoveTarget);
         }

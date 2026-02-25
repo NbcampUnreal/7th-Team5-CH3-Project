@@ -31,4 +31,14 @@ struct FPotatoMonsterRankPresetRow : public FTableRowBase
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Special")
     float SpecialDamageMultiplier = 1.0f;
+	
+	// OnAttack Proc (Rank default)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Special Proc")
+	bool bEnableOnAttackSpecialProc = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Special Proc", meta=(ClampMin="0.0", ClampMax="1.0"))
+	float OnAttackSpecialChance = 0.20f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Special Proc", meta=(ClampMin="0.0"))
+	float OnAttackSpecialProcCooldown = 1.50f;
 };

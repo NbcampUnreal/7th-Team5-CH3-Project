@@ -8,13 +8,17 @@
 #include "Engine/EngineTypes.h"
 #include "../Core/PotatoEnums.h"
 #include "PotatoMonsterFinalStats.h"
+#include "SpecialSkillComponent.h"
 #include "PotatoMonsterAnimSet.h"
 #include "PotatoMonster.generated.h"
+
+
 
 class UPotatoCombatComponent;
 class UPotatoMonsterAnimSet;
 class UHealthBar;
 class UCapsuleComponent;
+
 
 UCLASS()
 class POTATOPROJECT_API APotatoMonster : public ACharacter
@@ -261,7 +265,26 @@ public:
 
 	UPROPERTY(EditDefaultsOnly)
 	float DamageStackOffsetStep = 18.f;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpecialSkill")
+	FName SpecialSkill_OnCooldown = NAME_None;
 
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpecialSkill")
+	FName SpecialSkill_OnHit = NAME_None;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpecialSkill")
+	FName SpecialSkill_OnAttack = NAME_None;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpecialSkill")
+	FName SpecialSkill_OnDeath = NAME_None;
+
+	// 컴포넌트 레퍼런스
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpecialSkill")
+	TObjectPtr<USpecialSkillComponent> SpecialSkillComp = nullptr;
+
+	// 선택: BB에 넣고 싶으면 키 이름만 통일
+	UPROPERTY(EditDefaultsOnly, Category="SpecialSkill")
+	FName BBKey_bIsCastingSpecial = "bIsCastingSpecial";
 private:
 	// -------------------------
 	// Hit React Helpers

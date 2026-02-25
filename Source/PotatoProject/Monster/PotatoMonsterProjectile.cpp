@@ -1,43 +1,36 @@
 ﻿#include "PotatoMonsterProjectile.h"
 
-#include "Components/SphereComponent.h"
-#include "GameFramework/ProjectileMovementComponent.h"
+#include "NiagaraComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/DamageType.h"
 #include "PotatoMonster.h"
+#include "Engine/World.h"
 
 APotatoMonsterProjectile::APotatoMonsterProjectile()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
-	Collision = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
-	SetRootComponent(Collision);
+	Root = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	SetRootComponent(Root);
 
-	Collision->InitSphereRadius(8.f);
-	Collision->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
-	Collision->SetCollisionObjectType(ECC_WorldDynamic);
-	Collision->SetCollisionResponseToAllChannels(ECR_Block);
-	Collision->SetGenerateOverlapEvents(false);
-	Collision->SetNotifyRigidBodyCollision(true);
+	// 시각용 (선택사항)
+	VFX = CreateDefaultSubobject<UNiagaraComponent>(TEXT("VFX"));
+	VFX->SetupAttachment(Root);
 
-	Collision->OnComponentHit.AddDynamic(this, &APotatoMonsterProjectile::OnHit);
-
-	Movement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("Movement"));
-	Movement->UpdatedComponent = Collision;
-	Movement->InitialSpeed = 1800.f;
-	Movement->MaxSpeed = 1800.f;
-	Movement->bRotationFollowsVelocity = true;
-	Movement->bShouldBounce = false;
-	Movement->ProjectileGravityScale = 0.f;
-
-	InitialLifeSpan = 5.f;
+	Speed = 1800.f;
+	TraceRadius = 12.f;
 	LifeSeconds = 5.f;
+	TraceChannel = ECC_WorldDynamic;
+
+	Damage = 0.f;
+	bHitOnce = false;
 }
 
 void APotatoMonsterProjectile::BeginPlay()
 {
 	Super::BeginPlay();
-	InitialLifeSpan = LifeSeconds;
+
+	SetLifeSpan(LifeSeconds);
 }
 
 void APotatoMonsterProjectile::SetProjectileDamage_Implementation(float InDamage)
@@ -45,46 +38,98 @@ void APotatoMonsterProjectile::SetProjectileDamage_Implementation(float InDamage
 	Damage = InDamage;
 }
 
-bool APotatoMonsterProjectile::ShouldIgnore(AActor* OtherActor) const
+void APotatoMonsterProjectile::InitVelocity(const FVector& InDirection, float InSpeed)
 {
-	if (!OtherActor) return true;
-	if (OtherActor == this) return true;
-	if (OtherActor == GetOwner()) return true;
+	MoveDir = InDirection.GetSafeNormal();
+	if (!MoveDir.IsNearlyZero())
+	{
+		SetActorRotation(MoveDir.Rotation());
+	}
+	Speed = InSpeed > 0.f ? InSpeed : Speed;
+}
 
-	// 몬스터가 쏜 탄 -> 몬스터는 무시(아군 오사 방지)
-	if (OtherActor->IsA(APotatoMonster::StaticClass()))
+bool APotatoMonsterProjectile::ShouldIgnore(AActor* Other) const
+{
+	if (!Other) return true;
+	if (Other == this) return true;
+
+	if (Other == GetOwner()) return true;
+	if (Other == GetInstigator()) return true;
+
+	if (bIgnoreAllMonsters && Other->IsA(APotatoMonster::StaticClass()))
 		return true;
 
 	return false;
 }
 
-void APotatoMonsterProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
-	FVector NormalImpulse, const FHitResult& Hit)
+void APotatoMonsterProjectile::Tick(float DeltaSeconds)
 {
-	if (ShouldIgnore(OtherActor))
+	Super::Tick(DeltaSeconds);
+
+	if (bHitOnce) return;
+
+	const FVector Start = GetActorLocation();
+	const FVector End = Start + MoveDir * Speed * DeltaSeconds;
+
+	SetActorLocation(End, false);
+
+	DoSweep(Start, End);
+}
+
+void APotatoMonsterProjectile::DoSweep(const FVector& From, const FVector& To)
+{
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(MonsterTraceProjectile), false);
+	Params.AddIgnoredActor(this);
+	if (AActor* O = GetOwner()) Params.AddIgnoredActor(O);
+	if (APawn* I = GetInstigator()) Params.AddIgnoredActor(I);
+
+	TArray<FHitResult> Hits;
+	FCollisionShape Shape = FCollisionShape::MakeSphere(TraceRadius);
+
+	bool bAnyHit = World->SweepMultiByChannel(
+		Hits,
+		From,
+		To,
+		FQuat::Identity,
+		TraceChannel,
+		Shape,
+		Params
+	);
+
+	if (!bAnyHit) return;
+
+	Hits.Sort([](const FHitResult& A, const FHitResult& B)
 	{
+		return A.Distance < B.Distance;
+	});
+
+	for (const FHitResult& Hit : Hits)
+	{
+		AActor* Other = Hit.GetActor();
+		if (!Other) continue;
+		if (ShouldIgnore(Other)) continue;
+
+		if (!Other->CanBeDamaged())
+			continue;
+
+		bHitOnce = true;
+
+		AController* InstigatorController = nullptr;
+		if (APawn* InstPawn = GetInstigator())
+			InstigatorController = InstPawn->GetController();
+
+		UGameplayStatics::ApplyDamage(
+			Other,
+			Damage,
+			InstigatorController,
+			this,
+			UDamageType::StaticClass()
+		);
+
 		Destroy();
 		return;
 	}
-
-	UE_LOG(LogTemp, Warning, TEXT("[MonsterProjectile] Hit -> %s  Damage=%.2f"), *GetNameSafe(OtherActor), Damage);
-
-	AController* InstigatorController = nullptr;
-	if (APawn* InstPawn = Cast<APawn>(GetOwner()))
-	{
-		InstigatorController = InstPawn->GetController();
-	}
-
-	if (OtherActor->CanBeDamaged())
-	{
-		UGameplayStatics::ApplyDamage(
-			OtherActor,
-			Damage,
-			InstigatorController,
-			GetOwner(),
-			UDamageType::StaticClass()
-		);
-	}
-
-	Destroy();
 }

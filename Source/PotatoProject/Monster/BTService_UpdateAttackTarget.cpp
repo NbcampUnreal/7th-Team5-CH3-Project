@@ -1,13 +1,11 @@
 ﻿// ============================================================================
-// BTService_UpdateAttackTarget.cpp (FINAL + Player Targeting)
-// - 기존 Orthodox 로직 유지
-// - Player 타겟팅 추가:
-//    * (사거리 안) 블로커(파괴가능 구조물) 우선
-//    * 블로커가 사거리 안이 아니면, 플레이어가 사거리 안일 때 플레이어로 전환
-//    * 플레이어가 사거리 밖이면 기본(warehouse/blocker)
-//    * 몬스터가 Warehouse 근처면 플레이어 무시하고 Warehouse로 진행
-// - BT는 "플레이어 추격 MoveTo 브랜치"를 추가한다고 가정(선택지 B)
-//   => Service는 플레이어 타겟일 때 MoveGoalLocation을 세팅해준다.
+// BTService_UpdateAttackTarget.cpp (STABILIZED + Player Targeting)
+// - 기존 로직 유지
+// - 크래시 방어 강화:
+//    * Target/Component IsValid + IsRegistered 체크
+//    * GetClosestPointOnCollision 호출 가드
+//    * ActorBounds fallback 안전화
+//    * Range <= 0 방어
 // ============================================================================
 
 #include "BTService_UpdateAttackTarget.h"
@@ -53,23 +51,35 @@ static float DistancePointToSegment2D(const FVector& P3, const FVector& A3, cons
 	return FVector::Dist(Closest, P);
 }
 
+//  안정화: Target/Root/Component가 Destroy/Unregister 타이밍일 수 있음
 static UPrimitiveComponent* FindFirstCollisionPrimitive(AActor* Target)
 {
-	if (!Target) return nullptr;
+	if (!IsValid(Target)) return nullptr;
 
-	if (UPrimitiveComponent* RootPrim = Cast<UPrimitiveComponent>(Target->GetRootComponent()))
+	USceneComponent* Root = Target->GetRootComponent();
+	if (!IsValid(Root)) return nullptr;
+
+	if (UPrimitiveComponent* RootPrim = Cast<UPrimitiveComponent>(Root))
 	{
-		if (RootPrim->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
+		if (IsValid(RootPrim) &&
+			RootPrim->IsRegistered() &&
+			RootPrim->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
+		{
 			return RootPrim;
+		}
 	}
 
-	TArray<UPrimitiveComponent*> Prims;
-	Target->GetComponents<UPrimitiveComponent>(Prims);
+	TInlineComponentArray<UPrimitiveComponent*> Prims;
+	Target->GetComponents(Prims);
+
 	for (UPrimitiveComponent* C : Prims)
 	{
-		if (C && C->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
-			return C;
+		if (!IsValid(C)) continue;
+		if (!C->IsRegistered()) continue;
+		if (C->GetCollisionEnabled() == ECollisionEnabled::NoCollision) continue;
+		return C;
 	}
+
 	return nullptr;
 }
 
@@ -84,21 +94,27 @@ static FVector ClosestPointOnAABB2D(const FVector& Point, const FVector& Origin,
 
 static bool GetClosestPoint2DOnTarget(AActor* Target, const FVector& From, FVector& OutClosest2D)
 {
-	if (!Target) return false;
+	if (!IsValid(Target)) return false;
 
+	//  Prim 기반 closest (가능하면)
 	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
 	{
-		FVector Closest3D = FVector::ZeroVector;
-		const float Dist = Prim->GetClosestPointOnCollision(From, Closest3D);
-		if (Dist >= 0.f)
+		// GetClosestPointOnCollision은 BodyInstance/Physics 상태에 따라 위험할 수 있어 추가 가드
+		if (IsValid(Prim) && Prim->IsRegistered())
 		{
-			OutClosest2D = Closest3D;
-			OutClosest2D.Z = 0.f;
-			return true;
+			FVector Closest3D = FVector::ZeroVector;
+			const float Dist = Prim->GetClosestPointOnCollision(From, Closest3D);
+			if (Dist >= 0.f)
+			{
+				OutClosest2D = Closest3D;
+				OutClosest2D.Z = 0.f;
+				return true;
+			}
 		}
 	}
 
-	FVector Origin, Extent;
+	//  fallback: Bounds
+	FVector Origin(0), Extent(0);
 	Target->GetActorBounds(true, Origin, Extent);
 
 	OutClosest2D = ClosestPointOnAABB2D(From, Origin, Extent);
@@ -108,24 +124,27 @@ static bool GetClosestPoint2DOnTarget(AActor* Target, const FVector& From, FVect
 
 static bool ComputeApproachPoint2D(APotatoMonster* M, AActor* Target, float ExtraOffset, FVector& OutPoint)
 {
-	if (!M || !Target) return false;
+	if (!M || !IsValid(Target)) return false;
 
 	const FVector From = M->GetActorLocation();
 
 	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
 	{
-		FVector Closest = FVector::ZeroVector;
-		const float Dist = Prim->GetClosestPointOnCollision(From, Closest);
-		if (Dist >= 0.f)
+		if (IsValid(Prim) && Prim->IsRegistered())
 		{
-			const FVector Dir = (From - Closest).GetSafeNormal2D();
-			OutPoint = Closest + Dir * ExtraOffset;
-			OutPoint.Z = From.Z;
-			return true;
+			FVector Closest = FVector::ZeroVector;
+			const float Dist = Prim->GetClosestPointOnCollision(From, Closest);
+			if (Dist >= 0.f)
+			{
+				const FVector Dir = (From - Closest).GetSafeNormal2D();
+				OutPoint = Closest + Dir * ExtraOffset;
+				OutPoint.Z = From.Z;
+				return true;
+			}
 		}
 	}
 
-	FVector Origin, Extent;
+	FVector Origin(0), Extent(0);
 	Target->GetActorBounds(true, Origin, Extent);
 
 	const FVector Closest = ClosestPointOnAABB2D(From, Origin, Extent);
@@ -138,6 +157,8 @@ static bool ComputeApproachPoint2D(APotatoMonster* M, AActor* Target, float Extr
 
 static bool IsAliveDestructibleStructure(AActor* A)
 {
+	if (!IsValid(A)) return false;
+
 	if (APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(A))
 	{
 		if (S->StructureData && S->StructureData->bIsDestructible)
@@ -195,7 +216,9 @@ uint16 UBTService_UpdateAttackTarget::GetInstanceMemorySize() const
 
 bool UBTService_UpdateAttackTarget::ComputeInAttackRange(APotatoMonster* M, AActor* Target, float Range) const
 {
-	if (!M || !Target) return false;
+	//  핵심: nullptr 말고 IsValid + Range 방어
+	if (!M || !IsValid(Target)) return false;
+	if (Range <= 0.f) return false;
 
 	FVector From = M->GetActorLocation();
 	float CapsuleR = 34.f;
@@ -210,15 +233,18 @@ bool UBTService_UpdateAttackTarget::ComputeInAttackRange(APotatoMonster* M, AAct
 
 	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
 	{
-		FVector ClosestPoint = FVector::ZeroVector;
-		const float Dist3D = Prim->GetClosestPointOnCollision(From, ClosestPoint);
-		if (Dist3D >= 0.f)
+		if (IsValid(Prim) && Prim->IsRegistered())
 		{
-			return FVector::DistSquared2D(From, ClosestPoint) <= RangeSq;
+			FVector ClosestPoint = FVector::ZeroVector;
+			const float Dist3D = Prim->GetClosestPointOnCollision(From, ClosestPoint);
+			if (Dist3D >= 0.f)
+			{
+				return FVector::DistSquared2D(From, ClosestPoint) <= RangeSq;
+			}
 		}
 	}
 
-	FVector Origin, Extent;
+	FVector Origin(0), Extent(0);
 	Target->GetActorBounds(true, Origin, Extent);
 
 	const FVector Closest = ClosestPointOnAABB2D(From, Origin, Extent);
@@ -317,7 +343,7 @@ bool UBTService_UpdateAttackTarget::ShouldKeepCurrentStructureTarget(
 	AActor* CurrentTarget,
 	const FVector& CorridorGoalLoc) const
 {
-	if (!M || !CurrentTarget) return false;
+	if (!M || !IsValid(CurrentTarget)) return false;
 
 	APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(CurrentTarget);
 	if (!S || !S->StructureData) return false;
@@ -401,7 +427,7 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	}
 
 	// =========================================================
-	// 2) Corridor Goal 결정 (레인 모드면 MoveTarget, 아니면 Warehouse)
+	// 2) Corridor Goal 결정
 	// =========================================================
 	const bool bIsLaneMode = BB->GetValueAsBool(TEXT("bIsLaneMode"));
 
@@ -432,17 +458,10 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	APawn* PlayerPawn = GetPlayerPawnSafe(M->GetWorld());
 	const bool bHasPlayer = IsValidAttackablePlayer(M, PlayerPawn);
 
-	// Blackboard에 PlayerActor 항상 세팅 (없으면 Clear)
 	if (PlayerActorKey.SelectedKeyName != NAME_None)
 	{
-		if (bHasPlayer)
-		{
-			BB->SetValueAsObject(PlayerActorKey.SelectedKeyName, PlayerPawn);
-		}
-		else
-		{
-			BB->ClearValue(PlayerActorKey.SelectedKeyName);
-		}
+		if (bHasPlayer) BB->SetValueAsObject(PlayerActorKey.SelectedKeyName, PlayerPawn);
+		else BB->ClearValue(PlayerActorKey.SelectedKeyName);
 	}
 
 	const float DistToWarehouse2D =
@@ -450,7 +469,6 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 
 	const bool bIgnorePlayerNearWarehouse =
 		IsValid(Warehouse) && (DistToWarehouse2D <= IgnorePlayerWhenNearWarehouseDist);
-
 
 	// =========================================================
 	// 4) 공격 중이면 타겟 재선정 잠금
@@ -463,14 +481,14 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	if (bIsAttacking && IsValid(Current))
 	{
 		const bool bCurrentIsPlayer = (bHasPlayer && Current == PlayerPawn);
-		if (bCurrentIsPlayer || Current == Warehouse || IsAliveDestructibleStructure(Current))
+		if (bCurrentIsPlayer || (IsValid(Warehouse) && Current == Warehouse) || IsAliveDestructibleStructure(Current))
 		{
 			Target = Current;
 		}
 	}
 
 	// =========================================================
-	// 5) 타겟 선정: 기본 Warehouse, corridor 상 blocker 있으면 blocker 우선
+	// 5) 타겟 선정
 	// =========================================================
 	if (!IsValid(Target))
 	{
@@ -502,10 +520,7 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	}
 
 	// =========================================================
-	// 6) 플레이어 override (규칙)
-	//  - (사거리 안) 블로커가 있으면 블로커 우선
-	//  - 블로커가 (사거리 안)이 아니면, 플레이어가 사거리 안일 때 플레이어로 전환
-	//  - Warehouse 근처면 플레이어 무시
+	// 6) 플레이어 override
 	// =========================================================
 	const bool bTargetIsWarehouse = (IsValid(Target) && IsValid(Warehouse) && Target == Warehouse);
 	const bool bTargetIsBlocker = (IsValid(Target) && Target != Warehouse && IsAliveDestructibleStructure(Target));
@@ -513,14 +528,12 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	bool bTargetInRange = IsValid(Target) ? ComputeInAttackRange(M, Target, Range) : false;
 	const bool bBlockerInRange = (bTargetIsBlocker && bTargetInRange);
 
-	// 플레이어 사거리 판정(무시 조건이면 false)
 	const float PlayerCheckRange = Range + PlayerSenseExtraRange;
 	const bool bPlayerInRange =
 		(!bIgnorePlayerNearWarehouse && bHasPlayer)
 		? ComputeInAttackRange(M, PlayerPawn, PlayerCheckRange)
 		: false;
 
-	// ✅ 장애물이 사거리 안이면 플레이어 무시
 	if (!bBlockerInRange && bPlayerInRange)
 	{
 		Target = PlayerPawn;
@@ -552,13 +565,6 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 
 	// =========================================================
 	// 8) MoveGoalLocation 운영 규칙
-	//
-	//  - Target 유효 X      : Clear
-	//  - 사거리 안          : StopMovement + 현재 위치로 고정
-	//  - 사거리 밖          :
-	//      * 플레이어 타겟  : 항상 ApproachPoint 세팅 (BT의 추격 브랜치가 사용)
-	//      * 레인모드 + 타겟이 Warehouse(기본) => Clear (레인 MoveTo 우선)
-	//      * blocker 타겟 or (레인모드가 아님) => ApproachPoint 세팅
 	// =========================================================
 	if (!IsValid(Target))
 	{
@@ -574,7 +580,7 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 		const float CapsuleR = GetMonsterCapsuleRadiusSafe(M, 34.f);
 		const float Extra = CapsuleR + ApproachExtraOffset;
 
-		// ✅ 플레이어 추격용
+		//  플레이어 추격용
 		if (bTargetIsPlayer)
 		{
 			FVector Approach;
@@ -606,6 +612,5 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 		}
 	}
 
-	// (선택) Object Goal은 디버그/표시용
 	BB->SetValueAsObject(MoveGoalKeyName, Target);
 }

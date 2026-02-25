@@ -85,6 +85,38 @@ enum class EMonsterSpecialShape : uint8
 };
 
 UENUM(BlueprintType)
+enum class EMonsterSpecialExecution : uint8
+{
+	None UMETA(DisplayName="None"),
+
+	// “어떻게 실행되는가” 기준
+	InstantAoE UMETA(DisplayName="InstantAoE"),     // 즉시 AoE 판정(근접/장판 포함)
+	Projectile UMETA(DisplayName="Projectile"),     // 투사체 스폰
+	ContactDOT UMETA(DisplayName="ContactDOT"),     // 접촉/오라형 DOT 적용(스킬 실행 시점 적용용)
+	SelfBuff UMETA(DisplayName="SelfBuff"),         // 자기 버프(껍질 등)
+	SummonSplit UMETA(DisplayName="SummonSplit"),   // 분열/소환
+	Movement UMETA(DisplayName="Movement"),         // 돌진/텔레포트 같은 이동 기믹
+};
+
+UENUM(BlueprintType)
+enum class EMonsterSpecialTargetType : uint8
+{
+	CurrentTarget UMETA(DisplayName="CurrentTarget"),
+	PlayerOnly UMETA(DisplayName="PlayerOnly"),
+	StructureOnly UMETA(DisplayName="StructureOnly"),
+	Self UMETA(DisplayName="Self"),
+	Location UMETA(DisplayName="Location"),
+};
+
+UENUM(BlueprintType)
+enum class EMonsterDotStackPolicy : uint8
+{
+	RefreshDuration UMETA(DisplayName="RefreshDuration"),
+	OverrideValues UMETA(DisplayName="OverrideValues"),
+	Stack UMETA(DisplayName="Stack"),
+};
+
+UENUM(BlueprintType)
 enum class EBuildingType : uint8
 {
 	Farm UMETA(DisplayName = "밭"),

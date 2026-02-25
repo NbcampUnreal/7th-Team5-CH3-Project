@@ -5,39 +5,56 @@
 #include "PotatoProjectileDamageable.h"
 #include "PotatoMonsterProjectile.generated.h"
 
-class USphereComponent;
-class UProjectileMovementComponent;
+class UNiagaraComponent;
 
 UCLASS()
-class POTATOPROJECT_API APotatoMonsterProjectile : public AActor, public IPotatoProjectileDamageable
+class POTATOPROJECT_API APotatoMonsterProjectile
+	: public AActor
+	, public IPotatoProjectileDamageable
 {
 	GENERATED_BODY()
 
 public:
 	APotatoMonsterProjectile();
 
-	// 인터페이스 구현
+	// 데미지 주입 (CombatComponent에서 호출)
 	virtual void SetProjectileDamage_Implementation(float InDamage) override;
+
+	// 스폰 직후 방향/속도 세팅
+	void InitVelocity(const FVector& InDirection, float InSpeed);
 
 protected:
 	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaSeconds) override;
 
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<USphereComponent> Collision = nullptr;
+private:
+	bool ShouldIgnore(AActor* Other) const;
+	void DoSweep(const FVector& From, const FVector& To);
 
-	UPROPERTY(VisibleAnywhere, Category = "Components")
-	TObjectPtr<UProjectileMovementComponent> Movement = nullptr;
+private:
 
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile")
-	float Damage = 10.f;
+	UPROPERTY(VisibleAnywhere)
+	USceneComponent* Root;
 
-	UPROPERTY(EditDefaultsOnly, Category = "Projectile")
+	UPROPERTY(VisibleAnywhere)
+	UNiagaraComponent* VFX;
+
+	UPROPERTY(EditAnywhere, Category="Projectile")
+	float Speed = 1800.f;
+
+	UPROPERTY(EditAnywhere, Category="Projectile")
+	float TraceRadius = 12.f;
+
+	UPROPERTY(EditAnywhere, Category="Projectile")
 	float LifeSeconds = 5.f;
 
-	UFUNCTION()
-	void OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
-		FVector NormalImpulse, const FHitResult& Hit);
+	UPROPERTY(EditAnywhere, Category="Projectile")
+	TEnumAsByte<ECollisionChannel> TraceChannel = ECC_WorldDynamic;
 
-	// 팀/아군 무시(최소)
-	bool ShouldIgnore(AActor* OtherActor) const;
+	UPROPERTY(EditAnywhere, Category="Projectile")
+	bool bIgnoreAllMonsters = true;
+
+	float Damage = 0.f;
+	FVector MoveDir = FVector::ForwardVector;
+	bool bHitOnce = false;
 };

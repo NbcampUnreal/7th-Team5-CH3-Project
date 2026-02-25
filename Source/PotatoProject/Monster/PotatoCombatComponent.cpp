@@ -1,15 +1,10 @@
-﻿// ============================================================================
-// PotatoCombatComponent.cpp (UE5.6) - AnimSet 기반 + SFX(거리게이트/버짓/쿨다운) 포함 완성본
-// ============================================================================
-
-#include "PotatoCombatComponent.h"
+﻿#include "PotatoCombatComponent.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/Pawn.h"
 #include "PotatoMonster.h"
 #include "Animation/AnimInstance.h"
 #include "GameFramework/PlayerController.h"
-#include "GameFramework/Pawn.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Engine/TargetPoint.h"
 #include "Building/PotatoPlaceableStructure.h"
@@ -17,18 +12,20 @@
 #include "GameFramework/DamageType.h"
 
 #include "PotatoProjectileDamageable.h"
+#include "PotatoMonsterProjectile.h"
 
 // AnimSet
 #include "PotatoMonsterAnimSet.h"
 
 #include "FXUtils/PotatoFXUtils.h"
 
+// SpecialSkill
+#include "Monster/SpecialSkillComponent.h"
+
 static const FName TAG_LanePoint(TEXT("LanePoint"));
 
 // ------------------------------------------------------------
 // Helper: Target의 충돌 Bounds (Origin/Extent) 가져오기
-// - true: collision이 있는 컴포넌트 기준(가능한 경우)
-// - 실패/빈값 대비 fallback 포함
 // ------------------------------------------------------------
 static void GetTargetBoundsSafe(AActor* Target, FVector& OutOrigin, FVector& OutExtent)
 {
@@ -55,6 +52,7 @@ UPotatoCombatComponent::UPotatoCombatComponent()
 void UPotatoCombatComponent::InitFromStats(const FPotatoMonsterFinalStats& InStats)
 {
 	Stats = InStats;
+	NextOnAttackSpecialProcTime = 0.0;
 }
 
 const UPotatoMonsterAnimSet* UPotatoCombatComponent::GetAnimSet() const
@@ -63,7 +61,7 @@ const UPotatoMonsterAnimSet* UPotatoCombatComponent::GetAnimSet() const
 }
 
 // ------------------------------------------------------------
-// 최종 허용 타겟 판정 (원본 유지)
+// 최종 허용 타겟 판정
 // ------------------------------------------------------------
 static bool IsAllowedAttackTarget(const APotatoMonster* Monster, const AActor* Target)
 {
@@ -95,8 +93,44 @@ static bool IsAllowedAttackTarget(const APotatoMonster* Monster, const AActor* T
 
 	return false;
 }
+
 // ------------------------------------------------------------
-// 몽타주 종료 시 공격상태 해제 보장 (AnimSet 기반)
+// Proc: OnAttack Special
+// ------------------------------------------------------------
+void UPotatoCombatComponent::TryProcOnAttackSpecial(APotatoMonster* Monster, AActor* Target, double Now)
+{
+	if (!Monster || !Target) return;
+
+	if (!Stats.bEnableOnAttackSpecialProc) return;
+
+	const float Chance = FMath::Clamp(Stats.OnAttackSpecialChance, 0.f, 1.f);
+	if (Chance <= 0.f) return;
+
+	if (Now < NextOnAttackSpecialProcTime) return;
+
+	// 확률 판정
+	if (FMath::FRand() > Chance) return;
+
+	if (!Monster->SpecialSkillComp) return;
+
+	const FName SkillId = Monster->SpecialSkill_OnAttack;
+	if (SkillId.IsNone()) return;
+
+	// Ready 프리체크(불필요 호출 억제)
+	if (!Monster->SpecialSkillComp->CanTryStartSkill(SkillId))
+	{
+		return;
+	}
+
+	const bool bStarted = Monster->SpecialSkillComp->TryStartSkill(SkillId, Target);
+	if (bStarted)
+	{
+		NextOnAttackSpecialProcTime = Now + (double)FMath::Max(0.f, Stats.OnAttackSpecialProcCooldown);
+	}
+}
+
+// ------------------------------------------------------------
+// 몽타주 종료 시 공격상태 해제 보장
 // ------------------------------------------------------------
 void UPotatoCombatComponent::OnBasicAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
@@ -130,7 +164,7 @@ bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 		return false;
 	}
 
-	// (A) 공격 시작 직전 최종 방어선
+	// 공격 시작 직전 최종 방어선
 	if (!IsAllowedAttackTarget(Monster, Target))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Combat] Reject target at Request: %s (%s) LanePoint=%d"),
@@ -173,11 +207,14 @@ bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 		return false;
 	}
 
-	// 여기서부터 공격 상태 ON
+	// 공격 상태 ON
 	PendingBasicTarget = Target;
 	bIsAttacking = true;
 
-	//  AttackStart SFX
+	// ✅ OnAttack 스페셜: Proc 성공 시에만 TryStart
+	TryProcOnAttackSpecial(Monster, Target, Now);
+
+	// AttackStart SFX
 	if (Now - LastAttackStartSFXTime >= AttackStartSFXCooldown)
 	{
 		const FVector Loc = GetOwner()->GetActorLocation();
@@ -200,7 +237,7 @@ bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 	EndDelegate.BindUObject(this, &UPotatoCombatComponent::OnBasicAttackMontageEnded);
 	AnimInst->Montage_SetEndDelegate(EndDelegate, AnimSet->BasicAttackMontage);
 
-	// 공격 간격: 데이터화된 공속 우선
+	// 공격 간격
 	const float BaseInterval = FMath::Max(0.01f, AnimSet->BasicAttackInterval);
 	const float Interval = FMath::Max(0.05f, BaseInterval * AttackIntervalScale + AttackIntervalExtra);
 	NextAttackTime = Now + (double)Interval;
@@ -215,6 +252,7 @@ void UPotatoCombatComponent::ApplyPendingBasicDamage()
 {
 	UE_LOG(LogTemp, Warning, TEXT("[Combat] ApplyPendingBasicDamage() CALLED"));
 	bQueuedApplyDamageNextTick = false;
+
 	APotatoMonster* Monster = Cast<APotatoMonster>(GetOwner());
 	AActor* Target = PendingBasicTarget.Get();
 
@@ -238,7 +276,7 @@ void UPotatoCombatComponent::ApplyPendingBasicDamage()
 		return;
 	}
 
-	// (B) Notify 시점 재검증
+	// Notify 시점 재검증
 	if (!IsAllowedAttackTarget(Monster, Target))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Combat] Pending target invalid at Apply -> cancel: %s (%s) LanePoint=%d"),
@@ -269,7 +307,7 @@ void UPotatoCombatComponent::ApplyPendingBasicDamage()
 
 	const double Now = GetWorld()->GetTimeSeconds();
 
-	//  AttackHit SFX (근접 타격)
+	// AttackHit SFX (근접 타격)
 	if (Now - LastAttackHitSFXTime >= AttackHitSFXCooldown)
 	{
 		const FVector Loc = Target->GetActorLocation();
@@ -293,13 +331,11 @@ void UPotatoCombatComponent::ApplyPendingBasicDamage()
 	EndBasicAttack();
 }
 
-// ------------------------------------------------------------
-// 원거리 발사 Notify용
-// ------------------------------------------------------------
 void UPotatoCombatComponent::FirePendingRangedProjectile()
 {
 	UE_LOG(LogTemp, Warning, TEXT("[Combat] FirePendingRangedProjectile() CALLED"));
 	bQueuedFireProjectileNextTick = false;
+
 	APotatoMonster* Monster = Cast<APotatoMonster>(GetOwner());
 	AActor* Target = PendingBasicTarget.Get();
 
@@ -324,7 +360,6 @@ void UPotatoCombatComponent::FirePendingRangedProjectile()
 		return;
 	}
 
-	// 사거리 밖이면 종료
 	if (!IsTargetInRange(Target))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Combat] Out of range at FireProjectile -> EndBasicAttack. Target=%s"), *GetNameSafe(Target));
@@ -334,7 +369,7 @@ void UPotatoCombatComponent::FirePendingRangedProjectile()
 
 	const double Now = GetWorld()->GetTimeSeconds();
 
-	//  ProjectileFire SFX (머즐 위치 우선)
+	// ProjectileFire SFX (머즐 위치 우선)
 	if (Now - LastProjectileFireSFXTime >= ProjectileFireSFXCooldown)
 	{
 		FVector MuzzleLoc;
@@ -358,7 +393,6 @@ void UPotatoCombatComponent::FirePendingRangedProjectile()
 
 	SpawnProjectileToTarget(Target);
 
-	// 원거리도 1회 공격 정책이면 종료
 	EndBasicAttack();
 }
 
@@ -368,9 +402,6 @@ void UPotatoCombatComponent::EndBasicAttack()
 	PendingBasicTarget.Reset();
 }
 
-// ------------------------------------------------------------
-// 사거리 체크 개선: Bounds 기반(충돌 기준) 표면 거리 근사
-// ------------------------------------------------------------
 bool UPotatoCombatComponent::IsTargetInRange(AActor* Target) const
 {
 	if (!Target || !GetOwner()) return false;
@@ -383,15 +414,11 @@ bool UPotatoCombatComponent::IsTargetInRange(AActor* Target) const
 
 	const float CenterDist2D = FVector::Dist2D(From, Origin);
 	const float Radius2D = FVector(Extent.X, Extent.Y, 0.f).Size();
-
 	const float SurfaceDist2D = FMath::Max(0.f, CenterDist2D - Radius2D);
 
 	return SurfaceDist2D <= Range;
 }
 
-// ------------------------------------------------------------
-// 구조물 판정(원본 유지)
-// ------------------------------------------------------------
 bool UPotatoCombatComponent::IsStructureTarget(AActor* Target) const
 {
 	if (const APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(Target))
@@ -412,7 +439,6 @@ void UPotatoCombatComponent::ApplyBasicDamage(AActor* Target) const
 	}
 
 	float Damage = Stats.AttackDamage;
-
 	if (IsStructureTarget(Target))
 	{
 		Damage *= Stats.StructureDamageMultiplier;
@@ -432,9 +458,6 @@ void UPotatoCombatComponent::ApplyBasicDamage(AActor* Target) const
 	);
 }
 
-// ------------------------------------------------------------
-// Muzzle 위치 계산 + Projectile 스폰
-// ------------------------------------------------------------
 bool UPotatoCombatComponent::GetMuzzleTransform(FVector& OutLoc, FRotator& OutRot) const
 {
 	const UPotatoMonsterAnimSet* AnimSet = GetAnimSet();
@@ -480,7 +503,6 @@ void UPotatoCombatComponent::SpawnProjectileToTarget(AActor* Target) const
 		return;
 	}
 
-	// AimPoint: Target pivot 대신 collision bounds Origin으로
 	FVector AimPoint;
 	{
 		FVector Origin, Extent;
@@ -488,35 +510,55 @@ void UPotatoCombatComponent::SpawnProjectileToTarget(AActor* Target) const
 		AimPoint = Origin;
 	}
 
-	const FVector AimDir = (AimPoint - MuzzleLoc).GetSafeNormal();
+	FVector AimDir = (AimPoint - MuzzleLoc).GetSafeNormal();
+	if (AimDir.IsNearlyZero())
+	{
+		AimDir = GetOwner() ? GetOwner()->GetActorForwardVector() : FVector::ForwardVector;
+	}
+
 	const FRotator SpawnRot = AimDir.Rotation();
+
+	const float SpawnForwardOffset = 40.f;
+	const FVector SpawnLoc = MuzzleLoc + AimDir * SpawnForwardOffset;
 
 	FActorSpawnParameters Params;
 	Params.Owner = GetOwner();
 	Params.Instigator = Cast<APawn>(GetOwner());
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 
-	AActor* Proj = GetWorld()->SpawnActor<AActor>(AnimSet->ProjectileClass, MuzzleLoc, SpawnRot, Params);
+	AActor* Proj = GetWorld()->SpawnActor<AActor>(AnimSet->ProjectileClass, SpawnLoc, SpawnRot, Params);
 	if (!Proj)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Combat] SpawnActor failed. Class=%s"), *GetNameSafe(AnimSet->ProjectileClass.Get()));
 		return;
 	}
 
-	// 데미지 주입(있으면)
 	if (Proj->GetClass()->ImplementsInterface(UPotatoProjectileDamageable::StaticClass()))
 	{
 		IPotatoProjectileDamageable::Execute_SetProjectileDamage(Proj, Stats.AttackDamage);
 	}
 
-	// 방향/속도 강제 고정
 	if (UProjectileMovementComponent* PM = Proj->FindComponentByClass<UProjectileMovementComponent>())
 	{
 		const float Speed = (PM->InitialSpeed > 0.f) ? PM->InitialSpeed : 1200.f;
 		PM->Velocity = AimDir * Speed;
 		PM->UpdateComponentVelocity();
+
+		UE_LOG(LogTemp, Warning, TEXT("[Combat] SpawnProjectile(PM) -> Proj=%s Speed=%.1f Target=%s Muzzle=%s AimPoint=%s"),
+			*GetNameSafe(Proj), Speed, *GetNameSafe(Target), *SpawnLoc.ToString(), *AimPoint.ToString());
+		return;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[Combat] SpawnClass=%s"), *GetNameSafe(AnimSet->ProjectileClass.Get()));
-	UE_LOG(LogTemp, Warning, TEXT("[Combat] SpawnProjectile -> Proj=%s Target=%s Muzzle=%s AimPoint=%s"),
-		*GetNameSafe(Proj), *GetNameSafe(Target), *MuzzleLoc.ToString(), *AimPoint.ToString());
+	if (APotatoMonsterProjectile* TraceProj = Cast<APotatoMonsterProjectile>(Proj))
+	{
+		const float TraceSpeed = 1800.f;
+		TraceProj->InitVelocity(AimDir, TraceSpeed);
+
+		UE_LOG(LogTemp, Warning, TEXT("[Combat] SpawnProjectile(Trace) -> Proj=%s Speed=%.1f Target=%s Muzzle=%s AimPoint=%s"),
+			*GetNameSafe(Proj), TraceSpeed, *GetNameSafe(Target), *SpawnLoc.ToString(), *AimPoint.ToString());
+		return;
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("[Combat] SpawnProjectile UNKNOWN TYPE -> Proj=%s Class=%s Target=%s"),
+		*GetNameSafe(Proj), *GetNameSafe(Proj->GetClass()), *GetNameSafe(Target));
 }

@@ -3,9 +3,6 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 
-#include "PotatoMonsterTypePresetRow.h"
-#include "PotatoMonsterRankPresetRow.h"
-#include "PotatoMonsterSpecialSkillPresetRow.h"
 #include "../Core/PotatoEnums.h"
 
 #include "PotatoMonsterFinalStats.h"

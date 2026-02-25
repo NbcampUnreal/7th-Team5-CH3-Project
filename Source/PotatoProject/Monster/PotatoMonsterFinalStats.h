@@ -31,5 +31,18 @@ struct FPotatoMonsterFinalStats
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Anim")
     TObjectPtr<UPotatoMonsterAnimSet> AnimSet = nullptr;
+    
+    // =========================
+    // Special Proc (OnAttack)
+    // - 프리셋/랭크/타입에서 주입해서 몬스터별로 데이터화
+    // =========================
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Potato|Stats|Special Proc")
+    bool bEnableOnAttackSpecialProc = true;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Potato|Stats|Special Proc", meta=(ClampMin="0.0", ClampMax="1.0"))
+    float OnAttackSpecialChance = 0.20f;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Potato|Stats|Special Proc", meta=(ClampMin="0.0"))
+    float OnAttackSpecialProcCooldown = 1.50f;
 
 };
