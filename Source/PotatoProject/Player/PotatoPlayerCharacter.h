@@ -13,6 +13,8 @@ class UAnimalPopup;
 
 struct FInputActionValue;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPlayerHPChanged, float, CurrentHP, float, MaxHP);
+
 UCLASS()
 class POTATOPROJECT_API APotatoPlayerCharacter : public ACharacter
 {
@@ -84,10 +86,10 @@ protected:
 
 private:
 	float TargetCameraDistance;
-	
 	bool IsBuildingMode;
-	// Functions
 	//bool IsAmmoProduct;
+	
+	// Functions
 public:
 	APotatoPlayerCharacter();
 	
@@ -96,12 +98,18 @@ public:
 	float GetCurrentHP() const { return CurrentHP; }
 	float GetMaxHP() const { return MaxHP; }
 	
+	// Delegate Instances
+public:
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnPlayerHPChanged OnHPChanged;
+	
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick( float DeltaTime ) override;
 	
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 	virtual float TakeDamage(float DamageAmount, struct FDamageEvent const& DamageEvent, class AController* EventInstigator, AActor* DamageCauser) override;
+	
 	// Input Handlers
 	UFUNCTION()
 	void Move(const FInputActionValue& Value);

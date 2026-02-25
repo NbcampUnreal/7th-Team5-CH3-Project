@@ -45,11 +45,15 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 	// Create weapon component
 	WeaponComponent = CreateDefaultSubobject<UPotatoWeaponComponent>(TEXT("WeaponComponent"));
 
-	//빌드모드 가능여부
+	// 빌드 모드 가능 여부
 	IsBuildingMode = true;
-	//IsAmmoProduct = false;
+	// IsAmmoProduct = false;
 
-	
+	// 초기 HP 브로드캐스트
+	if (OnHPChanged.IsBound())
+	{
+		OnHPChanged.Broadcast(CurrentHP, MaxHP);
+	}
 
 }
 
@@ -482,7 +486,7 @@ void APotatoPlayerCharacter::OnDeath()
 	{
 		GameMode->EndGame(false);
 	}
-	//캐릭터 죽는 애니메이션 실행필요
+	// TODO: 사망 애니메이션 추가
 }
 
 float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
@@ -492,9 +496,13 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
 	if (ActualDamage > 0.0f)
 	{
 		CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
-
-		///UE_LOG(LogTemp, Warning, TEXT("Remaining Health: %f"), CurrentHealth);
-
+		//UE_LOG(LogTemp, Warning, TEXT("Remaining Health: %f"), CurrentHealth);
+		
+		if (OnHPChanged.IsBound())
+		{
+			OnHPChanged.Broadcast(CurrentHP, MaxHP);
+		}
+		
 		if (CurrentHP <= 0.0f)
 		{
 			OnDeath();

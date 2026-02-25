@@ -48,7 +48,6 @@ void UPotatoPlayerHUD::NativeConstruct()
 	}
 
 	// 초기 갱신
-	RefreshResourceText();
 	RefreshStorageHP();
 	RefreshClockNeedle(0.0f);
 	
@@ -77,6 +76,11 @@ void UPotatoPlayerHUD::NativeConstruct()
 	// 델리게이트 바인딩
 	if (CachedPlayer)
 	{
+		// HP 바인딩
+		CachedPlayer->OnHPChanged.AddDynamic(this, &UPotatoPlayerHUD::HandleHPChanged);
+		HandleHPChanged(CachedPlayer->GetCurrentHP(), CachedPlayer->GetMaxHP());
+		
+		// Weapon 바인딩
 		if (UPotatoWeaponComponent* WeaponComp = CachedPlayer->FindComponentByClass<UPotatoWeaponComponent>())
 		{
 			WeaponComp->OnWeaponChanged.AddUObject(this, &UPotatoPlayerHUD::HandleWeaponChanged);
@@ -89,17 +93,27 @@ void UPotatoPlayerHUD::NativeConstruct()
 			}
 		}
 	}
+	
+	// 자원 바인딩
+	UPotatoResourceManager* ResourceManager = GetWorld()->GetSubsystem<UPotatoResourceManager>();
+	if (ResourceManager)
+	{
+		ResourceManager->OnResourceChanged.AddDynamic(this, &UPotatoPlayerHUD::HandleResourceChanged);
+		
+		HandleResourceChanged(EResourceType::Wood, ResourceManager->GetWood());
+		HandleResourceChanged(EResourceType::Stone, ResourceManager->GetStone());
+		HandleResourceChanged(EResourceType::Crop, ResourceManager->GetCrop());
+		HandleResourceChanged(EResourceType::Livestock, ResourceManager->GetLivestock());
+	}
 }
 
 void UPotatoPlayerHUD::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
-	RefreshResourceText();
 	RefreshStorageHP();
 	RefreshClockNeedle(InDeltaTime);
 	RefreshTimeText();
-	RefreshHPText();
 	RefreshBuildModePanel();
 }
 
@@ -131,6 +145,59 @@ void UPotatoPlayerHUD::RefreshStorageHP()
 // ============================================================
 // Event Handler
 // ============================================================
+
+void UPotatoPlayerHUD::HandleHPChanged(float CurrentHP, float MaxHP)
+{
+	if (HP)
+	{
+		HP->SetText(FText::Format(
+			NSLOCTEXT("HUD", "HP", "{0} / {1}"),
+			FMath::CeilToInt(CurrentHP),
+			FMath::CeilToInt(MaxHP)));
+	}
+}
+
+void UPotatoPlayerHUD::HandleResourceChanged(EResourceType Type, int32 NewValue)
+{
+	UPotatoResourceManager* ResourceManager = GetWorld()->GetSubsystem<UPotatoResourceManager>();
+	if (!ResourceManager)
+	{
+		return;
+	}
+	
+	auto FormatResourceText = [&](int32 Amount, EResourceType InType) -> FText
+	{
+		const int32 Rate = ResourceManager->GetTotalProductionPerMinute(InType);
+		if (Rate > 0)
+		{
+			return FText::Format(NSLOCTEXT("HUD", "ResRate", "{0}(+{1}/min)"), Amount, Rate);
+		}
+		return FText::AsNumber(Amount);
+	};
+	
+	FText NewText = FormatResourceText(NewValue, Type);
+	FText AmountText = FText::AsNumber(NewValue);
+
+	switch (Type)
+	{
+	case EResourceType::Wood:
+		if (ResourceWood) ResourceWood->SetText(NewText);
+		if (WoodAmount) WoodAmount->SetText(AmountText);
+		break;
+	case EResourceType::Stone:
+		if (ResourceStone) ResourceStone->SetText(NewText);
+		if (StoneAmount) StoneAmount->SetText(AmountText);
+		break;
+	case EResourceType::Crop:
+		if (ResourceCrop) ResourceCrop->SetText(NewText);
+		if (CropAmount) CropAmount->SetText(AmountText);
+		break;
+	case EResourceType::Livestock:
+		if (ResourceLivestock) ResourceLivestock->SetText(NewText);
+		if (LivestockAmount) LivestockAmount->SetText(AmountText);
+		break;
+	}
+}
 
 void UPotatoPlayerHUD::HandleWeaponChanged(const UPotatoWeaponData* NewWeaponData)
 {
@@ -197,34 +264,6 @@ void UPotatoPlayerHUD::HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo)
 // ============================================================
 // Internal Refresh
 // ============================================================
-
-void UPotatoPlayerHUD::RefreshResourceText()
-{
-	UPotatoResourceManager* RM = GetWorld()->GetSubsystem<UPotatoResourceManager>();
-	if (!RM) return;
-
-	auto MakeText = [&](EResourceType Type) -> FText
-	{
-		const int32 Amount = RM->GetResource(Type);
-		const int32 Rate = RM->GetTotalProductionPerMinute(Type);
-		if (Rate > 0)
-		{
-			return FText::Format(NSLOCTEXT("HUD", "ResRate", "{0}(+{1}/분)"), Amount, Rate);
-		}
-		return FText::AsNumber(Amount);
-	};
-
-	if (ResourceWood) ResourceWood->SetText(MakeText(EResourceType::Wood));
-	if (ResourceStone) ResourceStone->SetText(MakeText(EResourceType::Stone));
-	if (ResourceCrop) ResourceCrop->SetText(MakeText(EResourceType::Crop));
-	if (ResourceLivestock) ResourceLivestock->SetText(MakeText(EResourceType::Livestock));
-
-	// 미니 자원 행
-	if (WoodAmount) WoodAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Wood)));
-	if (StoneAmount) StoneAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Stone)));
-	if (CropAmount) CropAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Crop)));
-	if (LivestockAmount) LivestockAmount->SetText(FText::AsNumber(RM->GetResource(EResourceType::Livestock)));
-}
 
 void UPotatoPlayerHUD::RefreshClockNeedle(float DeltaTime)
 {
@@ -307,16 +346,6 @@ void UPotatoPlayerHUD::RefreshTimeText()
 				FText::Format(NSLOCTEXT("HUD", "Day", "Day {0}"), GM->GetCurrentDay()));
 		}
 	}
-}
-
-void UPotatoPlayerHUD::RefreshHPText()
-{
-	if (!HP || !CachedPlayer) return;
-
-	HP->SetText(FText::Format(
-		NSLOCTEXT("HUD", "HP", "{0} / {1}"),
-		FMath::CeilToInt(CachedPlayer->GetCurrentHP()),
-		FMath::CeilToInt(CachedPlayer->GetMaxHP())));
 }
 
 // ============================================================
