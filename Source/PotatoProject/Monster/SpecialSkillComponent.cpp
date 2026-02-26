@@ -5,17 +5,39 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
-#include "GameFramework/Character.h"
-#include "Components/SkeletalMeshComponent.h"
+
+#include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
+
+#include "SpecialSkillPresentation.h"
+#include "SpecialSkillExecution.h"
+#include "Building/PotatoPlaceableStructure.h"
+#include "Building/PotatoStructureData.h"
 
 USpecialSkillComponent::USpecialSkillComponent()
 {
-	PrimaryComponentTick.bCanEverTick = false; // Tick 불필요 (타이머/NextTick 기반)
+	PrimaryComponentTick.bCanEverTick = false;
 }
 
 void USpecialSkillComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	CachedOwner = GetOwner();
+}
+
+void USpecialSkillComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	if (UWorld* W = GetWorld())
+	{
+		FTimerManager& TM = W->GetTimerManager();
+		TM.ClearTimer(TelegraphTH);
+		TM.ClearTimer(CastTH);
+	}
+
+	bQueuedExecuteNextTick = false;
+	bQueuedEndNextTick = false;
+
+	Super::EndPlay(EndPlayReason);
 }
 
 double USpecialSkillComponent::Now() const
@@ -27,17 +49,6 @@ double USpecialSkillComponent::Now() const
 bool USpecialSkillComponent::IsTargetValid(AActor* Target) const
 {
 	return IsValid(Target) && !Target->IsActorBeingDestroyed();
-}
-
-void USpecialSkillComponent::SetTarget(AActor* NewTarget)
-{
-	CurrentTarget = NewTarget;
-}
-
-bool USpecialSkillComponent::IsSkillReady(FName SkillId) const
-{
-	const double* Next = NextReadyTimeBySkill.Find(SkillId);
-	return !Next || Now() >= *Next;
 }
 
 const FPotatoMonsterSpecialSkillPresetRow* USpecialSkillComponent::FindRow(FName SkillId) const
@@ -55,37 +66,59 @@ void USpecialSkillComponent::SetState(ESpecialSkillState NewState)
 	OnStateChanged.Broadcast(ActiveSkillId, State);
 }
 
-bool USpecialSkillComponent::IsBusy() const
+float USpecialSkillComponent::ComputeBaseDamage(const FPotatoMonsterSpecialSkillPresetRow& Row) const
 {
-	return State != ESpecialSkillState::Idle;
+	return FMath::Max(0.f, DefaultBaseDamage);
 }
 
-EMonsterSpecialExecution USpecialSkillComponent::ResolveExecution(const FPotatoMonsterSpecialSkillPresetRow& Row) const
+float USpecialSkillComponent::ComputeFinalDamage(const FPotatoMonsterSpecialSkillPresetRow& Row) const
 {
-	if (Row.Execution != EMonsterSpecialExecution::None)
-	{
-		return Row.Execution;
-	}
+	const float Base = ComputeBaseDamage(Row);
+	const float Mul = Row.DamageMultiplier * SpecialDamageScale;
+	return FMath::Max(0.f, Base * Mul);
+}
 
-	// 하위호환: Shape 기반 역추론
-	switch (Row.Shape)
-	{
-	case EMonsterSpecialShape::Projectile: return EMonsterSpecialExecution::Projectile;
-	case EMonsterSpecialShape::Aura:       return EMonsterSpecialExecution::ContactDOT;
-	case EMonsterSpecialShape::SelfBuff:   return EMonsterSpecialExecution::SelfBuff;
-	case EMonsterSpecialShape::Circle:
-	case EMonsterSpecialShape::Cone:
-	case EMonsterSpecialShape::Line:
-		return EMonsterSpecialExecution::InstantAoE;
-	default:
-		return EMonsterSpecialExecution::None;
-	}
+float USpecialSkillComponent::ComputeFinalCooldown(const FPotatoMonsterSpecialSkillPresetRow& Row) const
+{
+	return FMath::Max(0.f, Row.Cooldown * SpecialCooldownScale);
 }
 
 bool USpecialSkillComponent::CheckTrigger(const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target) const
 {
 	AActor* Owner = GetOwner();
 	if (!Owner) return false;
+
+	// ✅ PlayerOnly / StructureOnly 안정 필터 (기존 로직 유지)
+	auto PassTargetTypeFilter = [&](AActor* T) -> bool
+	{
+		if (!IsTargetValid(T)) return false;
+
+		switch (Row.TargetType)
+		{
+		case EMonsterSpecialTargetType::PlayerOnly:
+		{
+			if (T->ActorHasTag(TEXT("Player"))) return true;
+
+			if (APawn* P = Cast<APawn>(T))
+			{
+				return (Cast<APlayerController>(P->GetController()) != nullptr);
+			}
+			return false;
+		}
+
+		case EMonsterSpecialTargetType::StructureOnly:
+			{
+				if (const APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(T))
+				{
+					return (S->StructureData && S->StructureData->bIsDestructible && S->CurrentHealth > 0.f);
+				}
+				return false;
+			}
+
+		default:
+			return true;
+		}
+	};
 
 	// TargetType 반영
 	if (Row.TargetType == EMonsterSpecialTargetType::Self)
@@ -95,6 +128,7 @@ bool USpecialSkillComponent::CheckTrigger(const FPotatoMonsterSpecialSkillPreset
 	else if (Row.TargetType != EMonsterSpecialTargetType::Location)
 	{
 		if (!IsTargetValid(Target)) return false;
+		if (!PassTargetTypeFilter(Target)) return false;
 	}
 
 	// 거리 체크
@@ -107,7 +141,7 @@ bool USpecialSkillComponent::CheckTrigger(const FPotatoMonsterSpecialSkillPreset
 			if (Dist > Row.TriggerRange) return false;
 		}
 
-		if (Dist < Row.MinRange) return false;
+		if (Row.MinRange > 0.f && Dist < Row.MinRange) return false;
 		if (Row.MaxRange > 0.f && Dist > Row.MaxRange) return false;
 	}
 
@@ -132,28 +166,154 @@ bool USpecialSkillComponent::CheckTrigger(const FPotatoMonsterSpecialSkillPreset
 	return true;
 }
 
+void USpecialSkillComponent::ArmCooldown(const FName SkillId, float CooldownSeconds)
+{
+	NextReadyTimeBySkill.Add(SkillId, Now() + FMath::Max(0.f, CooldownSeconds));
+}
+
+bool USpecialSkillComponent::ConsumeHitOnce(AActor* Victim)
+{
+	if (!IsValid(Victim)) return false;
+
+	TWeakObjectPtr<AActor> Key(Victim);
+	if (HitOnceSet.Contains(Key)) return false;
+	HitOnceSet.Add(Key);
+	return true;
+}
+
+// -----------------------------
+// Presentation facade
+// -----------------------------
+void USpecialSkillComponent::PlayPresentation_Telegraph(const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
+{
+	FSpecialSkillPresentation::PlayTelegraph(this, Row, Target);
+}
+
+void USpecialSkillComponent::PlayPresentation_Cast(const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
+{
+	FSpecialSkillPresentation::PlayCast(this, Row, Target);
+}
+
+void USpecialSkillComponent::PlayPresentation_Execute(const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
+{
+	FSpecialSkillPresentation::PlayExecute(this, Row, Target);
+}
+
+void USpecialSkillComponent::PlayPresentation_End(const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
+{
+	FSpecialSkillPresentation::PlayEnd(this, Row, Target);
+}
+
+// -----------------------------
+// Execution facade
+// -----------------------------
+void USpecialSkillComponent::ExecuteResolved(const FPotatoMonsterSpecialSkillPresetRow& RowCopy, AActor* ResolvedTarget)
+{
+	FSpecialSkillExecution::Execute(this, RowCopy, ResolvedTarget);
+}
+
+// -----------------------------
+// Inject once (정석)
+// -----------------------------
+void USpecialSkillComponent::InitFromFinalStats(const FPotatoMonsterFinalStats& Stats)
+{
+	DefaultSkillId       = Stats.DefaultSpecialSkillId;
+	SpecialCooldownScale = Stats.SpecialCooldownScale;
+	SpecialDamageScale   = Stats.SpecialDamageScale;
+
+	// base damage policy: AttackDamage를 base로 쓰는 게 보통 가장 직관적
+	DefaultBaseDamage = Stats.AttackDamage;
+
+	// Proc
+	bEnableOnAttackProc   = Stats.bEnableOnAttackSpecialProc;
+	OnAttackProcChance    = FMath::Clamp(Stats.OnAttackSpecialChance, 0.f, 1.f);
+	OnAttackProcCooldown  = FMath::Max(0.f, Stats.OnAttackSpecialProcCooldown);
+
+	// reset attack proc gate
+	NextAttackProcReadyTime = 0.0;
+}
+
+// -----------------------------
+// Trigger wrappers (정석)
+// -----------------------------
+bool USpecialSkillComponent::TryStartOnCooldown(AActor* Target)
+{
+	if (DefaultSkillId.IsNone()) return false;
+	return TryStartSkill(DefaultSkillId, Target);
+}
+
+bool USpecialSkillComponent::TryStartOnHit(AActor* Target)
+{
+	if (DefaultSkillId.IsNone()) return false;
+	return TryStartSkill(DefaultSkillId, Target);
+}
+
+bool USpecialSkillComponent::TryStartOnDeath(AActor* Target)
+{
+	if (DefaultSkillId.IsNone()) return false;
+	return TryStartSkill(DefaultSkillId, Target);
+}
+
+bool USpecialSkillComponent::PassAttackProcGate()
+{
+	if (!bEnableOnAttackProc) return false;
+
+	const double T = Now();
+	if (T < NextAttackProcReadyTime) return false;
+
+	// chance
+	if (OnAttackProcChance <= 0.f) return false;
+	const float R = FMath::FRand();
+	if (R > OnAttackProcChance) return false;
+
+	// consume cooldown
+	NextAttackProcReadyTime = T + OnAttackProcCooldown;
+	return true;
+}
+
+bool USpecialSkillComponent::TryStartOnAttackProc(AActor* Target)
+{
+	if (DefaultSkillId.IsNone()) return false;
+	if (!PassAttackProcGate()) return false;
+	return TryStartSkill(DefaultSkillId, Target);
+}
+
+// -----------------------------
+// Public API (low-level engine)
+// -----------------------------
 bool USpecialSkillComponent::CanTryStartSkill(FName SkillId) const
 {
-	// "서비스에서 쿨다운 조건일 때만 TryStart" 목적
-	// - Trigger/Target 체크는 TryStartSkill 내부에서 수행
-	if (SkillId.IsNone()) return false;
-
-	if (IsBusy()) return false;
-	if (!IsSkillReady(SkillId)) return false;
-
+	if (SkillId.IsNone())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Skill] CanTryStartSkill FAIL: SkillId=None"));
+		return false;
+	}
+	if (IsBusy())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Skill] CanTryStartSkill FAIL: Busy State=%d Skill=%s"),
+			(int32)State, *SkillId.ToString());
+		return false;
+	}
+	if (!IsSkillReady(SkillId))
+	{
+		const double* Next = NextReadyTimeBySkill.Find(SkillId);
+		UE_LOG(LogTemp, Warning, TEXT("[Skill] CanTryStartSkill FAIL: Cooldown Skill=%s Now=%.2f Next=%.2f"),
+			*SkillId.ToString(), Now(), Next ? *Next : -1.0);
+		return false;
+	}
 	const FPotatoMonsterSpecialSkillPresetRow* Row = FindRow(SkillId);
-	if (!Row) return false;
-
-	AActor* Owner = GetOwner();
-	if (!Owner || Owner->IsActorBeingDestroyed()) return false;
-
+	if (!Row)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Skill] CanTryStartSkill FAIL: RowNotFound Skill=%s Table=%s"),
+			*SkillId.ToString(), *GetNameSafe(SkillPresetTable));
+		return false;
+	}
 	return true;
 }
 
 bool USpecialSkillComponent::TryStartSkill(FName SkillId, AActor* InTarget)
 {
-	if (IsBusy()) return false;
-	if (!IsSkillReady(SkillId)) return false;
+	if (!CanTryStartSkill(SkillId)) return false;
 
 	const FPotatoMonsterSpecialSkillPresetRow* Row = FindRow(SkillId);
 	if (!Row) return false;
@@ -161,15 +321,9 @@ bool USpecialSkillComponent::TryStartSkill(FName SkillId, AActor* InTarget)
 	AActor* Owner = GetOwner();
 	if (!Owner || Owner->IsActorBeingDestroyed()) return false;
 
-	ActiveSkillId = SkillId;
-	CurrentTarget = InTarget;
-
-	if (!CheckTrigger(*Row, CurrentTarget))
-	{
-		ActiveSkillId = NAME_None;
-		CurrentTarget = nullptr; // ✅ 실패 시 타겟 오염 방지
-		return false;
-	}
+	// ✅ 세션 시작
+	++SkillSessionId;
+	const uint32 ThisSession = SkillSessionId;
 
 	// 타이머 정리
 	if (UWorld* W = GetWorld())
@@ -181,11 +335,35 @@ bool USpecialSkillComponent::TryStartSkill(FName SkillId, AActor* InTarget)
 
 	bQueuedExecuteNextTick = false;
 	bQueuedEndNextTick = false;
+	LastCancelReason = ESpecialSkillCancelReason::None;
 
-	BeginTelegraph(*Row);
+	ActiveSkillId = SkillId;
+	CurrentTarget = InTarget;
+
+	if (!CheckTrigger(*Row, CurrentTarget))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Skill] CheckTrigger FAIL Skill=%s Target=%s"),
+			*SkillId.ToString(), *GetNameSafe(CurrentTarget));
+
+		ActiveSkillId = NAME_None;
+		CurrentTarget = nullptr;
+		return false;
+	}
+
+	HitOnceSet.Reset();
+
+	BeginTelegraph(*Row); // 내부에서 세션 체크하도록 수정할 것
 	return true;
 }
 
+bool USpecialSkillComponent::IsBusy() const
+{
+	return State != ESpecialSkillState::Idle;
+}
+
+// -----------------------------
+// State machine
+// -----------------------------
 void USpecialSkillComponent::BeginTelegraph(const FPotatoMonsterSpecialSkillPresetRow& Row)
 {
 	AActor* Owner = GetOwner();
@@ -196,7 +374,10 @@ void USpecialSkillComponent::BeginTelegraph(const FPotatoMonsterSpecialSkillPres
 		return;
 	}
 
+	const uint32 ThisSession = SkillSessionId;
+
 	SetState(ESpecialSkillState::Telegraph);
+	PlayPresentation_Telegraph(Row, CurrentTarget);
 	BP_OnTelegraphBegin(ActiveSkillId);
 
 	if (Row.TelegraphTime <= 0.f)
@@ -207,8 +388,10 @@ void USpecialSkillComponent::BeginTelegraph(const FPotatoMonsterSpecialSkillPres
 
 	W->GetTimerManager().SetTimer(
 		TelegraphTH,
-		FTimerDelegate::CreateWeakLambda(this, [this, Row]()
+		FTimerDelegate::CreateWeakLambda(this, [this, Row, ThisSession]()
 		{
+			if (!IsValid(this) || !IsSession(ThisSession)) return;
+
 			AActor* Owner2 = GetOwner();
 			if (!Owner2 || Owner2->IsActorBeingDestroyed())
 			{
@@ -242,6 +425,8 @@ void USpecialSkillComponent::BeginCast(const FPotatoMonsterSpecialSkillPresetRow
 	}
 
 	SetState(ESpecialSkillState::Casting);
+
+	PlayPresentation_Cast(Row, CurrentTarget);
 	BP_OnCastBegin(ActiveSkillId);
 
 	if (Row.CastTime <= 0.f)
@@ -290,6 +475,8 @@ void USpecialSkillComponent::QueueExecuteNextTick(const FPotatoMonsterSpecialSki
 		return;
 	}
 
+	const uint32 ThisSession = SkillSessionId;
+
 	SetState(ESpecialSkillState::Executing);
 
 	const FPotatoMonsterSpecialSkillPresetRow RowCopy = Row;
@@ -297,79 +484,17 @@ void USpecialSkillComponent::QueueExecuteNextTick(const FPotatoMonsterSpecialSki
 	if (Row.bExecuteOnNextTick)
 	{
 		W->GetTimerManager().SetTimerForNextTick(
-			FTimerDelegate::CreateUObject(this, &USpecialSkillComponent::ExecuteSkill_Internal, RowCopy)
+			FTimerDelegate::CreateWeakLambda(this, [this, RowCopy, ThisSession]()
+			{
+				if (!IsValid(this) || !IsSession(ThisSession)) return;
+				ExecuteSkill_Internal(RowCopy);
+			})
 		);
 	}
 	else
 	{
 		ExecuteSkill_Internal(RowCopy);
 	}
-}
-
-bool USpecialSkillComponent::PassesFxDistanceGate(const FVector& SpawnLoc, const FPotatoMonsterSpecialSkillPresetRow& Row) const
-{
-	if (Row.MaxFxDistance <= 0.f) return true;
-
-	UWorld* World = GetWorld();
-	if (!World) return true;
-
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
-	if (!PlayerPawn) return true;
-
-	return FVector::Dist(PlayerPawn->GetActorLocation(), SpawnLoc) <= Row.MaxFxDistance;
-}
-
-UClass* USpecialSkillComponent::ResolveProjectileClass(const FPotatoMonsterSpecialSkillPresetRow& Row) const
-{
-	if (Row.ProjectileClass.IsNull()) return nullptr;
-	if (UClass* Loaded = Row.ProjectileClass.Get()) return Loaded;
-	return Row.ProjectileClass.LoadSynchronous();
-}
-
-FTransform USpecialSkillComponent::ResolveProjectileSpawnTransform(const FPotatoMonsterSpecialSkillPresetRow& Row) const
-{
-	AActor* Owner = GetOwner();
-	if (!Owner) return FTransform::Identity;
-
-	FVector Loc = Owner->GetActorLocation();
-	FRotator Rot = Owner->GetActorRotation();
-
-	const ACharacter* AsChar = Cast<ACharacter>(Owner);
-	USkeletalMeshComponent* Skel = AsChar ? AsChar->GetMesh() : Owner->FindComponentByClass<USkeletalMeshComponent>();
-
-	if (Skel && !Row.SpawnSocket.IsNone() && Skel->DoesSocketExist(Row.SpawnSocket))
-	{
-		const FTransform SocketXf = Skel->GetSocketTransform(Row.SpawnSocket, RTS_World);
-		Loc = SocketXf.GetLocation();
-		Rot = SocketXf.GetRotation().Rotator();
-	}
-
-	Loc += Rot.RotateVector(Row.SpawnOffset);
-	return FTransform(Rot, Loc);
-}
-
-AActor* USpecialSkillComponent::SpawnProjectileFromPreset(const FPotatoMonsterSpecialSkillPresetRow& Row) const
-{
-	UClass* ProjClass = ResolveProjectileClass(Row);
-	if (!ProjClass) return nullptr;
-
-	UWorld* World = GetWorld();
-	AActor* Owner = GetOwner();
-	if (!World || !Owner || Owner->IsActorBeingDestroyed()) return nullptr;
-
-	const FTransform SpawnXf = ResolveProjectileSpawnTransform(Row);
-
-	if (!PassesFxDistanceGate(SpawnXf.GetLocation(), Row))
-	{
-		return nullptr;
-	}
-
-	FActorSpawnParameters Params;
-	Params.Owner = Owner;
-	Params.Instigator = Cast<APawn>(Owner);
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-
-	return World->SpawnActor<AActor>(ProjClass, SpawnXf, Params);
 }
 
 void USpecialSkillComponent::ExecuteSkill_Internal(FPotatoMonsterSpecialSkillPresetRow RowCopy)
@@ -397,31 +522,13 @@ void USpecialSkillComponent::ExecuteSkill_Internal(FPotatoMonsterSpecialSkillPre
 		return;
 	}
 
+	PlayPresentation_Execute(RowCopy, Target);
 	BP_OnExecute(ActiveSkillId);
 
-	const EMonsterSpecialExecution Exec = ResolveExecution(RowCopy);
+	ExecuteResolved(RowCopy, Target);
 
-	switch (Exec)
-	{
-	case EMonsterSpecialExecution::Projectile:
-		SpawnProjectileFromPreset(RowCopy);
-		break;
-	default:
-		break;
-	}
-
-	ArmCooldown(ActiveSkillId, RowCopy.Cooldown);
+	ArmCooldown(ActiveSkillId, ComputeFinalCooldown(RowCopy));
 	QueueEndNextTick(false);
-}
-
-void USpecialSkillComponent::ArmCooldown(const FName SkillId, float Cooldown)
-{
-	NextReadyTimeBySkill.Add(SkillId, Now() + FMath::Max(0.f, Cooldown));
-}
-
-void USpecialSkillComponent::EndSkill_Internal_NextTick(bool bCancelled)
-{
-	EndSkill_Internal(bCancelled);
 }
 
 void USpecialSkillComponent::QueueEndNextTick(bool bCancelled)
@@ -441,9 +548,33 @@ void USpecialSkillComponent::QueueEndNextTick(bool bCancelled)
 	);
 }
 
+void USpecialSkillComponent::EndSkill_Internal_NextTick(bool bCancelled)
+{
+	EndSkill_Internal(bCancelled);
+}
+
 void USpecialSkillComponent::EndSkill_Internal(bool bCancelled)
 {
+	// End도 현재 세션에 대해서만 처리하는 게 안전함
+	// (만약 Cancel 이후 곧바로 새 스킬 시작하면, 이전 End가 새 스킬을 지워버릴 수 있음)
+	// -> 여기서는 호출 전에 세션검사 하는 패턴을 추천. (NextTick 예약 때 캡처)
+
 	bQueuedEndNextTick = false;
+
+	if (ActiveSkillId != NAME_None)
+	{
+		if (const FPotatoMonsterSpecialSkillPresetRow* Row = FindRow(ActiveSkillId))
+		{
+			AActor* Resolved = ResolveTargetForRow(*Row, CurrentTarget);
+
+			// ✅ Target이 무효/Null이어도 End 프레젠테이션이 안전해야 함.
+			// Presentation이 Actor 접근한다면 여기서 valid만 넘겨라.
+			if (Row->TargetType == EMonsterSpecialTargetType::Location || IsTargetValid(Resolved) || Row->TargetType == EMonsterSpecialTargetType::Self)
+			{
+				PlayPresentation_End(*Row, Resolved);
+			}
+		}
+	}
 
 	if (IsValid(this))
 	{
@@ -451,12 +582,16 @@ void USpecialSkillComponent::EndSkill_Internal(bool bCancelled)
 	}
 
 	ActiveSkillId = NAME_None;
-	CurrentTarget = nullptr; // ✅ 종료 시 타겟 정리
+	CurrentTarget = nullptr;
 	SetState(ESpecialSkillState::Idle);
 }
-
 void USpecialSkillComponent::CancelSkill(ESpecialSkillCancelReason Reason)
 {
+	LastCancelReason = Reason;
+
+	UE_LOG(LogTemp, Warning, TEXT("[Skill] CancelSkill Skill=%s Reason=%d State=%d"),
+		*ActiveSkillId.ToString(), (int32)Reason, (int32)State);
+
 	if (UWorld* W = GetWorld())
 	{
 		FTimerManager& TM = W->GetTimerManager();
@@ -471,18 +606,33 @@ void USpecialSkillComponent::CancelSkill(ESpecialSkillCancelReason Reason)
 		QueueEndNextTick(true);
 	}
 }
-
-void USpecialSkillComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+void USpecialSkillComponent::CancelActiveSkill()
 {
-	if (UWorld* W = GetWorld())
+	CancelSkill(ESpecialSkillCancelReason::None);
+}
+
+bool USpecialSkillComponent::IsSkillReady(FName SkillId) const
+{
+	const double* Next = NextReadyTimeBySkill.Find(SkillId);
+	return (!Next) || (Now() >= *Next);
+}
+
+AActor* USpecialSkillComponent::ResolveTargetForRow(const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* InTarget) const
+{
+	AActor* Owner = GetOwner();
+	if (!Owner || Owner->IsActorBeingDestroyed()) return nullptr;
+
+	switch (Row.TargetType)
 	{
-		FTimerManager& TM = W->GetTimerManager();
-		TM.ClearTimer(TelegraphTH);
-		TM.ClearTimer(CastTH);
+	case EMonsterSpecialTargetType::Self:
+		return Owner;
+
+	case EMonsterSpecialTargetType::Location:
+		// Location 스킬이면 Actor 타겟을 "의미상" 안 쓴다고 가정
+		// (Execution/Presentation 쪽이 Location을 따로 계산해야 함)
+		return nullptr;
+
+	default:
+		return InTarget;
 	}
-
-	bQueuedExecuteNextTick = false;
-	bQueuedEndNextTick = false;
-
-	Super::EndPlay(EndPlayReason);
 }

@@ -1,6 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "Monster/BTService_TrySkillCooldown.h"
 
 #include "AIController.h"
@@ -31,35 +28,24 @@ void UBTService_TrySkillCooldown::TickNode(UBehaviorTreeComponent& OwnerComp, ui
 	USpecialSkillComponent* SkillComp = Monster->FindComponentByClass<USpecialSkillComponent>();
 	if (!IsValid(SkillComp)) return;
 
-	// 1) Busy 동기화 (항상)
+	// Busy sync
 	if (bIsCastingSpecialKey.SelectedKeyType)
 	{
 		BB->SetValueAsBool(bIsCastingSpecialKey.SelectedKeyName, SkillComp->IsBusy());
 	}
 
-	// 2) OnCooldown SkillId
-	const FName SkillId = Monster->SpecialSkill_OnCooldown;
-	if (SkillId.IsNone()) return;
-
-	// 3) "쿨다운(Ready) 조건일 때만" TryStart 시도
-	if (!SkillComp->CanTryStartSkill(SkillId))
-	{
-		return;
-	}
-
-	// 4) CurrentTarget
+	// Target
 	AActor* Target = nullptr;
 	if (CurrentTargetKey.SelectedKeyType)
 	{
 		Target = Cast<AActor>(BB->GetValueAsObject(CurrentTargetKey.SelectedKeyName));
 	}
 
-	const bool bStarted = SkillComp->TryStartSkill(SkillId, Target);
+	const bool bStarted = SkillComp->TryStartOnCooldown(Target);
 
 	if (bDebugLog && bStarted)
 	{
-		UE_LOG(LogTemp, Log, TEXT("[BTService][OnCooldown] Started Skill=%s Target=%s Monster=%s"),
-			*SkillId.ToString(),
+		UE_LOG(LogTemp, Log, TEXT("[BTService][OnCooldown] Started DefaultSkill Target=%s Monster=%s"),
 			*GetNameSafe(Target),
 			*GetNameSafe(Monster));
 	}

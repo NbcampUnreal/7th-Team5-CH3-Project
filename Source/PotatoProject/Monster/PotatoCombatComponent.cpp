@@ -52,7 +52,6 @@ UPotatoCombatComponent::UPotatoCombatComponent()
 void UPotatoCombatComponent::InitFromStats(const FPotatoMonsterFinalStats& InStats)
 {
 	Stats = InStats;
-	NextOnAttackSpecialProcTime = 0.0;
 }
 
 const UPotatoMonsterAnimSet* UPotatoCombatComponent::GetAnimSet() const
@@ -95,38 +94,22 @@ static bool IsAllowedAttackTarget(const APotatoMonster* Monster, const AActor* T
 }
 
 // ------------------------------------------------------------
-// Proc: OnAttack Special
+// Proc: OnAttack Special (FinalStats 기반)
 // ------------------------------------------------------------
 void UPotatoCombatComponent::TryProcOnAttackSpecial(APotatoMonster* Monster, AActor* Target, double Now)
 {
 	if (!Monster || !Target) return;
 
-	if (!Stats.bEnableOnAttackSpecialProc) return;
+	USpecialSkillComponent* SkillComp = Monster->SpecialSkillComp;
+	if (!IsValid(SkillComp)) return;
 
-	const float Chance = FMath::Clamp(Stats.OnAttackSpecialChance, 0.f, 1.f);
-	if (Chance <= 0.f) return;
-
-	if (Now < NextOnAttackSpecialProcTime) return;
-
-	// 확률 판정
-	if (FMath::FRand() > Chance) return;
-
-	if (!Monster->SpecialSkillComp) return;
-
-	const FName SkillId = Monster->SpecialSkill_OnAttack;
-	if (SkillId.IsNone()) return;
-
-	// Ready 프리체크(불필요 호출 억제)
-	if (!Monster->SpecialSkillComp->CanTryStartSkill(SkillId))
-	{
-		return;
-	}
-
-	const bool bStarted = Monster->SpecialSkillComp->TryStartSkill(SkillId, Target);
-	if (bStarted)
-	{
-		NextOnAttackSpecialProcTime = Now + (double)FMath::Max(0.f, Stats.OnAttackSpecialProcCooldown);
-	}
+	// 정석: 내부에서
+	// - bEnableOnAttackProc / Chance / ProcCooldown
+	// - DefaultSkillId
+	// - Busy / per-skill cooldown
+	// - Trigger validation
+	// 전부 처리한다.
+	SkillComp->TryStartOnAttackProc(Target);
 }
 
 // ------------------------------------------------------------
@@ -211,7 +194,7 @@ bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 	PendingBasicTarget = Target;
 	bIsAttacking = true;
 
-	// ✅ OnAttack 스페셜: Proc 성공 시에만 TryStart
+	// ✅ OnAttack 스페셜: Stats.OnAttackProcSkillId 기반 Proc
 	TryProcOnAttackSpecial(Monster, Target, Now);
 
 	// AttackStart SFX

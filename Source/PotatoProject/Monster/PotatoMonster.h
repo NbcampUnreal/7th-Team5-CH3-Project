@@ -18,6 +18,7 @@ class UPotatoCombatComponent;
 class UPotatoMonsterAnimSet;
 class UHealthBar;
 class UCapsuleComponent;
+class UPotatoHardenShellComponent;
 
 
 UCLASS()
@@ -140,6 +141,10 @@ public:
 	// =========================
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Monster|Components")
 	TObjectPtr<UPotatoCombatComponent> CombatComp = nullptr;
+	
+	// HardenShell (패시브 기믹)
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Monster|Gimmick")
+	TObjectPtr<UPotatoHardenShellComponent> HardenShellComp = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Monster|Anim")
 	TObjectPtr<UAnimMontage> BasicAttackMontage = nullptr;
@@ -171,7 +176,7 @@ public:
 	// UI
 	// =========================
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
-	TObjectPtr<UWidgetComponent> HPBarWidgetComp = nullptr; // ✅ TObjectPtr로 통일
+	TObjectPtr<UWidgetComponent> HPBarWidgetComp = nullptr; // TObjectPtr로 통일
 
 	UPROPERTY(Transient)
 	TObjectPtr<UHealthBar> HPBarWidget = nullptr;
@@ -265,18 +270,6 @@ public:
 
 	UPROPERTY(EditDefaultsOnly)
 	float DamageStackOffsetStep = 18.f;
-	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpecialSkill")
-	FName SpecialSkill_OnCooldown = NAME_None;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpecialSkill")
-	FName SpecialSkill_OnHit = NAME_None;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpecialSkill")
-	FName SpecialSkill_OnAttack = NAME_None;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="SpecialSkill")
-	FName SpecialSkill_OnDeath = NAME_None;
 
 	// 컴포넌트 레퍼런스
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="SpecialSkill")

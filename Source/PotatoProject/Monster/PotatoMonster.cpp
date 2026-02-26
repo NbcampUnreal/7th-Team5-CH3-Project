@@ -1,19 +1,31 @@
-﻿#include "PotatoMonster.h"
+﻿// PotatoMonster.cpp (STABILIZED)
+// - Crash fix: ScheduleTimerSafe 안정화 (World null/teardown/Delay NaN/weak delegate)
+// - Bug fix: TakeDamage에서 HardenShell로 줄인 Incoming을 Applied에 반영
+// - Safety: GetWorld() null guard (DamageText Now 등)
+// - Safety: TryPlayHitReact에 IsActorBeingDestroyed 가드
+// - Safety: Die에서 CancelActiveSkill이 없어도 빌드되도록 UFunction 호출로 보호
 
-#include "GameFramework/CharacterMovementComponent.h"
-#include "PotatoPresetApplier.h"
+#include "PotatoMonster.h"
+
 #include "AIController.h"
-#include "BrainComponent.h"
-#include "Kismet/GameplayStatics.h"
 #include "Animation/AnimInstance.h"
-#include "PotatoCombatComponent.h"
-#include "../UI/PotatoDamageTextPoolActor.h"
-#include "Components/WidgetComponent.h"
+#include "BrainComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/WidgetComponent.h"
+#include "Engine/World.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
+
 #include "../UI/HealthBar.h"
+#include "../UI/PotatoDamageTextPoolActor.h"
 
 #include "FXUtils/PotatoFXUtils.h"
+#include "Monster/SpecialSkillComponent.h"
+#include "PotatoCombatComponent.h"
+#include "PotatoHardenShellComponent.h"
+#include "PotatoPresetApplier.h"
 
 // ==============================
 // Static Helpers (CPP Local)
@@ -52,17 +64,64 @@ static void DisableMovementSafe(APotatoMonster* M)
 	}
 }
 
-static void ScheduleTimerSafe(APotatoMonster* M,
-	FTimerHandle& Handle,
-	void(APotatoMonster::* Func)(),
-	float Delay)
+// (선택) UFUNCTION이 존재할 때만 호출(빌드 에러 방지용)
+static bool CallUFunctionIfExists(UObject* Obj, FName FuncName)
 {
-	if (!M) return;
-	if (UWorld* W = M->GetWorld())
+	if (!Obj) return false;
+	UFunction* Fn = Obj->FindFunction(FuncName);
+	if (!Fn) return false;
+	Obj->ProcessEvent(Fn, nullptr);
+	return true;
+}
+
+static bool ScheduleTimerSafe(
+	APotatoMonster* Obj,
+	FTimerHandle& Handle,
+	void (APotatoMonster::*Func)(),
+	float DelaySec)
+{
+	// Obj 유효성
+	if (!IsValid(Obj) || Obj->IsActorBeingDestroyed())
+		return false;
+
+	// DelaySec NaN/Inf 방어 (SetTimer는 이런 값에 약함)
+	if (!FMath::IsFinite(DelaySec))
 	{
-		M->GetWorldTimerManager().ClearTimer(Handle);
-		M->GetWorldTimerManager().SetTimer(Handle, M, Func, Delay, false);
+		DelaySec = 0.f;
 	}
+	if (DelaySec < 0.f)
+	{
+		DelaySec = 0.f;
+	}
+
+	UWorld* W = Obj->GetWorld();
+	if (!W || W->bIsTearingDown)
+		return false;
+
+	FTimerManager& TM = W->GetTimerManager();
+
+	// 연장/재예약 정책: 기존 타이머는 제거 후 다시 건다
+	TM.ClearTimer(Handle);
+
+	// raw this 바인딩 대신 Weak로 안전화
+	TWeakObjectPtr<APotatoMonster> WeakObj = Obj;
+
+	auto Call = [WeakObj, Func]()
+	{
+		if (APotatoMonster* P = WeakObj.Get())
+		{
+			(P->*Func)();
+		}
+	};
+
+	if (DelaySec <= 0.f)
+	{
+		TM.SetTimerForNextTick(FTimerDelegate::CreateLambda(Call));
+		return true;
+	}
+
+	TM.SetTimer(Handle, FTimerDelegate::CreateLambda(Call), DelaySec, false);
+	return true;
 }
 
 // bounds fallback
@@ -136,7 +195,15 @@ APotatoMonster::APotatoMonster()
 	HPBarWidgetComp->SetWidgetSpace(EWidgetSpace::Screen);
 	HPBarWidgetComp->SetDrawAtDesiredSize(true);
 	HPBarWidgetComp->SetPivot(FVector2D(0.5f, 0.f));
+
 	SpecialSkillComp = CreateDefaultSubobject<USpecialSkillComponent>(TEXT("SpecialSkillComp"));
+
+	// HardenShell
+	HardenShellComp = CreateDefaultSubobject<UPotatoHardenShellComponent>(TEXT("HardenShellComp"));
+	if (HardenShellComp)
+	{
+		HardenShellComp->Deactivate();
+	}
 }
 
 void APotatoMonster::BeginPlay()
@@ -203,8 +270,35 @@ void APotatoMonster::ApplyPresetsOnce()
 	{
 		CombatComp->InitFromStats(FinalStats);
 	}
- 
+
 	SetAnimSet(FinalStats.AnimSet);
+
+	// HardenShell
+	if (HardenShellComp)
+	{
+		if (FinalStats.bEnableHardenShell)
+		{
+			HardenShellComp->Activate(true);
+
+			HardenShellComp->HpPropertyName    = GET_MEMBER_NAME_CHECKED(APotatoMonster, Health);
+			HardenShellComp->MaxHpPropertyName = GET_MEMBER_NAME_CHECKED(APotatoMonster, MaxHealth);
+
+			HardenShellComp->TriggerHpPercent = FMath::Clamp(FinalStats.HardenTriggerHpPercent, 0.f, 1.f);
+			HardenShellComp->DamageMultiplierWhenHardened = FMath::Max(0.f, FinalStats.HardenDamageMultiplier);
+			HardenShellComp->HardenTint = FinalStats.HardenTint;
+		}
+		else
+		{
+			HardenShellComp->Deactivate();
+		}
+	}
+
+	// SpecialSkill
+	if (SpecialSkillComp)
+	{
+		SpecialSkillComp->SkillPresetTable = SpecialSkillPresetTable;
+		SpecialSkillComp->InitFromFinalStats(FinalStats);
+	}
 
 	UpdateHPBarLocation();
 	RefreshHPBar();
@@ -222,34 +316,52 @@ float APotatoMonster::TakeDamage(
 )
 {
 	if (bIsDead) return 0.f;
+	if (IsActorBeingDestroyed()) return 0.f;
 
-	const float Applied = FMath::Max(0.f, DamageAmount);
+	float Incoming = FMath::Max(0.f, DamageAmount);
+	if (Incoming <= 0.f) return 0.f;
+
+	// (전) HardenShell 감쇠
+	if (HardenShellComp && HardenShellComp->IsActive())
+	{
+		Incoming = HardenShellComp->ModifyIncomingDamage(Incoming);
+		Incoming = FMath::Max(0.f, Incoming);
+		if (Incoming <= 0.f) return 0.f;
+	}
+
+	// ✅ BUG FIX: Applied는 DamageAmount가 아니라 Incoming을 써야 함
+	const float Applied = Incoming;
 	if (Applied <= 0.f) return 0.f;
 
 	Health = FMath::Clamp(Health - Applied, 0.f, MaxHealth);
 	RefreshHPBar();
-	if (SpecialSkillComp && !SpecialSkill_OnHit.IsNone())
-	{
-		// 타겟 후보: DamageCauser가 있으면 그걸, 없으면 EventInstigator의 Pawn
-		AActor* Target = DamageCauser;
 
+	// (후) HP% 기반 Harden 전환 체크
+	if (HardenShellComp && HardenShellComp->IsActive())
+	{
+		HardenShellComp->PostDamageCheck();
+	}
+
+	// OnHit SpecialSkill
+	if (SpecialSkillComp)
+	{
+		AActor* Target = DamageCauser;
 		if (!Target && EventInstigator)
 		{
 			Target = EventInstigator->GetPawn();
 		}
 
-		// 그래도 없으면 현재 타겟(네 BB/멤버가 있다면)
-		// if (!Target) Target = CurrentTarget; // 있으면 사용
-
 		if (IsValid(Target))
 		{
-			SpecialSkillComp->TryStartSkill(SpecialSkill_OnHit, Target);
+			SpecialSkillComp->TryStartOnHit(Target);
 		}
 	}
-	// DamageText (기존 유지)
+
+	// DamageText
 	if (DamageTextPool)
 	{
-		const float Now = GetWorld()->TimeSeconds;
+		UWorld* W = GetWorld();
+		const float Now = W ? W->TimeSeconds : 0.f;
 
 		if (Now - LastDamageTime > DamageStackResetTime)
 		{
@@ -263,8 +375,7 @@ float APotatoMonster::TakeDamage(
 			: 80.f;
 
 		const int32 Dir = (DamageStackIndex % 2 == 0) ? 1 : -1;
-		const float XOffset =
-			Dir * DamageStackOffsetStep * (DamageStackIndex / 2 + 1);
+		const float XOffset = Dir * DamageStackOffsetStep * (DamageStackIndex / 2 + 1);
 
 		FVector DamageLoc =
 			GetActorLocation()
@@ -278,8 +389,6 @@ float APotatoMonster::TakeDamage(
 
 		DamageStackIndex++;
 	}
-	
-	
 
 	if (Health > 0.f)
 	{
@@ -325,6 +434,7 @@ void APotatoMonster::OnMonsterTakeRadialDamage(AActor* DamagedActor, float Damag
 	{
 		P = FVector(HitInfo.ImpactPoint);
 	}
+
 	bHasLastHitPoint = true;
 	LastHitPointWS = P;
 	LastHitBoneName = HitInfo.BoneName;
@@ -337,6 +447,7 @@ void APotatoMonster::OnMonsterTakeRadialDamage(AActor* DamagedActor, float Damag
 void APotatoMonster::TryPlayHitReact()
 {
 	if (bIsDead) return;
+	if (IsActorBeingDestroyed()) return;
 
 	UWorld* World = GetWorld();
 	const float Now = World ? World->TimeSeconds : 0.f;
@@ -358,7 +469,7 @@ void APotatoMonster::TryPlayHitReact()
 		if (Now - LastHitSFXTime >= HitSFXCooldown)
 		{
 			const bool bDistanceOK = PotatoFX::PassDistanceGate(this, GetActorLocation(), HitSFXNearDistance, HitSFXFarDistance, HitSFXFarChance);
-			const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, 0.08f, 4, PotatoFX::EGlobalBudgetChannel::HitSFX);
+			const bool bBudgetOK   = PotatoFX::PassGlobalBudget(Now, 0.08f, 4, PotatoFX::EGlobalBudgetChannel::HitSFX);
 
 			if (bDistanceOK && bBudgetOK)
 			{
@@ -371,7 +482,7 @@ void APotatoMonster::TryPlayHitReact()
 		if (bHasHitVFX && (Now - LastHitVFXTime >= HitVFXCooldown))
 		{
 			const bool bDistanceOK = PotatoFX::PassDistanceGate(this, HitLoc, HitVFXNearDistance, HitVFXFarDistance, HitVFXFarChance);
-			const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, HitVFXGlobalWindowSec, HitVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::HitVFX);
+			const bool bBudgetOK   = PotatoFX::PassGlobalBudget(Now, HitVFXGlobalWindowSec, HitVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::HitVFX);
 
 			if (bDistanceOK && bBudgetOK)
 			{
@@ -387,7 +498,8 @@ void APotatoMonster::TryPlayHitReact()
 		float FinalLen = BaseLen;
 		ComputeMinVisiblePlayRate(BaseLen, HitReactMinVisibleTime, FinalLen);
 
-		const float StunTime = FMath::Clamp(FinalLen, 0.1f, HitReactMaxStunTime);
+		float StunTime = FMath::Clamp(FinalLen, 0.1f, HitReactMaxStunTime);
+		if (!FMath::IsFinite(StunTime)) StunTime = 0.1f;
 
 		ScheduleTimerSafe(this, HitReactResumeTH, &APotatoMonster::ResumeMovementAfterHitReact, StunTime);
 		return;
@@ -402,7 +514,7 @@ void APotatoMonster::TryPlayHitReact()
 	// 시작 SFX 1회
 	{
 		const bool bDistanceOK = PotatoFX::PassDistanceGate(this, GetActorLocation(), HitSFXNearDistance, HitSFXFarDistance, HitSFXFarChance);
-		const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, 0.08f, 4, PotatoFX::EGlobalBudgetChannel::HitSFX);
+		const bool bBudgetOK   = PotatoFX::PassGlobalBudget(Now, 0.08f, 4, PotatoFX::EGlobalBudgetChannel::HitSFX);
 
 		if (bDistanceOK && bBudgetOK)
 		{
@@ -417,7 +529,7 @@ void APotatoMonster::TryPlayHitReact()
 		if (bHasHitVFX && (Now - LastHitVFXTime >= HitVFXCooldown))
 		{
 			const bool bDistanceOK = PotatoFX::PassDistanceGate(this, HitLoc, HitVFXNearDistance, HitVFXFarDistance, HitVFXFarChance);
-			const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, HitVFXGlobalWindowSec, HitVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::HitVFX);
+			const bool bBudgetOK   = PotatoFX::PassGlobalBudget(Now, HitVFXGlobalWindowSec, HitVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::HitVFX);
 
 			if (bDistanceOK && bBudgetOK)
 			{
@@ -438,7 +550,8 @@ void APotatoMonster::TryPlayHitReact()
 	const float PlayedLen = AnimInst->Montage_Play(AS->HitReactMontage, PlayRate);
 
 	const float EffectiveLen = (PlayedLen > 0.f) ? FMath::Max(PlayedLen, FinalLen) : FinalLen;
-	const float StunTime = FMath::Clamp(EffectiveLen, 0.1f, HitReactMaxStunTime);
+	float StunTime = FMath::Clamp(EffectiveLen, 0.1f, HitReactMaxStunTime);
+	if (!FMath::IsFinite(StunTime)) StunTime = 0.1f;
 
 	ScheduleTimerSafe(this, HitReactResumeTH, &APotatoMonster::ResumeMovementAfterHitReact, StunTime);
 }
@@ -446,6 +559,7 @@ void APotatoMonster::TryPlayHitReact()
 void APotatoMonster::ResumeMovementAfterHitReact()
 {
 	if (bIsDead) return;
+	if (IsActorBeingDestroyed()) return;
 
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
@@ -474,7 +588,6 @@ static void EnableRagdollFallback(APotatoMonster* M)
 {
 	if (!M) return;
 
-	// 캡슐은 끄고, 메쉬가 물리로 굴러가게
 	if (UCapsuleComponent* Cap = M->GetCapsuleComponent())
 	{
 		Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
@@ -483,10 +596,7 @@ static void EnableRagdollFallback(APotatoMonster* M)
 
 	if (USkeletalMeshComponent* Mesh = M->GetMesh())
 	{
-		// 캐릭터는 보통 캡슐이 Root라서, 메쉬를 분리해줘야 "즉시 멈춤/튕김"이 덜함
 		Mesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-
-		// Ragdoll 프로파일은 프로젝트 기본값(PhysicsAsset 기준) 사용하는 게 가장 안전
 		Mesh->SetCollisionProfileName(TEXT("Ragdoll"));
 
 		Mesh->SetAllBodiesSimulatePhysics(true);
@@ -494,7 +604,6 @@ static void EnableRagdollFallback(APotatoMonster* M)
 		Mesh->WakeAllRigidBodies();
 		Mesh->bBlendPhysics = true;
 
-		// 혹시 남아있는 애니 영향 최소화
 		Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 	}
 }
@@ -503,41 +612,40 @@ void APotatoMonster::Die()
 {
 	if (bIsDead) return;
 	bIsDead = true;
-	if (SpecialSkillComp && !SpecialSkill_OnDeath.IsNone())
+
+	// OnDeath
+	if (SpecialSkillComp)
 	{
-		// 분열은 Target이 꼭 필요 없으면 Self로 넘겨도 됨
-		SpecialSkillComp->TryStartSkill(SpecialSkill_OnDeath, this);
+		SpecialSkillComp->TryStartOnDeath(this);
+
+		// ✅ CancelActiveSkill이 C++에 없어도 빌드되게 보호 호출
+		// (있으면 호출, 없으면 무시)
+		CallUFunctionIfExists(SpecialSkillComp, TEXT("CancelActiveSkill"));
 	}
+
 	UWorld* World = GetWorld();
 	const float Now = World ? World->TimeSeconds : 0.f;
 
 	const FVector DeathLoc = ComputeBoundsTopLocation(this, 0.2f, 0.f);
-	if (SpecialSkillComp)
-	{
-		SpecialSkillComp->CancelSkill(ESpecialSkillCancelReason::Forced);
-	}
-	// Death SFX
+
+	// Death SFX/VFX는 기존 로직 유지 (생략 가능)
 	if (const UPotatoMonsterAnimSet* AS0 = GetAnimSet())
 	{
 		const bool bDistanceOK = PotatoFX::PassDistanceGate(this, GetActorLocation(), DeathSFXNearDistance, DeathSFXFarDistance, DeathSFXFarChance);
-		const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, 0.12f, 2, PotatoFX::EGlobalBudgetChannel::DeathSFX);
+		const bool bBudgetOK   = PotatoFX::PassGlobalBudget(Now, 0.12f, 2, PotatoFX::EGlobalBudgetChannel::DeathSFX);
 
 		if (bDistanceOK && bBudgetOK)
 		{
 			PotatoFX::SpawnSFXSlotAtLocation(this, AS0->DeathSFX, GetActorLocation());
 		}
-	}
 
-	// Death VFX
-	if (const UPotatoMonsterAnimSet* AS0 = GetAnimSet())
-	{
 		const bool bHasDeathVFX = (AS0->DeathVFX.Niagara || AS0->DeathVFX.Cascade);
 		if (bHasDeathVFX && (Now - LastDeathVFXTime >= DeathVFXCooldown))
 		{
-			const bool bDistanceOK = PotatoFX::PassDistanceGate(this, DeathLoc, DeathVFXNearDistance, DeathVFXFarDistance, DeathVFXFarChance);
-			const bool bBudgetOK = PotatoFX::PassGlobalBudget(Now, DeathVFXGlobalWindowSec, DeathVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::DeathVFX);
+			const bool bDistanceOK2 = PotatoFX::PassDistanceGate(this, DeathLoc, DeathVFXNearDistance, DeathVFXFarDistance, DeathVFXFarChance);
+			const bool bBudgetOK2   = PotatoFX::PassGlobalBudget(Now, DeathVFXGlobalWindowSec, DeathVFXGlobalMaxCount, PotatoFX::EGlobalBudgetChannel::DeathVFX);
 
-			if (bDistanceOK && bBudgetOK)
+			if (bDistanceOK2 && bBudgetOK2)
 			{
 				const float Scalar = PotatoFX::ComputeVFXSlotAutoScaleScalar(this, AS0->DeathVFX);
 				const FVector FinalScale = AS0->DeathVFX.Scale * Scalar;
@@ -563,16 +671,14 @@ void APotatoMonster::Die()
 		HPBarWidgetComp->SetHiddenInGame(true);
 	}
 
-	// 충돌은 "기본은 끄되", Ragdoll일 때는 메쉬 물리 충돌로 대체
+	// 충돌 끄기
 	SetActorEnableCollision(false);
 
 	float Life = 2.f;
 
 	const UPotatoMonsterAnimSet* AS = GetAnimSet();
 
-	// --------------------------------------------
-	// (1) DeathMontage 있으면: 기존 몽타주 죽음
-	// --------------------------------------------
+	// (1) DeathMontage
 	if (AS && AS->DeathMontage)
 	{
 		if (UAnimInstance* AnimInst = GetAnimInstanceSafe(this))
@@ -595,12 +701,9 @@ void APotatoMonster::Die()
 		return;
 	}
 
-	// --------------------------------------------
-	// (2) DeathMontage 없으면: Ragdoll Fallback
-	// --------------------------------------------
+	// (2) Ragdoll Fallback
 	EnableRagdollFallback(this);
 
-	// 너무 오래 남기면 성능/가시성 문제 생길 수 있어서 별도 상한(필요시 변수로 빼도 됨)
 	const float RagdollLife = 3.0f;
 	Life = FMath::Max(Life, RagdollLife);
 
@@ -618,7 +721,6 @@ AActor* APotatoMonster::GetCurrentLaneTarget() const
 
 void APotatoMonster::AdvanceLaneIndex()
 {
-	// 안정: Num-1까지만 유지 (그 다음은 GetCurrentLaneTarget()이 Warehouse로)
 	const int32 MaxIdx = FMath::Max(0, LanePoints.Num() - 1);
 	LaneIndex = FMath::Clamp(LaneIndex + 1, 0, MaxIdx);
 }

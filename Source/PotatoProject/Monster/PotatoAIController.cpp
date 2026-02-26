@@ -1,127 +1,154 @@
-﻿#include "PotatoAIController.h"
+﻿// PotatoAIController.cpp
+
+#include "PotatoAIController.h"
 
 #include "BehaviorTree/BlackboardComponent.h"
 #include "BehaviorTree/BehaviorTreeComponent.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "Navigation/PathFollowingComponent.h"
+
 #include "PotatoMonster.h"
 
+// ------------------------------------------------------------------
+// Blackboard Keys (문자열은 BB 에셋과 반드시 동일해야 함)
+// ------------------------------------------------------------------
 const FName APotatoAIController::Key_WarehouseActor(TEXT("WarehouseActor"));
 const FName APotatoAIController::Key_CurrentTarget(TEXT("CurrentTarget"));
 const FName APotatoAIController::Key_bIsDead(TEXT("bIsDead"));
+
+// 기존 BB 키 이름 "SpecialLogic" 유지 (BB 에셋 호환)
+// - FinalStats 단일 스킬 버전에서는 DefaultSpecialLogic을 넣는다.
 const FName APotatoAIController::Key_SpecialLogic(TEXT("SpecialLogic"));
+
 const FName APotatoAIController::Key_MoveTarget(TEXT("MoveTarget"));
 const FName APotatoAIController::Key_MoveGoal(TEXT("MoveGoal"));
 const FName APotatoAIController::Key_bIsAttacking(TEXT("bIsAttacking"));
 const FName APotatoAIController::Key_bInAttackRange(TEXT("bInAttackRange"));
 
 APotatoAIController::APotatoAIController(const FObjectInitializer& ObjectInitializer)
-    : Super(ObjectInitializer.SetDefaultSubobjectClass<UPathFollowingComponent>(TEXT("PathFollowingComponent")))
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UPathFollowingComponent>(TEXT("PathFollowingComponent")))
 {
-    BlackboardComp = CreateDefaultSubobject<UBlackboardComponent>(TEXT("BlackboardComp"));
-    BehaviorComp = CreateDefaultSubobject<UBehaviorTreeComponent>(TEXT("BehaviorComp"));
+	BlackboardComp = CreateDefaultSubobject<UBlackboardComponent>(TEXT("BlackboardComp"));
+	BehaviorComp = CreateDefaultSubobject<UBehaviorTreeComponent>(TEXT("BehaviorComp"));
 }
 
 static FString ObjName(UObject* Obj)
 {
-    return Obj ? Obj->GetName() : FString(TEXT("None"));
+	return Obj ? Obj->GetName() : FString(TEXT("None"));
 }
 
 void APotatoAIController::LogBBKeyObjects() const
 {
-    if (!BlackboardComp) return;
+	if (!BlackboardComp) return;
 
-    auto DumpObj = [&](const FName& Key)
-        {
-            UObject* V = BlackboardComp->GetValueAsObject(Key);
-            UE_LOG(LogTemp, Warning, TEXT("[AICon][BB] %s = %s"), *Key.ToString(), *ObjName(V));
-        };
+	auto DumpObj = [&](const FName& Key)
+	{
+		UObject* V = BlackboardComp->GetValueAsObject(Key);
+		UE_LOG(LogTemp, Warning, TEXT("[AICon][BB] %s = %s"), *Key.ToString(), *ObjName(V));
+	};
 
-    DumpObj(Key_WarehouseActor);
-    DumpObj(Key_MoveTarget);
-    DumpObj(Key_MoveGoal);
-    DumpObj(Key_CurrentTarget);
+	DumpObj(Key_WarehouseActor);
+	DumpObj(Key_MoveTarget);
+	DumpObj(Key_MoveGoal);
+	DumpObj(Key_CurrentTarget);
 }
 
 void APotatoAIController::LogBBKeyBools() const
 {
-    if (!BlackboardComp) return;
+	if (!BlackboardComp) return;
 
-    auto DumpBool = [&](const FName& Key)
-        {
-            const bool b = BlackboardComp->GetValueAsBool(Key);
-            UE_LOG(LogTemp, Warning, TEXT("[AICon][BB] %s = %s"), *Key.ToString(), b ? TEXT("true") : TEXT("false"));
-        };
+	auto DumpBool = [&](const FName& Key)
+	{
+		const bool b = BlackboardComp->GetValueAsBool(Key);
+		UE_LOG(LogTemp, Warning, TEXT("[AICon][BB] %s = %s"), *Key.ToString(), b ? TEXT("true") : TEXT("false"));
+	};
 
-    DumpBool(Key_bIsDead);
-    DumpBool(Key_bIsAttacking);
-    DumpBool(Key_bInAttackRange);
+	DumpBool(Key_bIsDead);
+	DumpBool(Key_bIsAttacking);
+	DumpBool(Key_bInAttackRange);
 
-    const int32 Special = BlackboardComp->GetValueAsInt(Key_SpecialLogic);
-    UE_LOG(LogTemp, Warning, TEXT("[AICon][BB] %s = %d"), *Key_SpecialLogic.ToString(), Special);
+	const int32 Special = BlackboardComp->GetValueAsInt(Key_SpecialLogic);
+	UE_LOG(LogTemp, Warning, TEXT("[AICon][BB] %s = %d"), *Key_SpecialLogic.ToString(), Special);
 }
 
 void APotatoAIController::OnPossess(APawn* InPawn)
 {
-    Super::OnPossess(InPawn);
+	Super::OnPossess(InPawn);
 
-    APotatoMonster* Monster = Cast<APotatoMonster>(InPawn);
-    if (!Monster) return;
+	APotatoMonster* Monster = Cast<APotatoMonster>(InPawn);
+	if (!Monster) return;
 
-    Monster->ApplyPresetsOnce();
+	// Preset 주입(한 번만)
+	Monster->ApplyPresetsOnce();
 
-    UBehaviorTree* BT = Monster->GetBehaviorTreeToRun();
-    if (!BT || !BT->BlackboardAsset) return;
+	UBehaviorTree* BT = Monster->GetBehaviorTreeToRun();
+	if (!BT || !BT->BlackboardAsset) return;
 
-    UBlackboardComponent* BB = nullptr;
+	UBlackboardComponent* BB = nullptr;
 
-    // ✅ 이 한 줄이 “BT가 실제로 도는” 가장 큰 차이
-    if (!UseBlackboard(BT->BlackboardAsset, BB))
-    {
-        UE_LOG(LogTemp, Warning, TEXT("[AICon] UseBlackboard=FAILED"));
-        return;
-    }
+	// 이 한 줄이 “BT가 실제로 도는” 가장 큰 차이
+	if (!UseBlackboard(BT->BlackboardAsset, BB))
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[AICon] UseBlackboard=FAILED"));
+		return;
+	}
 
-    const bool bBT = RunBehaviorTree(BT);
-    UE_LOG(LogTemp, Warning, TEXT("[AICon] RunBehaviorTree=%s"), bBT ? TEXT("OK") : TEXT("FAILED"));
+	const bool bBT = RunBehaviorTree(BT);
+	UE_LOG(LogTemp, Warning, TEXT("[AICon] RunBehaviorTree=%s"), bBT ? TEXT("OK") : TEXT("FAILED"));
 
-    if (!BB) BB = GetBlackboardComponent();
-    if (!BB) return;
+	if (!BB) BB = GetBlackboardComponent();
+	if (!BB) return;
 
-    // Warehouse
-    if (IsValid(Monster->WarehouseActor))
-        BB->SetValueAsObject(Key_WarehouseActor, Monster->WarehouseActor);
-    else
-        BB->ClearValue(Key_WarehouseActor);
+	// ------------------------------------------------------------
+	// Warehouse
+	// ------------------------------------------------------------
+	if (IsValid(Monster->WarehouseActor))
+		BB->SetValueAsObject(Key_WarehouseActor, Monster->WarehouseActor);
+	else
+		BB->ClearValue(Key_WarehouseActor);
 
-    // MoveTarget init
-    {
-        AActor* Existing = Cast<AActor>(BB->GetValueAsObject(Key_MoveTarget));
-        if (!IsValid(Existing))
-        {
-            AActor* FirstTarget = (Monster->LanePoints.Num() > 0) ? Monster->GetCurrentLaneTarget() : nullptr;
-            if (!IsValid(FirstTarget)) FirstTarget = Monster->WarehouseActor;
-            if (IsValid(FirstTarget)) BB->SetValueAsObject(Key_MoveTarget, FirstTarget);
-            else BB->ClearValue(Key_MoveTarget);
-        }
-    }
+	// ------------------------------------------------------------
+	// MoveTarget init
+	// ------------------------------------------------------------
+	{
+		AActor* Existing = Cast<AActor>(BB->GetValueAsObject(Key_MoveTarget));
+		if (!IsValid(Existing))
+		{
+			AActor* FirstTarget = (Monster->LanePoints.Num() > 0) ? Monster->GetCurrentLaneTarget() : nullptr;
+			if (!IsValid(FirstTarget)) FirstTarget = Monster->WarehouseActor;
 
-    // ✅ MoveGoal init (필수)
-    {
-        AActor* ExistingGoal = Cast<AActor>(BB->GetValueAsObject(TEXT("MoveGoal")));
-        if (!IsValid(ExistingGoal))
-        {
-            AActor* MT = Cast<AActor>(BB->GetValueAsObject(Key_MoveTarget));
-            AActor* WH = Cast<AActor>(BB->GetValueAsObject(Key_WarehouseActor));
-            AActor* InitGoal = MT ? MT : WH;
+			if (IsValid(FirstTarget)) BB->SetValueAsObject(Key_MoveTarget, FirstTarget);
+			else BB->ClearValue(Key_MoveTarget);
+		}
+	}
 
-            if (IsValid(InitGoal)) BB->SetValueAsObject(TEXT("MoveGoal"), InitGoal);
-            else BB->ClearValue(TEXT("MoveGoal"));
-        }
-    }
+	// ------------------------------------------------------------
+	// MoveGoal init (필수)
+	// ------------------------------------------------------------
+	{
+		AActor* ExistingGoal = Cast<AActor>(BB->GetValueAsObject(Key_MoveGoal));
+		if (!IsValid(ExistingGoal))
+		{
+			AActor* MT = Cast<AActor>(BB->GetValueAsObject(Key_MoveTarget));
+			AActor* WH = Cast<AActor>(BB->GetValueAsObject(Key_WarehouseActor));
+			AActor* InitGoal = MT ? MT : WH;
 
-    BB->SetValueAsBool(Key_bIsDead, Monster->bIsDead);
-    BB->SetValueAsInt(Key_SpecialLogic, (int32)Monster->FinalStats.SpecialLogic);
+			if (IsValid(InitGoal)) BB->SetValueAsObject(Key_MoveGoal, InitGoal);
+			else BB->ClearValue(Key_MoveGoal);
+		}
+	}
 
-    BB->ClearValue(Key_CurrentTarget);
+	// ------------------------------------------------------------
+	// Basic flags
+	// ------------------------------------------------------------
+	BB->SetValueAsBool(Key_bIsDead, Monster->bIsDead);
+
+	// FinalStats 단일 스킬 버전 대응
+	// - 기존(분기형): Monster->FinalStats.OnCooldownLogic
+	// - 현재(단일형): Monster->FinalStats.DefaultSpecialLogic
+	//   (BB Key 이름은 "SpecialLogic" 그대로 유지해서 BT/BB 에셋 수정 최소화)
+	BB->SetValueAsInt(Key_SpecialLogic, (int32)Monster->FinalStats.DefaultSpecialLogic);
+
+	// Target 초기화
+	BB->ClearValue(Key_CurrentTarget);
 }

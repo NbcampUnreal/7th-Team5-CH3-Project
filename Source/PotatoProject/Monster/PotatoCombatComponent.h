@@ -3,9 +3,6 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "PotatoMonsterFinalStats.h"
-
-#include "FXUtils/PotatoFXUtils.h"
-
 #include "PotatoCombatComponent.generated.h"
 
 class AActor;
@@ -67,7 +64,8 @@ private:
 	// =====================
 	// State
 	// =====================
-	UPROPERTY()
+	// FinalStats 캐시 (PresetApplier에서 주입)
+	UPROPERTY(Transient)
 	FPotatoMonsterFinalStats Stats;
 
 	bool bIsAttacking = false;
@@ -93,10 +91,11 @@ private:
 	bool GetMuzzleTransform(FVector& OutLoc, FRotator& OutRot) const;
 
 	// =====================
-	// OnAttack Special Proc
+	// OnAttack Special Proc (정석)
+	// - Proc gate/Chance/Cooldown/SkillId/Ready 체크는 SpecialSkillComponent 내부가 담당
+	// - Combat은 "공격 시작 직전" 한 번 호출만 한다.
 	// =====================
 	void TryProcOnAttackSpecial(APotatoMonster* Monster, AActor* Target, double Now);
-	double NextOnAttackSpecialProcTime = 0.0;
 
 	// =====================
 	// SFX control (per-owner)
