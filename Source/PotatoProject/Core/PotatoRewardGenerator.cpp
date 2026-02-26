@@ -10,6 +10,7 @@
 #include "Player/PotatoPlayerController.h"
 #include "UI/ResultScreen.h"
 #include "Kismet/GameplayStatics.h"
+#include "Core/PotatoNPCRegistrySubsystem.h"
 
 // Sets default values
 APotatoRewardGenerator::APotatoRewardGenerator()
@@ -43,6 +44,13 @@ void APotatoRewardGenerator::BeginPlay()
 
     PotatoGameMode->OnResultPhase.AddDynamic(this, &APotatoRewardGenerator::OnResultPhaseAction);
     UE_LOG(LogTemp, Log, TEXT("APotatoRewardGenerator::BeginPlay - Successfully initialized references and bound to OnResultPhase"));
+
+    UPotatoNPCRegistrySubsystem* RegistrySystem = World->GetSubsystem<UPotatoNPCRegistrySubsystem>();
+    if (!RegistrySystem)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APotatoRewardGenerator::BeginPlay - Failed to get PotatoNPCRegistrySubsystem"));
+        return;
+    }
 }
 
 void APotatoRewardGenerator::GrantReward(int32 CurrentDay)
@@ -79,84 +87,126 @@ void APotatoRewardGenerator::GrantReward(int32 CurrentDay)
 
 }
 
-void APotatoRewardGenerator::ShowResultScreen(int32 InCurrentDay, int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss)
+static EIconItemType ResourceTypeToIconType(EResourceType InType)
+{
+    switch (InType)
+    {
+        case EResourceType::Wood:      return EIconItemType::Wood;
+        case EResourceType::Stone:     return EIconItemType::Stone;
+        case EResourceType::Crop:      return EIconItemType::Crop;
+        case EResourceType::Livestock: return EIconItemType::Livestock;
+        default:                       return EIconItemType::Wood;
+    }
+}
+
+// ENPCType -> EIconItemType 변환
+static EIconItemType NPCTypeToIconType(ENPCType InType)
+{
+    switch (InType)
+    {
+        case ENPCType::Lumberjack: return EIconItemType::Lumberjack;
+        case ENPCType::Miner:      return EIconItemType::Miner;
+        default:                   return EIconItemType::Lumberjack;
+    }
+}
+
+void APotatoRewardGenerator::ShowResultScreen(
+    int32 InCurrentDay,
+    int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss,
+    const TMap<ENPCType, int32>& InRetiredByType, int32 InTotalRetired)
 {
     if (!ResultScreenClass) return;
 
+    // 이전 ResultScreen이 남아있으면 제거 후 새로 생성
+    // (재사용 시 NativeConstruct가 재호출되어 AddDynamic 중복 바인딩 발생)
+    if (ResultScreen)
+    {
+        ResultScreen = nullptr;
+    }
+
+    ResultScreen = CreateWidget<UResultScreen>(GetWorld(), ResultScreenClass);
     if (!ResultScreen)
     {
-        ResultScreen = CreateWidget<UResultScreen>(GetWorld(), ResultScreenClass);
+        return;
     }
-    if (!ResultScreen) return;
 
-    FPotatoDayRewardRow RewardData;
-    bool bHasReward = false;
+    // 보상 배열 조립
+    TArray<TPair<EIconItemType, int32>> RewardItems;
+
     if (RewardTable)
     {
-        FPotatoDayRewardRow* Found = RewardTable->FindRow<FPotatoDayRewardRow>(
+        FPotatoDayRewardRow* Row = RewardTable->FindRow<FPotatoDayRewardRow>(
             *FString::FromInt(InCurrentDay), TEXT("ShowResultContext"));
-        if (Found)
+        if (Row)
         {
-            RewardData = *Found;
-            bHasReward = true;
+            if (Row->WoodReward > 0)
+                RewardItems.Add({ ResourceTypeToIconType(EResourceType::Wood), Row->WoodReward });
+            if (Row->StoneReward > 0)
+                RewardItems.Add({ ResourceTypeToIconType(EResourceType::Stone), Row->StoneReward });
+            if (Row->CropReward > 0)
+                RewardItems.Add({ ResourceTypeToIconType(EResourceType::Crop), Row->CropReward });
+            if (Row->LivestockReward > 0)
+                RewardItems.Add({ ResourceTypeToIconType(EResourceType::Livestock), Row->LivestockReward });
         }
     }
 
+    // 비용 배열 조립 
+    TArray<TPair<EIconItemType, int32>> CostItems;
+
+    // 유지비 (축산물 아이콘)
+    if (TotalMaintenanceCost > 0)
+        CostItems.Add({ ResourceTypeToIconType(EResourceType::Livestock), TotalMaintenanceCost });
+
+    // 퇴직 NPC (타입별)
+    for (const auto& Pair : InRetiredByType)
+    {
+        if (Pair.Value > 0)
+            CostItems.Add({ NPCTypeToIconType(Pair.Key), Pair.Value });
+    }
+
+    // ResultScreen 초기화
     ResultScreen->InitScreen(
         InCurrentDay,
         InKilledMonster, InKilledElite, InKilledBoss,
-        bHasReward ? RewardData.WoodReward      : 0,
-        bHasReward ? RewardData.StoneReward     : 0,
-        bHasReward ? RewardData.CropReward      : 0,
-        bHasReward ? RewardData.LivestockReward : 0,
-        TotalMaintenanceCost,
-        TotalRetiredNPCCount
-    );
+        RewardItems, CostItems);
 
-    
     if (APotatoPlayerController* PC = GetWorld()->GetFirstPlayerController<APotatoPlayerController>())
     {
-        PC->SetPause(true);
         ResultScreen->AddToViewport();
         PC->SetUIMode(true, ResultScreen);
     }
+
+    // Day 페이즈가 시작되면 ResultScreen을 자동으로 닫음
+    // (버튼을 누르지 않아도 다음 Day가 되면 화면이 사라짐)
+    PotatoGameMode->OnDayPhase.AddDynamic(ResultScreen, &UResultScreen::CloseScreen);
 }
 
-int32 APotatoRewardGenerator::CollectMainteanceCosts(int32& OutRetiredCount)
+int32 APotatoRewardGenerator::CollectMainteanceCosts(TMap<ENPCType, int32>& OutRetiredByType)
 {
     int32 TotalCost = 0;
-    OutRetiredCount = 0;
 
-    for (UPotatoNPCManagementComp* Comp : RegisteredNPCManagementComps)
+    UPotatoNPCRegistrySubsystem* RegistrySystem = GetWorld()->GetSubsystem<UPotatoNPCRegistrySubsystem>();
+    if (!RegistrySystem)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("APotatoRewardGenerator::CollectMainteanceCosts - Failed to get PotatoNPCRegistrySubsystem"));
+        return TotalCost;
+    }
+
+    for (UPotatoNPCManagementComp* Comp : RegistrySystem->GetRegisteredComps())
     {
         if (!Comp) continue;
 
-        int32 CompRetired = 0;
-        int32 Cost = Comp->ProcessNPCMaintenance(CompRetired);
+        int32 Cost = Comp->ProcessNPCMaintenance(OutRetiredByType);
         TotalCost += Cost;
-        OutRetiredCount += CompRetired;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("CollectMainteanceCosts - Total: %d, Retired NPCs: %d"), TotalCost, OutRetiredCount);
+    int32 TotalRetired = 0;
+    for (auto& Pair : OutRetiredByType)
+    {
+        TotalRetired += Pair.Value;
+    }
+    UE_LOG(LogTemp, Log, TEXT("CollectMainteanceCosts - Total: %d, Retired NPCs: %d"), TotalCost, TotalRetired);
     return TotalCost;
-}
-
-void APotatoRewardGenerator::RegisterNPCManagementComp(UPotatoNPCManagementComp* NPCManagementComp)
-{
-    if (NPCManagementComp && !RegisteredNPCManagementComps.Contains(NPCManagementComp))
-    {
-        RegisteredNPCManagementComps.Add(NPCManagementComp);
-        UE_LOG(LogTemp, Log, TEXT("RewardGenerator: NPCManagementComp registered - Total Count: %d"), RegisteredNPCManagementComps.Num());
-    }
-
-}
-
-void APotatoRewardGenerator::UnregisterNPCManagementComp(UPotatoNPCManagementComp* NPCManagementComp)
-{
-    if (RegisteredNPCManagementComps.Remove(NPCManagementComp))
-    {
-        UE_LOG(LogTemp, Log, TEXT("RewardGenerator: NPCManagementComp unregistered - Total Count: %d"), RegisteredNPCManagementComps.Num());
-    }
 }
 
 void APotatoRewardGenerator::OnResultPhaseAction()
@@ -170,9 +220,15 @@ void APotatoRewardGenerator::OnResultPhaseAction()
     int32 CurrentDay = PotatoGameMode->GetCurrentDay();
 
     // 1. 유지비 계산 및 차감 + 퇴직 NPC 수 수집
-    int32 RetiredCount = 0;
-    TotalMaintenanceCost = CollectMainteanceCosts(RetiredCount);
-    TotalRetiredNPCCount = RetiredCount;
+    TMap<ENPCType, int32> MaintenanceCollectMap;
+    TotalMaintenanceCost = CollectMainteanceCosts(MaintenanceCollectMap);
+
+    // 퇴직 NPC 총 수 집계
+    int32 TotalRetired = 0;
+    for (auto& Pair : MaintenanceCollectMap)
+    {
+        TotalRetired += Pair.Value;
+    }
 
     // 2. 킬 통계 조회
     APotatoGameStateBase* GameState = GetWorld() ? GetWorld()->GetGameState<APotatoGameStateBase>() : nullptr;
@@ -189,9 +245,14 @@ void APotatoRewardGenerator::OnResultPhaseAction()
     // 3. 보상 지급
     GrantReward(CurrentDay);
 
-    // 4. 결과 화면 표시
-    ShowResultScreen(CurrentDay, KilledNormal, KilledElite, KilledBoss);
+    // 4. 결과 화면 표시 (MaintenanceCollectMap 전달)
+    ShowResultScreen(CurrentDay, KilledNormal, KilledElite, KilledBoss, MaintenanceCollectMap, TotalRetired);
 
     // 5. 다음 Day 준비(GameState의 데이터 초기화 수행)
     GameState->ResetKillStats();
+}
+
+void APotatoRewardGenerator::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    Super::EndPlay(EndPlayReason);
 }

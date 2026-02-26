@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Core/PotatoEnums.h"
 #include "PotatoRewardGenerator.generated.h"
 
 class UPotatoResourceManager;
@@ -24,6 +25,7 @@ public:
 protected:
     // Called when the game starts or when spawned
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
     // ResourceManager를 참조 (BeginPlay -> GetWorld()->GetWorldSubsystem()
@@ -50,7 +52,8 @@ public:
 
 private:
     // Widget에 접근하여 결과 화면을 띄우는 함수, 수여된 보상 정보와 소모된 유지비를 표시함
-    void ShowResultScreen(int32 InCurrentDay, int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss);
+    void ShowResultScreen(int32 InCurrentDay, int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss,
+        const TMap<ENPCType, int32>& InRetiredByType, int32 InTotalRetired);
 
     // 실제로 ResourceManager에 보상을 추가하는 함수
     void GrantReward(int32 CurrentDay);
@@ -60,17 +63,9 @@ private:
 #pragma region MaintenanceCost
 
 private:
-    UPROPERTY()
-    TArray<TObjectPtr<UPotatoNPCManagementComp>> RegisteredNPCManagementComps;
-
     int32 TotalMaintenanceCost = 0;
-    int32 TotalRetiredNPCCount = 0;
 
-    int32 CollectMainteanceCosts(int32& OutRetiredCount);
-
-public:
-    void RegisterNPCManagementComp(UPotatoNPCManagementComp* NPCManagementComp);
-    void UnregisterNPCManagementComp(UPotatoNPCManagementComp* NPCManagementComp);
+    int32 CollectMainteanceCosts(TMap<ENPCType, int32>& OutRetiredByType);
 
 #pragma endregion MaintenanceCost
 

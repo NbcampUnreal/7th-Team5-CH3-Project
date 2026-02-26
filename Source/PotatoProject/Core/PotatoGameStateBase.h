@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/GameStateBase.h"
+#include "GameFramework/GameState.h"
 #include "Core/PotatoEnums.h"
 #include "PotatoGameStateBase.generated.h"
 
@@ -11,7 +11,7 @@
  * 
  */
 UCLASS()
-class POTATOPROJECT_API APotatoGameStateBase : public AGameStateBase
+class POTATOPROJECT_API APotatoGameStateBase : public AGameState
 {
 	GENERATED_BODY()
 	

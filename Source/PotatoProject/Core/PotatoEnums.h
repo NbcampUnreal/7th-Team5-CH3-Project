@@ -134,3 +134,27 @@ enum class EDayPhase : uint8
 	Night UMETA(DisplayName = "Night"),
 	Dawn UMETA(DisplayName = "Dawn")
 };
+
+UENUM()
+enum class EStackItemType : uint8
+{
+    Plus UMETA(DisplayName = "Plus"),
+    Minus UMETA(DisplayName = "Minus")
+};
+
+/** 아이콘 매핑 전용 통합 Enum — UI 레이어에서만 사용
+ *  EResourceType / ENPCType 값을 하나의 Map 키로 통합합니다.
+ */
+UENUM(BlueprintType)
+enum class EIconItemType : uint8
+{
+    // 자원 (EResourceType 대응)
+    Wood        UMETA(DisplayName = "나무"),
+    Stone       UMETA(DisplayName = "광석"),
+    Crop        UMETA(DisplayName = "농작물"),
+    Livestock   UMETA(DisplayName = "축산물"),
+
+    // NPC (ENPCType 대응)
+    Lumberjack  UMETA(DisplayName = "벌목꾼"),
+    Miner       UMETA(DisplayName = "광부"),
+};

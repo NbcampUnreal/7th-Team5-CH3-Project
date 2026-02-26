@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Core/PotatoEnums.h"
 #include "StackItem.generated.h"
 
 class UTextBlock;
@@ -19,13 +20,13 @@ class POTATOPROJECT_API UStackItem : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	/** 아이콘 텍스처와 수량 텍스트를 설정합니다. */
+	/** 아이콘 타입과 수량 텍스트를 설정합니다. */
 	UFUNCTION(BlueprintCallable, Category = "StackItem")
-	void SetStackData(UTexture2D* InIcon, int32 InAmount);
+	void SetStackData(EIconItemType InIconType, int32 InAmount, EStackItemType PlusMinus);
 
 	/** 수량 텍스트만 업데이트합니다. */
 	UFUNCTION(BlueprintCallable, Category = "StackItem")
-	void SetAmount(int32 InAmount);
+	void SetAmount(int32 InAmount, EStackItemType PlusMinus);
 
 	// ---- BindWidgets ----
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
@@ -33,4 +34,8 @@ public:
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UTextBlock> StackText;
+
+    // WBP_StackItem 에디터에서 Enum 드롭다운으로 키를 선택하여 텍스처를 등록합니다.
+    UPROPERTY(EditDefaultsOnly, Category = "StackItem|Icons")
+    TMap<EIconItemType, TObjectPtr<UTexture2D>> IconMap;
 };

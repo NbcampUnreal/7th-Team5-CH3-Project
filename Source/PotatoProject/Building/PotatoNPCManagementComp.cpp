@@ -9,6 +9,7 @@
 #include "Core/PotatoResourceManager.h"
 #include "Core/PotatoRewardGenerator.h"
 #include "Core/PotatoGameMode.h"
+#include "Core/PotatoNPCRegistrySubsystem.h"
 
 UPotatoNPCManagementComp::UPotatoNPCManagementComp()
 {
@@ -32,15 +33,9 @@ void UPotatoNPCManagementComp::BeginPlay()
     }
 
     // RewardGenerator에 등록 (GameMode 참조 경유)
-    if (UWorld* World = GetWorld())
+    if (UPotatoNPCRegistrySubsystem* RegistrySystem = GetWorld()->GetSubsystem<UPotatoNPCRegistrySubsystem>())
     {
-        if (APotatoGameMode* GM = Cast<APotatoGameMode>(World->GetAuthGameMode()))
-        {
-            if (APotatoRewardGenerator* RG = GM->GetRewardGenerator())
-            {
-                RG->RegisterNPCManagementComp(this);
-            }
-        }
+        RegistrySystem->RegisterNPCComp(this);
     }
 
     GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
@@ -52,15 +47,9 @@ void UPotatoNPCManagementComp::BeginPlay()
 void UPotatoNPCManagementComp::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     // RewardGenerator에서 등록 해제
-    if (UWorld* World = GetWorld())
+    if (UPotatoNPCRegistrySubsystem* RegistrySystem = GetWorld()->GetSubsystem<UPotatoNPCRegistrySubsystem>())
     {
-        if (APotatoGameMode* GM = Cast<APotatoGameMode>(World->GetAuthGameMode()))
-        {
-            if (APotatoRewardGenerator* RG = GM->GetRewardGenerator())
-            {
-                RG->UnregisterNPCManagementComp(this);
-            }
-        }
+        RegistrySystem->UnregisterNPCComp(this);
     }
 
     Super::EndPlay(EndPlayReason);
@@ -159,7 +148,7 @@ void UPotatoNPCManagementComp::FireNPC(APotatoNPC* NPC)
     NPC->Retire();
 }
 
-int32 UPotatoNPCManagementComp::ProcessNPCMaintenance(int32& OutRetiredCount)
+int32 UPotatoNPCManagementComp::ProcessNPCMaintenance(TMap<ENPCType, int32>& OutRetiredByType)
 {
     int32 TotalPaid = 0;
     TArray<APotatoNPC*> NPCsToRetire;
@@ -188,13 +177,14 @@ int32 UPotatoNPCManagementComp::ProcessNPCMaintenance(int32& OutRetiredCount)
     // 퇴직 처리 (리스트에서 제거 + Destroy)
     for (APotatoNPC* NPC : NPCsToRetire)
     {
-        if (NPC)
+        if (!NPC)
         {
-            AssignedNPCs.Remove(NPC);
-            NPC->Destroy();
+            continue;
         }
+        OutRetiredByType.FindOrAdd(NPC->Type)++;
+        AssignedNPCs.Remove(NPC);
+        NPC->Destroy();
     }
 
-    OutRetiredCount = NPCsToRetire.Num();
     return TotalPaid;
 }

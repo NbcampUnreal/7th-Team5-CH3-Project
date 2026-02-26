@@ -67,15 +67,6 @@ void APotatoGameMode::StartGame()
         }
     }
 
-    if (!RewardGenerator)
-    {
-        for (TActorIterator<APotatoRewardGenerator> It(GetWorld()); It; ++It)
-        {
-            RewardGenerator = *It;
-            break;
-        }
-    }
-
     UClass* WarehouseClass = StaticLoadClass(AActor::StaticClass(), nullptr, TEXT("/Game/LHW/BluePrints/BP_WareHouse.BP_WareHouse"));
     if (!WarehouseActor)
     {

@@ -48,5 +48,5 @@ public:
 
     // RewardGenerator에서 유지비용 지불 시도할 때 참조하는 함수
     UFUNCTION()
-    int32 ProcessNPCMaintenance(int32& OutRetiredCount);
+    int32 ProcessNPCMaintenance(TMap<ENPCType, int32>& OutRetiredByType);
 };

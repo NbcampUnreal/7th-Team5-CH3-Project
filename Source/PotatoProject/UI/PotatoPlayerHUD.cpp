@@ -230,6 +230,8 @@ void UPotatoPlayerHUD::RefreshClockNeedle(float DeltaTime)
 {
 	if (!DayClockNeedle) return;
 
+    if (GetWorld()->IsPaused()) return; // 게임 일시정지 시 바늘 멈춤
+
 	UPotatoDayNightCycle* DNC = GetWorld()->GetSubsystem<UPotatoDayNightCycle>();
 	if (!DNC || !DNC->IsSystemStarted()) return;
 

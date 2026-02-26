@@ -10,7 +10,6 @@ class UPotatoResourceManager;
 class APotatoPlayerCharacter;
 class APotatoMonsterSpawner;
 class APotatoAnimalController;
-class APotatoRewardGenerator;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDayPhase);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNightPhase);
@@ -132,13 +131,6 @@ private:
 
     UPROPERTY(EditAnywhere, Category = "Spawner")
     TObjectPtr<AActor> WarehouseActor;
-
-    UPROPERTY()
-    APotatoRewardGenerator* RewardGenerator;
-
-public:
-    UFUNCTION(BlueprintPure, Category = "Reward")
-    APotatoRewardGenerator* GetRewardGenerator() const { return RewardGenerator; }
 
 #pragma endregion ResourceSystem
 };

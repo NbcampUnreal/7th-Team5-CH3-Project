@@ -35,9 +35,14 @@ void APotatoPlayerController::SetUIMode(bool bEnable, UUserWidget* FocusWidget)
         FInputModeUIOnly InputMode;
         if (FocusWidget)
         {
-            InputMode.SetWidgetToFocus(FocusWidget->TakeWidget());
+            // TakeWidget()은 위젯이 완전히 초기화되기 전에 호출 시 Non-Focusable 경고 발생
+            TSharedPtr<SWidget> SlateWidget = FocusWidget->GetCachedWidget();
+            if (SlateWidget.IsValid())
+            {
+                InputMode.SetWidgetToFocus(SlateWidget);
+            }
         }
-
+        InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
         SetInputMode(InputMode);
         bShowMouseCursor = true;
     }

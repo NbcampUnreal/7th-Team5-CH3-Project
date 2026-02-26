@@ -4,12 +4,14 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Core/PotatoEnums.h"
 #include "ResultScreen.generated.h"
 
 class UTextBlock;
 class UButton;
 class UBorder;
 class UHorizontalBox;
+class UStackItem;
 
 /**
  * WBP_ResultScreen
@@ -25,6 +27,7 @@ class POTATOPROJECT_API UResultScreen : public UUserWidget
 
 protected:
 	virtual void NativeConstruct() override;
+	virtual void NativeDestruct() override;
 
 public:
 	/**
@@ -33,13 +36,18 @@ public:
 	 * @param InKilledMonster    처치한 일반 몬스터 수
 	 * @param InKilledElite      처치한 정예 몬스터 수
 	 * @param InKilledBoss       처치한 보스 몬스터 수
+	 * @param InRewardItems      보상 배열 (EIconItemType, 수량)
+	 * @param InCostItems        소모 배열 (EIconItemType, 수량)
 	 */
 	void InitScreen(
 		int32 InCurrentDay,
 		int32 InKilledMonster, int32 InKilledElite, int32 InKilledBoss,
-		int32 InWoodReward, int32 InStoneReward, int32 InCropReward, int32 InLivestockReward,
-		int32 InTotalMaintenance,
-		int32 InRetiredNPCCount);
+		const TArray<TPair<EIconItemType, int32>>& InRewardItems,
+		const TArray<TPair<EIconItemType, int32>>& InCostItems);
+
+	// 화면 닫기 — 버튼 클릭 / Day 시작 자동 닫기 공통 경로
+	UFUNCTION()
+	void CloseScreen();
 
 	// ---- BindWidgets ----
 
@@ -69,7 +77,11 @@ public:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UHorizontalBox> CostBox;
 
+    // StackItemClass: WBP_StackItem의 UClass 참조 (에디터에서 설정)
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TSubclassOf<UStackItem> StackItemClass;
+
 private:
 	UFUNCTION()
-	void OnContinueClicked();   // Button_Continue -> 다음 Day로 계속
+	void OnContinueClicked();
 };
