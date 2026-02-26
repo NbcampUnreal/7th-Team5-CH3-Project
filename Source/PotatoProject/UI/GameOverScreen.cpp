@@ -9,6 +9,7 @@
 
 #include "Core/PotatoResourceManager.h"
 #include "Core/PotatoEnums.h"
+#include "Player/PotatoPlayerController.h"
 
 void UGameOverScreen::NativeConstruct()
 {
@@ -26,13 +27,20 @@ void UGameOverScreen::NativeConstruct()
 	{
 		Button_VictoryBackTitle->OnClicked.AddDynamic(this, &UGameOverScreen::OnVictoryTitleClicked);
 	}
-
-	// 초기에는 둘 다 숨김 (InitScreen 호출 전)
-	if (VictoryPanel)  VictoryPanel->SetVisibility(ESlateVisibility::Collapsed);
-	if (DefeatPanel)   DefeatPanel->SetVisibility(ESlateVisibility::Collapsed);
 }
 
-void UGameOverScreen::InitScreen(bool bVictory, int32 InCurrentDay, int32 InKillCount)
+void UGameOverScreen::NativeDestruct()
+{
+    APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetOwningPlayer());
+
+    if (PC)
+    {
+        PC->SetUIMode(false);
+        PC->SetPause(false);
+    }
+}
+
+void UGameOverScreen::InitScreen(bool bVictory, int32 InCurrentDay, int32 InKillCount, FText Message)
 {
 	const FText DayText  = FText::Format(NSLOCTEXT("GameOver", "Day",  "Day {0}"), InCurrentDay);
 	const FText KillText = FText::AsNumber(InKillCount);
@@ -45,6 +53,8 @@ void UGameOverScreen::InitScreen(bool bVictory, int32 InCurrentDay, int32 InKill
 		if (LastDay)  LastDay->SetText(DayText);
 		if (TotalKilledEnemyVictory)  TotalKilledEnemyVictory->SetText(KillText);
 
+        // 승리 메시지도 표시 가능합니다
+
 		RefreshFinalAssets();
 	}
 	else
@@ -54,6 +64,12 @@ void UGameOverScreen::InitScreen(bool bVictory, int32 InCurrentDay, int32 InKill
 
 		if (EliminatedDay)   EliminatedDay->SetText(DayText);
 		if (TotalKilledEnemyCount) TotalKilledEnemyCount->SetText(KillText);
+
+        // 패배 원인 메시지 표시
+        if (GameOverMessage && !Message.IsEmpty())
+        {
+            GameOverMessage->SetText(Message);
+        }
 	}
 }
 

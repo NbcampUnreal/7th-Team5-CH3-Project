@@ -10,6 +10,8 @@
 #include "../Animal/PotatoAnimalController.h"
 #include "../Core/PotatoEnums.h"
 #include "Core/PotatoGameStateBase.h"
+#include "UI/GameOverScreen.h"
+#include "Player/PotatoPlayerController.h"
 
 APotatoGameMode::APotatoGameMode() 
 {
@@ -153,7 +155,7 @@ void APotatoGameMode::StartResultPhase()
     OnResultPhase.Broadcast();
 }
 
-void APotatoGameMode::EndGame(bool IsGameClear)
+void APotatoGameMode::EndGame(bool IsGameClear, FText Message)
 {
     
     if (MonsterSpawner)
@@ -161,13 +163,30 @@ void APotatoGameMode::EndGame(bool IsGameClear)
         GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Stop Wave!")));
         MonsterSpawner->NotifyGameOver();
     }
-    if (IsGameClear)
+
+    // 총 처치수 조회
+    APotatoGameStateBase* PotatoGameState = GetGameState<APotatoGameStateBase>();
+    int32 TotalKills = PotatoGameState ? PotatoGameState->GetTotalKilledEnemy() : 0;
+
+    APotatoPlayerController* PlayerController = GetWorld()->GetFirstPlayerController<APotatoPlayerController>();
+    if (!PlayerController || !GameOverScreenClass)
     {
-        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("게임 클리어!")));
+        UE_LOG(LogTemp, Warning, TEXT("PlayerController or GameOverScreenClass is null!"));
+        return;
     }
-    else {
-        GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("실패해서 게임 끝!")));
+
+    UGameOverScreen* GameOverScreen = CreateWidget<UGameOverScreen>(PlayerController, GameOverScreenClass);
+    if (!GameOverScreen)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Failed to create GameOverScreen widget!"));
+        return;
     }
+
+    GameOverScreen->InitScreen(IsGameClear, CurrentDay, TotalKills, Message);
+    GameOverScreen->AddToViewport();
+
+    PlayerController->SetPause(true);
+    PlayerController->SetUIMode(true, GameOverScreen);
 }
 
 bool APotatoGameMode::CheckVictoryCondition()
@@ -182,7 +201,7 @@ bool APotatoGameMode::CheckVictoryCondition()
 
 void APotatoGameMode::OnHouseDestroyed(AActor* DestroyedActor)
 {
-    EndGame(false);
+    EndGame(false, NSLOCTEXT("GameOver", "Warehouse", "창고가 몬스터들에게 남김없이 약탈당했습니다..."));
 }
 
 float APotatoGameMode::GetPhaseStartTime(EDayPhase Phase) const

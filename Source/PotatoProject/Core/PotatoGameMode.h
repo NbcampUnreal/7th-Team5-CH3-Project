@@ -10,6 +10,7 @@ class UPotatoResourceManager;
 class APotatoPlayerCharacter;
 class APotatoMonsterSpawner;
 class APotatoAnimalController;
+class UGameOverScreen;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDayPhase);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNightPhase);
@@ -21,12 +22,21 @@ class POTATOPROJECT_API APotatoGameMode : public AGameMode
 {
 	GENERATED_BODY()
 	
+private:
+    bool bGameEnded = false;
+
+public:
+    UPROPERTY(EditDefaultsOnly)
+    TSubclassOf<UGameOverScreen> GameOverScreenClass;
+
 public:
     APotatoGameMode();
 
     void StartGame();
-    void EndGame(bool IsGameClear);
+    void EndGame(bool IsGameClear, FText Message = FText::GetEmpty());
     bool CheckVictoryCondition();
+
+    bool IsGameEnded() const { return bGameEnded; }
 
 protected:
     virtual void BeginPlay() override;
@@ -34,6 +44,7 @@ protected:
     
     UFUNCTION()
     void OnHouseDestroyed(AActor* DestroyedActor);
+    
 #pragma region DayNightSystem
 private:
     UPROPERTY()

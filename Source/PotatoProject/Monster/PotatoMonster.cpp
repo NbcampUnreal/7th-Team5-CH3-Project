@@ -12,6 +12,7 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "../UI/HealthBar.h"
+#include "Core/PotatoGameStateBase.h"
 
 #include "FXUtils/PotatoFXUtils.h"
 
@@ -503,6 +504,12 @@ void APotatoMonster::Die()
 {
 	if (bIsDead) return;
 	bIsDead = true;
+
+    if (APotatoGameStateBase* GS = Cast<APotatoGameStateBase>(UGameplayStatics::GetGameState(this)))
+    {
+        GS->AddKill(Rank);
+    }
+
 	if (SpecialSkillComp && !SpecialSkill_OnDeath.IsNone())
 	{
 		// 분열은 Target이 꼭 필요 없으면 Self로 넘겨도 됨

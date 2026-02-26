@@ -23,6 +23,7 @@ class POTATOPROJECT_API UGameOverScreen : public UUserWidget
 
 protected:
 	virtual void NativeConstruct() override;
+    virtual void NativeDestruct() override;
 
 public:
 	/** 결과 화면을 초기화합니다.
@@ -31,7 +32,7 @@ public:
 	 *  @param InKillCount   총 처치 수
 	 */
 	UFUNCTION(BlueprintCallable, Category = "GameOver")
-	void InitScreen(bool bVictory, int32 InCurrentDay, int32 InKillCount);
+	void InitScreen(bool bVictory, int32 InCurrentDay, int32 InKillCount, FText Message = FText::GetEmpty());
 
 	// ---- DefeatPanel BindWidgets ----
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")

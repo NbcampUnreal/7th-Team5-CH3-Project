@@ -29,7 +29,7 @@ void APotatoGameStateBase::AddKill(EMonsterRank Rank)
 
 void APotatoGameStateBase::ResetKillStats()
 {
-    CurrentDayKilledBoss = 0;
+    CurrentDayKilledNormal = 0;
     CurrentDayKilledElite = 0;
     CurrentDayKilledBoss = 0;
 }

@@ -70,6 +70,9 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float CurrentHP = 100.0f;
 	
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
+    bool bIsDead = false;
+
 	/** 피격 반응 쿨다운 (초) */
 	UPROPERTY(EditDefaultsOnly, Category = "Combat")
 	float HitReactionCooldown = 2.0f;

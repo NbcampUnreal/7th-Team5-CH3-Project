@@ -499,17 +499,24 @@ void APotatoPlayerCharacter::OnDeath()
 	APotatoGameMode* GameMode = Cast<APotatoGameMode>(UGameplayStatics::GetGameMode(GetWorld()));
 	if (GameMode)
 	{
-		GameMode->EndGame(false);
+        // TODO: 사망 애니메이션 추가
+        if (DeathMontage)
+        {
+            PlayAnimMontage(DeathMontage);
+        }
+
+		GameMode->EndGame(false, NSLOCTEXT("GameOver", "PlayerDead", "용감한 농부가 쓰러졌습니다..."));
 	}
-	// TODO: 사망 애니메이션 추가
 }
 
 float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
-
+    
 	if (ActualDamage > 0.0f)
 	{
+        if (bIsDead) return 0.0f; // 이미 사망한 경우 추가 피해 방지
+
 		CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
 		//UE_LOG(LogTemp, Warning, TEXT("Remaining Health: %f"), CurrentHealth);
 		
@@ -520,6 +527,7 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
 		
 		if (CurrentHP <= 0.0f)
 		{
+            bIsDead = true; // 사망 상태로 설정
 			OnDeath();
 		}
 		
