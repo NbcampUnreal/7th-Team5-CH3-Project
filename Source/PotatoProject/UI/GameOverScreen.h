@@ -44,26 +44,26 @@ public:
 	TObjectPtr<UTextBlock> EliminatedDay;         // 최종 생존일 (DefeatPanel)
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UTextBlock> EliminatedDay_1;       // 총 처치 수 (DefeatPanel)
+	TObjectPtr<UTextBlock> TotalKilledEnemyCount;       // 총 처치 수 (DefeatPanel)
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UButton> Button_GoToMainMenu;      // 다시 시작
+	TObjectPtr<UButton> Button_Restart;      // 다시 시작
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UButton> Button_GoToMainMenu_1;    // 타이틀로
+	TObjectPtr<UButton> Button_GoToTitle;    // 타이틀로
 
 	// ---- VictoryPanel BindWidgets ----
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UCanvasPanel> VictoryPanel;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UTextBlock> GameOverMessage_1;     // "농부의 노력으로 마침내 마을은 평화를 얻었습니다!"
+	TObjectPtr<UTextBlock> VictoryMessage;     // "농부의 노력으로 마침내 마을은 평화를 얻었습니다!"
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UTextBlock> EliminatedDay_2;       // 최종 생존일 (VictoryPanel)
+	TObjectPtr<UTextBlock> LastDay;       // 최종 생존일 (VictoryPanel)
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UTextBlock> EliminatedDay_3;       // 총 처치 수 (VictoryPanel)
+	TObjectPtr<UTextBlock> TotalKilledEnemyVictory;       // 총 처치 수 (VictoryPanel)
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UTextBlock> WoodAmount;
@@ -78,17 +78,17 @@ public:
 	TObjectPtr<UTextBlock> LivestockAmount;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UButton> Button_GoToMainMenu_3;    // 타이틀로 (VictoryPanel)
+	TObjectPtr<UButton> Button_VictoryBackTitle;    // 타이틀로 (VictoryPanel)
 
 private:
 	UFUNCTION()
-	void OnRestartClicked();       // Button_GoToMainMenu  → 현재 레벨 재시작
+	void OnRestartClicked();       // 현재 레벨 재시작
 
 	UFUNCTION()
-	void OnGoToTitleClicked();     // Button_GoToMainMenu_1 → 타이틀 이동 (DefeatPanel)
+	void OnGoToTitleClicked();     // 타이틀 이동 (DefeatPanel)
 
 	UFUNCTION()
-	void OnVictoryTitleClicked();  // Button_GoToMainMenu_3 → 타이틀 이동 (VictoryPanel)
+	void OnVictoryTitleClicked();  // 타이틀 이동 (VictoryPanel)
 
 	void RefreshFinalAssets();     // VictoryPanel 자산 텍스트 갱신
 };

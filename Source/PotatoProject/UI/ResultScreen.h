@@ -9,6 +9,7 @@
 class UTextBlock;
 class UButton;
 class UBorder;
+class UHorizontalBox;
 
 /**
  * WBP_ResultScreen
@@ -62,22 +63,13 @@ public:
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UButton> Button_Continue;
 
-	/**
-	 * 획득 보상 영역 Border
-	 * TODO: StackItem 동적 생성이 필요한 경우 이 Border의 Content를 HorizontalBox로
-	 *       교체하거나, WBP에서 직접 StackItem을 bIsVariable=True로 변경하세요.
-	 */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UBorder> GainReward;
+	TObjectPtr<UHorizontalBox> RewardBox;
 
-	/**
-	 * 유지비 소모 영역 Border (내부에 WBP_StackItem x5 배치)
-     * TODO: 퇴직한 NPC의 경우 NPC 이미지와 더불어 Count로 출력됩니다. 이 경우에도 StackItem 동적 생성이 필요할 수 있습니다.
-	 */
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
-	TObjectPtr<UBorder> ConsumeCost;
+	TObjectPtr<UHorizontalBox> CostBox;
 
 private:
 	UFUNCTION()
-	void OnContinueClicked();   // Button_GoToMainMenu → 다음 Day로 계속
+	void OnContinueClicked();   // Button_Continue -> 다음 Day로 계속
 };

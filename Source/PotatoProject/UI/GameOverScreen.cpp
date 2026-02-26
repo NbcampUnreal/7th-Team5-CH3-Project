@@ -14,17 +14,17 @@ void UGameOverScreen::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	if (Button_GoToMainMenu)
+	if (Button_Restart)
 	{
-		Button_GoToMainMenu->OnClicked.AddDynamic(this, &UGameOverScreen::OnRestartClicked);
+		Button_Restart->OnClicked.AddDynamic(this, &UGameOverScreen::OnRestartClicked);
 	}
-	if (Button_GoToMainMenu_1)
+	if (Button_GoToTitle)
 	{
-		Button_GoToMainMenu_1->OnClicked.AddDynamic(this, &UGameOverScreen::OnGoToTitleClicked);
+		Button_GoToTitle->OnClicked.AddDynamic(this, &UGameOverScreen::OnGoToTitleClicked);
 	}
-	if (Button_GoToMainMenu_3)
+	if (Button_VictoryBackTitle)
 	{
-		Button_GoToMainMenu_3->OnClicked.AddDynamic(this, &UGameOverScreen::OnVictoryTitleClicked);
+		Button_VictoryBackTitle->OnClicked.AddDynamic(this, &UGameOverScreen::OnVictoryTitleClicked);
 	}
 
 	// 초기에는 둘 다 숨김 (InitScreen 호출 전)
@@ -42,8 +42,8 @@ void UGameOverScreen::InitScreen(bool bVictory, int32 InCurrentDay, int32 InKill
 		if (DefeatPanel)   DefeatPanel->SetVisibility(ESlateVisibility::Collapsed);
 		if (VictoryPanel)  VictoryPanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 
-		if (EliminatedDay_2)  EliminatedDay_2->SetText(DayText);
-		if (EliminatedDay_3)  EliminatedDay_3->SetText(KillText);
+		if (LastDay)  LastDay->SetText(DayText);
+		if (TotalKilledEnemyVictory)  TotalKilledEnemyVictory->SetText(KillText);
 
 		RefreshFinalAssets();
 	}
@@ -53,7 +53,7 @@ void UGameOverScreen::InitScreen(bool bVictory, int32 InCurrentDay, int32 InKill
 		if (DefeatPanel)   DefeatPanel->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
 
 		if (EliminatedDay)   EliminatedDay->SetText(DayText);
-		if (EliminatedDay_1) EliminatedDay_1->SetText(KillText);
+		if (TotalKilledEnemyCount) TotalKilledEnemyCount->SetText(KillText);
 	}
 }
 
@@ -85,12 +85,10 @@ void UGameOverScreen::OnRestartClicked()
 
 void UGameOverScreen::OnGoToTitleClicked()
 {
-	// TODO: 실제 메인 메뉴 레벨 이름으로 교체하세요.
-	UGameplayStatics::OpenLevel(this, TEXT("MainMenu"));
+	UGameplayStatics::OpenLevel(this, TEXT("Potato_TitleLevel"));
 }
 
 void UGameOverScreen::OnVictoryTitleClicked()
 {
-	// TODO: 실제 메인 메뉴 레벨 이름으로 교체하세요.
-	UGameplayStatics::OpenLevel(this, TEXT("MainMenu"));
+    UGameplayStatics::OpenLevel(this, TEXT("Potato_TitleLevel"));
 }
