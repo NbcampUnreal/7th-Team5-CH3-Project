@@ -21,6 +21,7 @@
 
 #include "PotatoDialogueData.h"
 #include "PotatoDialogueWidget.h"
+#include "PotatoHitMarker.h"
 
 // ============================================================
 // Lifecycle
@@ -75,8 +76,18 @@ void UPotatoPlayerHUD::NativeConstruct()
 		CreateAndAdd(LineSpreadCrosshairClass, ECrosshairType::LineSpread);
 		CreateAndAdd(CircleCrosshairClass, ECrosshairType::Circle);
 		CreateAndAdd(StaticCrosshairClass, ECrosshairType::Static);
+
+        if (HitMarkerClass)
+        {
+            HitMarkerInstance = CreateWidget<UPotatoHitMarker>(this, HitMarkerClass);
+            if (HitMarkerInstance)
+            {
+                CrosshairContainer->AddChild(HitMarkerInstance);
+                HitMarkerInstance->SetVisibility(ESlateVisibility::Hidden);
+            }
+        }
 	}
-	
+
 	// 델리게이트 바인딩
 	if (CachedPlayer)
 	{
@@ -89,7 +100,8 @@ void UPotatoPlayerHUD::NativeConstruct()
 		{
 			WeaponComp->OnWeaponChanged.AddUObject(this, &UPotatoPlayerHUD::HandleWeaponChanged);
 			WeaponComp->OnAmmoChanged.AddUObject(this, &UPotatoPlayerHUD::HandleAmmoChanged);
-			
+            WeaponComp->OnEnemyHit.AddUObject(this, &UPotatoPlayerHUD::HandleEnemyHit);
+
 			if (WeaponComp->CurrentWeaponData)
 			{
 				HandleWeaponChanged(WeaponComp->CurrentWeaponData);
@@ -324,6 +336,14 @@ void UPotatoPlayerHUD::HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo)
 			Ammo->SetColorAndOpacity(NormalAmmoColor);
 		}
 	}
+}
+
+void UPotatoPlayerHUD::HandleEnemyHit(bool bIsKill)
+{
+    if (HitMarkerInstance)
+    {
+        HitMarkerInstance->PlayHitMarker(bIsKill);
+    }
 }
 
 // ============================================================

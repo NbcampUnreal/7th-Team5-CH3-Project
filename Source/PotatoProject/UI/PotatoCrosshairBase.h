@@ -19,23 +19,23 @@ public:
 protected:
 	float CalculateCurrentSpread(float DeltaTime);
 	
-	UPROPERTY(EditAnywhere, Category = "Crosshair")
-	float BaseSpread = 10.0f;
-	
-	UPROPERTY(EditAnywhere, Category = "Crosshair")
-	float VelocitySpreadMultiplier = 1.0f;
-	
-	UPROPERTY(EditAnywhere, Category = "Crosshair")
-	float FiringSpread = 10.0f;
-	
-	UPROPERTY(EditAnywhere, Category = "Crosshair")
-	float JumpingSpread = 10.0f;
-	
-	UPROPERTY(EditAnywhere, Category = "Crosshair")
-	float FiringSpreadDuration = 0.15f;
-	
-	UPROPERTY(EditAnywhere, Category = "Crosshair")
-	float SpreadInterpSpeed = 15.0f;
+	//UPROPERTY(EditAnywhere, Category = "Crosshair")
+	//float BaseSpread = 10.0f;
+	//
+	//UPROPERTY(EditAnywhere, Category = "Crosshair")
+	//float VelocitySpreadMultiplier = 1.0f;
+	//
+	//UPROPERTY(EditAnywhere, Category = "Crosshair")
+	//float FiringSpread = 10.0f;
+	//
+	//UPROPERTY(EditAnywhere, Category = "Crosshair")
+	//float JumpingSpread = 10.0f;
+	//
+	//UPROPERTY(EditAnywhere, Category = "Crosshair")
+	//float FiringSpreadDuration = 0.15f;
+	//
+	//UPROPERTY(EditAnywhere, Category = "Crosshair")
+	//float SpreadInterpSpeed = 15.0f;
 	
 	UPROPERTY()
 	TObjectPtr<APotatoPlayerCharacter> PlayerCharacter;
@@ -44,4 +44,11 @@ protected:
 	TObjectPtr<UPotatoWeaponComponent> WeaponComponent;
 	
 	float CurrentSpreadValue;
+
+    /** degree -> screen pixel 변환 계수 (Blueprint에서 조절) */
+    UPROPERTY(EditAnywhere, Category = "Crosshair")
+    float SpreadDegreesToPixels = 10.0f;  // 1도 = 10픽셀
+
+    UPROPERTY(EditAnywhere, Category = "Crosshair")
+    float SpreadInterpSpeed = 15.0f;
 };

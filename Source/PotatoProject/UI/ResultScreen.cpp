@@ -16,7 +16,7 @@ void UResultScreen::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	bIsFocusable = true;
+    SetIsFocusable(true);
 
 	if (Button_Continue)
 	{

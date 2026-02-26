@@ -19,7 +19,7 @@ void UPauseMenu::NativeConstruct()
 
     // 시작 시 다이얼로그 숨김
     ShowDialog(false);
-    bIsFocusable = true;  // 키 입력 받도록 설정
+    SetIsFocusable(true);
 }
 
 void UPauseMenu::NativeDestruct()

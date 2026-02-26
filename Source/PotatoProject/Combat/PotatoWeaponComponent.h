@@ -10,6 +10,7 @@ class APotatoWeapon;
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnWeaponChangedDelegate, const UPotatoWeaponData* /*NewWeaponData*/);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAmmoChangedDelegate, int32 /*CurrentAmmo*/, int32 /*ReserveAmmo*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnEnemyHitDelegate, bool /*bIsKill*/);
 
 USTRUCT(BlueprintType)
 struct FWeaponAmmoState
@@ -93,8 +94,12 @@ public:
     /** 현재 탄약 상태를 브로드캐스트하기 위한 헬퍼 함수 */
     void BroadcastAmmoState();
     
+    /** 현재 이동/점프/발사 상태가 반영된 실제 탄착군 분산 각도(degree) */
+    float GetCurrentSpreadAngle() const;
+
     FOnWeaponChangedDelegate OnWeaponChanged;
     FOnAmmoChangedDelegate OnAmmoChanged;
+    FOnEnemyHitDelegate OnEnemyHit;
     
     // =================================================================
     // Ammo System

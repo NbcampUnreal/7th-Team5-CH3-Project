@@ -9,6 +9,7 @@
 #include "Camera/CameraShakeBase.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "DrawDebugHelpers.h"
+#include "Player/PotatoPlayerCharacter.h"
 
 UPotatoWeaponComponent::UPotatoWeaponComponent()
 {
@@ -245,8 +246,8 @@ void UPotatoWeaponComponent::Fire()
 
 	if (State.CurrentAmmo <= 0)
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("장전 된 탄약이 없습니다!"));
-		return;
+        StartReload(); // 탄약이 없는 경우 자동으로 재장전 시작
+        return; // 재장전 시 더이상 발사는 금한다
 	}
 
 	State.CurrentAmmo--;
@@ -268,8 +269,10 @@ void UPotatoWeaponComponent::Fire()
 	switch (CurrentWeaponData->FireType)
 	{
 	case EWeaponFireType::Projectile:
-		//FireProjectileWith(TargetLocation);
-        FireProjectileWithBallistics(TargetLocation);
+		FireProjectileWithBallistics(TargetLocation);
+		break;
+	case EWeaponFireType::Grenade:
+		FireProjectile(TargetLocation);
 		break;
 	case EWeaponFireType::Hitscan:
 		FireHitscan(TargetLocation);
@@ -454,16 +457,81 @@ void UPotatoWeaponComponent::BroadcastAmmoState()
 	}
 }
 
+float UPotatoWeaponComponent::GetCurrentSpreadAngle() const
+{
+    if (!CurrentWeaponData)
+    {
+        return 0.0f;
+    }
+
+    float Spread = CurrentWeaponData->BaseSpreadAngle;
+
+    // 이동 및 점프 처리
+    if (APotatoPlayerCharacter* Character = Cast<APotatoPlayerCharacter>(GetOwner()))
+    {
+        UCharacterMovementComponent* MoveComp = Character->GetCharacterMovement();
+        if (MoveComp)
+        {
+            float Speed = Character->GetVelocity().Size();
+            float NormalSpeed = Character->GetNormalSpeed();
+            // NormalSpeed 기준으로 비율 계산 - 뛸 때 1.0 초과하여 스프레드 증가
+            float SpeedRatio = (NormalSpeed > 0.0f) ? FMath::Clamp(Speed / NormalSpeed, 0.0f, 2.0f) : 0.0f;
+
+            Spread += SpeedRatio * CurrentWeaponData->MovementSpread;
+
+            if (MoveComp->IsFalling())
+            {
+                Spread += CurrentWeaponData->JumpingSpread;
+            }
+        }
+    }
+
+    // 발사 후 스프레드 증가 처리
+    if (GetWorld())
+    {
+        float TimeSinceFire = GetWorld()->GetTimeSeconds() - LastFireTime;
+        if (TimeSinceFire < CurrentWeaponData->FiringSpreadDuration)
+        {
+            Spread += CurrentWeaponData->FiringSpread;
+        }
+    }
+
+    return Spread;
+}
+
 void UPotatoWeaponComponent::FireProjectile(const FVector& TargetLocation)
 {
 	if (!CurrentWeaponData->ProjectileClass)
 	{
 		return;
 	}
-	// 스폰 위치 및 회전 계산
+
+    // 카메라 위치 확인
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+    APlayerController* PlayerController = OwnerCharacter ? Cast<APlayerController>(OwnerCharacter->GetController()) : nullptr;
+
+    FVector CameraLoc;
+    FRotator CameraRot;
+
+    if (PlayerController)
+    {
+        PlayerController->GetPlayerViewPoint(CameraLoc, CameraRot);
+    }
+    else
+    {
+        CameraLoc = GetMuzzleLocation();
+    }
+
 	FVector MuzzleLocation = GetMuzzleLocation();
-	FVector LaunchDirection = (TargetLocation - MuzzleLocation).GetSafeNormal();
-	FRotator LaunchRotation = LaunchDirection.Rotation();
+
+	// 발사 방향 기준으로 최대 사거리 지점을 목표로 설정
+	FVector ToTarget = (TargetLocation - CameraLoc).GetSafeNormal();
+	FVector ActualTargetLocation = CameraLoc + ToTarget * CurrentWeaponData->ProjectileMaxRange;
+
+	FVector LaunchDirection = ToTarget;
+	FRotator LaunchRotation = LaunchDirection.Rotation() + CurrentWeaponData->LaunchAngleOffset;
+
+	DrawDebugLine(GetWorld(), MuzzleLocation, ActualTargetLocation, FColor::Green, false, 2.0f, 0, 1.5f);
 
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = GetOwner();
@@ -488,28 +556,50 @@ void UPotatoWeaponComponent::FireProjectileWithBallistics(const FVector& TargetL
     {
         return;
     }
+    // 카메라 위치 확인
+    ACharacter* OwnerCharacter = Cast<ACharacter>(GetOwner());
+    APlayerController* PlayerController = OwnerCharacter ? Cast<APlayerController>(OwnerCharacter->GetController()) : nullptr;
+
+    FVector CameraLoc;
+    FRotator CameraRot;
+
+    if (PlayerController)
+    {
+        PlayerController->GetPlayerViewPoint(CameraLoc, CameraRot);
+    }
+    else
+    {
+        CameraLoc = GetMuzzleLocation();
+    }
 
     /** SuggestProjecttileVelocity로 포물선 발사각 보정을 수행하는 로직 */
     FVector SuggestedVelocity = FVector::ZeroVector;
     FVector MuzzleLocation = GetMuzzleLocation();
 
-    // 사거리 초과 시 목표를 최대 사거리 지점으로 클램핑 수행
+    // 1. 사거리 클램핑 (카메라 기준)
     FVector ActualTargetLocation = TargetLocation;
     if (CurrentWeaponData->ProjectileMaxRange > 0.0f)
     {
-        FVector ToTarget = TargetLocation - MuzzleLocation;
+        FVector ToTarget = TargetLocation - CameraLoc;
         if (ToTarget.Size() > CurrentWeaponData->ProjectileMaxRange)
         {
-            ActualTargetLocation = MuzzleLocation + ToTarget.GetSafeNormal() * CurrentWeaponData->ProjectileMaxRange;
+            ActualTargetLocation = CameraLoc + ToTarget.GetSafeNormal() * CurrentWeaponData->ProjectileMaxRange;
         }
     }
+
+    // 2. 스프레드 적용 (MuzzleLocation 기준으로 통일)
+    float SpreadAngle = GetCurrentSpreadAngle();
+    FVector BaseDirection = (ActualTargetLocation - MuzzleLocation).GetSafeNormal();
+    FVector SpreadDirection = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(BaseDirection, SpreadAngle);
+    float Distance = (ActualTargetLocation - MuzzleLocation).Size();
+    ActualTargetLocation = MuzzleLocation + SpreadDirection * Distance;
     
     float GravityZ = GetWorld()->GetGravityZ() * CurrentWeaponData->ProjectileGravityScale;
 
     bool bSuccess = UGameplayStatics::SuggestProjectileVelocity(
         this,
         SuggestedVelocity,
-        MuzzleLocation,                      // 발사 위치: 총구 기준
+        MuzzleLocation,                      
         ActualTargetLocation,
         CurrentWeaponData->ProjectileSpeed,
         false,
@@ -523,7 +613,7 @@ void UPotatoWeaponComponent::FireProjectileWithBallistics(const FVector& TargetL
     float DebugLifeTime = 2.0f;
     FColor DebugColor = bSuccess ? FColor::Green : FColor::Red;
 
-    DrawDebugLine(GetWorld(), MuzzleLocation, ActualTargetLocation, DebugColor, false, DebugLifeTime, 0, 1.5f);
+    DrawDebugLine(GetWorld(), CameraLoc, ActualTargetLocation, DebugColor, false, DebugLifeTime, 0, 1.5f);
 
     if (bSuccess)
     {
@@ -531,12 +621,14 @@ void UPotatoWeaponComponent::FireProjectileWithBallistics(const FVector& TargetL
     }
     else
     {
-        FVector FlatDirection = (ActualTargetLocation - MuzzleLocation);
+        // 기존 Fallback 코드에서 카메라 기준 방향 계산으로 변경 (시각적 정확성을 위해)
+        LaunchRotation = (ActualTargetLocation - CameraLoc).GetSafeNormal().Rotation();
+        /*FVector FlatDirection = (ActualTargetLocation - MuzzleLocation);
         
         float ProjectileCompensation = FMath::Clamp(FlatDirection.Size(), 0.0f, 1.0f) * 0.25;
         FVector LaunchDirection = FlatDirection.GetSafeNormal();
         LaunchDirection.Z += ProjectileCompensation;
-        LaunchRotation = LaunchDirection.Rotation();
+        LaunchRotation = LaunchDirection.Rotation();*/
     }
 
     FActorSpawnParameters SpawnParams;
@@ -545,14 +637,15 @@ void UPotatoWeaponComponent::FireProjectileWithBallistics(const FVector& TargetL
 
     APotatoProjectile* NewProjectile = GetWorld()->SpawnActor<APotatoProjectile>(
         CurrentWeaponData->ProjectileClass,
-        MuzzleLocation,
-        LaunchRotation,
+        MuzzleLocation, // 스폰 위치는 총구 그대로
+        LaunchRotation, // 발사 회전은 카메라 기준으로 보정된 각도
         SpawnParams
     );
 
     if (NewProjectile)
     {
-        NewProjectile->InitializeProjectile(CurrentWeaponData);
+        //NewProjectile->InitializeProjectile(CurrentWeaponData);
+        NewProjectile->InitializeProjectileWithBallistics(CurrentWeaponData, SuggestedVelocity);
     }
 }
 
@@ -585,8 +678,13 @@ void UPotatoWeaponComponent::FireHitscan(const FVector& TargetLocation)
 
 	for (int32 i = 0; i < CurrentWeaponData->PelletCount; ++i)
 	{
-		FVector SpreadDirection = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(
-			BaseDirection, CurrentWeaponData->SpreadAngle);
+		/*FVector SpreadDirection = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(
+			BaseDirection, CurrentWeaponData->SpreadAngle);*/
+        
+        float CurrentSpread = GetCurrentSpreadAngle();
+        FVector SpreadDirection = UKismetMathLibrary::RandomUnitVectorInConeInDegrees(
+            BaseDirection, CurrentSpread);
+
 		FVector TraceEnd = MuzzleLocation + (SpreadDirection * CurrentWeaponData->EffectiveRange);
 
 		FHitResult HitResult;

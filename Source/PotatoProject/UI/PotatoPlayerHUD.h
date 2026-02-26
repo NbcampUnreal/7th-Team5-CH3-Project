@@ -23,6 +23,7 @@ class UPotatoWeaponData;
 class UPotatoDayNightCycle;
 class UPotatoDialogueWidget;
 class UPotatoResourceManager;
+class UPotatoHitMarker;
 
 /**
  * WBP_PlayerHUD
@@ -214,6 +215,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Ammo")
 	float LowAmmoPercentage = 0.25f;
 
+    UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Crosshairs")
+    TSubclassOf<UPotatoHitMarker> HitMarkerClass;
+
+    UPROPERTY()
+    TObjectPtr<UPotatoHitMarker> HitMarkerInstance;
+
 	// ================================================================
 	// Public API
 	// ================================================================
@@ -228,6 +235,8 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	void PlayDialogue(FName RowName);
+
+    UPotatoHitMarker* GetHitMarkerWidget() const { return HitMarkerInstance; }
 
 	// ================================================================
 	// Event Handler & Internal
@@ -244,6 +253,7 @@ protected:
 	
 	void HandleWeaponChanged(const UPotatoWeaponData* NewWeaponData);
 	void HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo);
+    void HandleEnemyHit(bool bIsKill);
 
 private:
 	/** 시계 바늘 각도 갱신 */
@@ -273,4 +283,5 @@ private:
 
 	/** 시계 바늘 부드러운 이징용 경과 시간 (-1 = 미초기화) */
 	float SmoothElapsedTime = -1.f;
+
 };

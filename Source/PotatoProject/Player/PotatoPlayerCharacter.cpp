@@ -15,6 +15,7 @@
 #include "../Building/PotatoAnimalManagementComp.h"
 #include "../UI/NPCPopup.h"
 #include "../Building/PotatoNPCManagementComp.h"
+#include "Combat/PotatoWeaponData.h"
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
 {
@@ -222,6 +223,13 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					this,
 					&APotatoPlayerCharacter::Attack
 				);
+
+                EnhancedInput->BindAction(
+                    PlayerController->AttackAction,
+                    ETriggerEvent::Triggered,
+                    this,
+                    &APotatoPlayerCharacter::AttackHeld
+                );
 			}
 
 			if (PlayerController->ReloadAction)
@@ -402,6 +410,22 @@ void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 	{
 		WeaponComponent->Fire();
 	}
+}
+
+void APotatoPlayerCharacter::AttackHeld(const FInputActionValue& Value)
+{
+    if (!WeaponComponent || !WeaponComponent->CurrentWeaponData || !WeaponComponent->CurrentWeaponData->bAutoFire)
+    {
+        return;
+    }
+
+    bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
+    bool IsAnimalWidget = AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
+    bool IsNPCWidget = NPCPopupWidget && !NPCPopupWidget->IsVisible();
+    if (IsAmmoWidget && IsAnimalWidget && IsNPCWidget)
+    { 
+        WeaponComponent->Fire();
+    }
 }
 
 void APotatoPlayerCharacter::Reload(const FInputActionValue& Value)

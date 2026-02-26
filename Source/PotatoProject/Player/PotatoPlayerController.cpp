@@ -4,8 +4,8 @@
 
 APotatoPlayerController::APotatoPlayerController()
 	: InputMappingContext(nullptr),
-	  MoveAction(nullptr),
-	  JumpAction(nullptr),
+      JumpAction(nullptr),
+      MoveAction(nullptr),
 	  LookAction(nullptr),
 	  SprintAction(nullptr),
 	  CameraZoomAction(nullptr)

@@ -27,6 +27,7 @@
 #include "PotatoCombatComponent.h"
 #include "PotatoHardenShellComponent.h"
 #include "PotatoPresetApplier.h"
+#include "Combat/PotatoWeaponComponent.h"
 
 // ==============================
 // Static Helpers (CPP Local)
@@ -357,6 +358,20 @@ float APotatoMonster::TakeDamage(
 			SpecialSkillComp->TryStartOnHit(Target);
 		}
 	}
+
+    if (EventInstigator)
+    {
+        APawn* InstigatorPawn = EventInstigator->GetPawn();
+        if (InstigatorPawn)
+        {
+            // WeaponComponent 탐색
+            if (UPotatoWeaponComponent* WeaponComp = InstigatorPawn->FindComponentByClass<UPotatoWeaponComponent>())
+            {
+                const bool bIsKill = (Health <= 0.f);
+                WeaponComp->OnEnemyHit.Broadcast(bIsKill);
+            }
+        }
+    }
 
 	// DamageText
 	if (DamageTextPool)

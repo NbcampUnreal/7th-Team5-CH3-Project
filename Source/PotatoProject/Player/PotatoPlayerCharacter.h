@@ -131,7 +131,8 @@ public:
 
 	float GetCurrentHP() const { return CurrentHP; }
 	float GetMaxHP() const { return MaxHP; }
-	
+	float GetNormalSpeed() const { return NormalSpeed; }
+
 	// Delegate Instances
 public:
 	UPROPERTY(BlueprintAssignable, Category = "Events")
@@ -172,6 +173,8 @@ protected:
 
 	UFUNCTION()
 	void Attack(const FInputActionValue& Value);
+    UFUNCTION()
+    void AttackHeld(const FInputActionValue& Value);
 	UFUNCTION()
 	void Reload(const FInputActionValue& Value);
 	UFUNCTION()

@@ -74,7 +74,7 @@ APotatoDamageTextActor* APotatoDamageTextPoolActor::Acquire()
 	// Pool에서 꺼내기 (Invalid는 버리고 계속)
 	while (Pool.Num() > 0)
 	{
-		APotatoDamageTextActor* A = Pool.Pop(false);
+		APotatoDamageTextActor* A = Pool.Pop(EAllowShrinking::No);
 		if (!IsValid(A)) continue;
 
 		// 이미 Active에 있으면(이상 케이스) 다음

@@ -151,7 +151,7 @@ static FVector ResolveSkillOrigin(AActor* Owner, AActor* Target, const FPotatoMo
 // Projectile Helpers
 // ============================================================
 
-static bool PassesFxDistanceGate(USpecialSkillComponent* Comp, const FVector& SpawnLoc, const FPotatoMonsterSpecialSkillPresetRow& Row)
+static bool PassesFxDistanceGate_Temp(USpecialSkillComponent* Comp, const FVector& SpawnLoc, const FPotatoMonsterSpecialSkillPresetRow& Row)
 {
 	if (!Comp) return true;
 	if (Row.MaxFxDistance <= 0.f) return true;
@@ -206,7 +206,7 @@ static AActor* SpawnProjectileFromPreset(USpecialSkillComponent* Comp, const FPo
 
 	const FTransform SpawnXf = ResolveProjectileSpawnTransform(Owner, Row);
 
-	if (!PassesFxDistanceGate(Comp, SpawnXf.GetLocation(), Row))
+	if (!PassesFxDistanceGate_Temp(Comp, SpawnXf.GetLocation(), Row))
 	{
 		return nullptr;
 	}

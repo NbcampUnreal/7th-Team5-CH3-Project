@@ -12,7 +12,8 @@ UENUM(BlueprintType)
 enum class EWeaponFireType : uint8
 {
 	Projectile UMETA(DisplayName = "Projectile"),
-	Hitscan UMETA(DisplayName = "Hitscan")
+	Grenade    UMETA(DisplayName = "Grenade"),
+	Hitscan    UMETA(DisplayName = "Hitscan")
 };
 
 UENUM(BlueprintType)
@@ -64,10 +65,13 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	EWeaponFireType FireType;
 	
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
+    bool bAutoFire = false; // 자동 발사 여부
+
 	/** 스폰할 실제 액터: BP_FarmCannon */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Visuals")
 	TSubclassOf<APotatoWeapon> WeaponActorClass;
-	
+
 	// =================================================================
 	// Visuals
 	// =================================================================
@@ -141,31 +145,61 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Recoil")
 	float WeaponKickRecoverySpeed = 10.0f;
 	
+    // 탄착군 코드
+
+    /** 기본 탄착 분산 각도(degree): 정지 상태 기준 */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats|Spread")
+    float BaseSpreadAngle = 2.0f;
+    
+    /** 이동 시 추가되는 분산 (최고 속도 기준, degree) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats|Spread")
+    float MovementSpread = 5.0f;
+
+    /** 점프 시 추가되는 분산 (degree) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats|Spread")
+    float JumpingSpread = 8.0f;
+
+    /** 발사 직후 추가되는 순간 분산 (degree) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats|Spread")
+    float FiringSpread = 3.0f;
+
+    /** FiringSpread가 유지되는 시간(초) */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats|Spread")
+    float FiringSpreadDuration = 0.15f;
+
 	// =================================================================
 	// 투사체 설정: FireType이 Projectile일 경우 사용됨
 	// =================================================================
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile", EditConditionHides))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile || FireType == EWeaponFireType::Grenade", EditConditionHides))
 	TSubclassOf<APotatoProjectile> ProjectileClass;
 	
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile", EditConditionHides))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile || FireType == EWeaponFireType::Grenade", EditConditionHides))
 	float ProjectileSpeed;
 	
 	/** 옥수수용: 몇 명의 적을 관통할지 결정 (기본 0 = 관통 없음) */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile", EditConditionHides))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile || FireType == EWeaponFireType::Grenade", EditConditionHides))
 	int32 MaxPierceCount = 0;
 	
 	/** 호박용: 0보다 큰 값일 경우 접촉 시 폭발함 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile", EditConditionHides))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile || FireType == EWeaponFireType::Grenade", EditConditionHides))
 	float ExplosionRadius = 0.0f;
 	
 	/** 중력 스케일: 0.0 = 중력 없음, 1.0 = 표준 */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile", EditConditionHides))
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile || FireType == EWeaponFireType::Grenade", EditConditionHides))
 	float ProjectileGravityScale = 1.0f;
     
     /** 투사체 최대 사거리: 이 거리를 초과하면 최대 사거리 지점까지만 포물선 계산 후 낙차 (0.0 = 제한 없음) */
-    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile", EditConditionHides))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Projectile", meta = (EditCondition = "FireType == EWeaponFireType::Projectile || FireType == EWeaponFireType::Grenade", EditConditionHides))
     float ProjectileMaxRange = 3000.0f;
+
+	// =================================================================
+	// 유탄 설정: FireType이 Grenade일 경우 사용됨
+	// =================================================================
+
+	/** 발사각 보정: TPS 시점-총구 오프셋 보정용 Yaw/Pitch 수동 조정 */
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Grenade", meta = (EditCondition = "FireType == EWeaponFireType::Grenade", EditConditionHides))
+	FRotator LaunchAngleOffset = FRotator::ZeroRotator;
 
 	// =================================================================
 	// 히트스캔 설정: FireType이 Hitscan일 경우 사용됨
