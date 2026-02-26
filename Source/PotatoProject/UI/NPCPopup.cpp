@@ -95,7 +95,15 @@ void UNPCPopup::OnHireButtonClicked()
 
 void UNPCPopup::OnCloseButtonClicked()
 {
-    RemoveFromParent();
+    APlayerController* PlayerController = Cast<APlayerController>(GetWorld()->GetFirstPlayerController());
+    if (PlayerController)
+    {
+        SetVisibility(ESlateVisibility::Hidden);
+        PlayerController->bShowMouseCursor = false;
+        FInputModeGameOnly InputMode;
+        PlayerController->SetInputMode(InputMode);
+    }
+    //RemoveFromParent();
 }
 
 // ============================================================
