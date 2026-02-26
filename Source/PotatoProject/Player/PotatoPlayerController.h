@@ -49,7 +49,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
     UInputAction* PauseAction;
-
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
+	UInputAction* NextDialogueAction;
+	
 	// functions
 public:
 	APotatoPlayerController();

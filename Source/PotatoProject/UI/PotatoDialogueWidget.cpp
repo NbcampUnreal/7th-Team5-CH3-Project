@@ -2,10 +2,13 @@
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
 
-void UPotatoDialogueWidget::StarDialogue(const FPotatoDialogueRow* DialogueRow)
+void UPotatoDialogueWidget::StartDialogue(const FPotatoDialogueRow* DialogueRow)
 {
+	UE_LOG(LogTemp, Warning, TEXT("StartDialogue Called!"));
+	
 	if (!DialogueRow || DialogueRow->DialogueLines.IsEmpty())
 	{
+		UE_LOG(LogTemp, Warning, TEXT("StartDialogue Failed: Lines are empty!"));
 		return;
 	}
 	
@@ -30,6 +33,7 @@ void UPotatoDialogueWidget::StarDialogue(const FPotatoDialogueRow* DialogueRow)
 	}
 	
 	SetVisibility(ESlateVisibility::Visible);	
+	UE_LOG(LogTemp, Warning, TEXT("Widget Visibility Set to VISIBLE"));
 }
 
 bool UPotatoDialogueWidget::AdvanceDialogue()

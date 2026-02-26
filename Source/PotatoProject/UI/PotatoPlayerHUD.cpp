@@ -2,6 +2,7 @@
 
 #include "UI/PotatoPlayerHUD.h"
 
+#include "PotatoDialogueWidget.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
@@ -17,6 +18,9 @@
 #include "Building/PotatoStructureData.h"
 #include "Combat/PotatoWeaponComponent.h"
 #include "Player/PotatoPlayerCharacter.h"
+
+#include "PotatoDialogueData.h"
+#include "PotatoDialogueWidget.h"
 
 // ============================================================
 // Lifecycle
@@ -92,6 +96,13 @@ void UPotatoPlayerHUD::NativeConstruct()
 				WeaponComp->BroadcastAmmoState();
 			}
 		}
+		
+		// Dialogue Widget 바인딩
+		CachedPlayer->OnNextDialoguePressed.AddDynamic(this, &UPotatoPlayerHUD::HandleNextDialogueInput);
+		if (DialogueWidget)
+		{
+			DialogueWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
 	}
 	
 	// 자원 바인딩
@@ -140,6 +151,27 @@ void UPotatoPlayerHUD::RefreshStorageHP()
 	const float MaxHP = Data->MaxHealth;
 	const float CurHP = WarehouseStructure->CurrentHealth;
 	StorageHPBar->SetPercent((MaxHP > 0.f) ? FMath::Clamp(CurHP / MaxHP, 0.f, 1.f) : 0.f);
+}
+
+void UPotatoPlayerHUD::PlayDialogue(FName RowName)
+{
+	if (!DialogueDataTable || !DialogueWidget)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("PlayDialogue failed: Missing DataTable or Widget"));
+		return;
+	}
+	
+	static const FString ContextString(TEXT("DialogueContext"));
+	FPotatoDialogueRow * Row = DialogueDataTable->FindRow<FPotatoDialogueRow>(RowName, ContextString);
+	
+	if (Row)
+	{
+		DialogueWidget->StartDialogue(Row);
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Dialogue Row '%s' not found!"), *RowName.ToString());
+	}
 }
 
 // ============================================================
@@ -196,6 +228,14 @@ void UPotatoPlayerHUD::HandleResourceChanged(EResourceType Type, int32 NewValue)
 		if (ResourceLivestock) ResourceLivestock->SetText(NewText);
 		if (LivestockAmount) LivestockAmount->SetText(AmountText);
 		break;
+	}
+}
+
+void UPotatoPlayerHUD::HandleNextDialogueInput()
+{
+	if (DialogueWidget && DialogueWidget->IsVisible())
+	{
+		DialogueWidget->AdvanceDialogue();
 	}
 }
 

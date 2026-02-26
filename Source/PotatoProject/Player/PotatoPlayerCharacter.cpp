@@ -258,9 +258,6 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 					&APotatoPlayerCharacter::OnBarnMode
 				);
 			}
-
-
-
             if (PlayerController->PauseAction)
             {
                 EnhancedInput->BindAction(
@@ -270,6 +267,15 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
                     &APotatoPlayerCharacter::OnPauseGame
                 );
             }
+			if (PlayerController->NextDialogueAction)
+			{
+				EnhancedInput->BindAction(
+					PlayerController->NextDialogueAction,
+					ETriggerEvent::Started,
+					this,
+					&APotatoPlayerCharacter::OnNextDialogue
+					);
+			}
 		}
 	}
 }
@@ -491,6 +497,14 @@ void APotatoPlayerCharacter::OnPauseGame(const FInputActionValue& Value)
         PauseMenu->AddToViewport();
         PlayerController->SetUIMode(true, PauseMenu);
     }
+}
+
+void APotatoPlayerCharacter::OnNextDialogue(const FInputActionValue& Value)
+{
+	if (OnNextDialoguePressed.IsBound())
+	{
+		OnNextDialoguePressed.Broadcast();
+	}
 }
 
 

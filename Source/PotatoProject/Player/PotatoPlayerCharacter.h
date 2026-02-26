@@ -16,6 +16,7 @@ class UPotatoAnimalManagementComp;
 struct FInputActionValue;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPlayerHPChanged, float, CurrentHP, float, MaxHP);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnNextDialoguePressed);
 
 UCLASS()
 class POTATOPROJECT_API APotatoPlayerCharacter : public ACharacter
@@ -130,6 +131,8 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 	FOnPlayerHPChanged OnHPChanged;
 	
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnNextDialoguePressed OnNextDialoguePressed;
 protected:
 	virtual void BeginPlay() override;
 	virtual void Tick( float DeltaTime ) override;
@@ -177,6 +180,9 @@ protected:
 
     UFUNCTION()
     void OnPauseGame(const FInputActionValue& Value);
+	
+	UFUNCTION()
+	void OnNextDialogue(const FInputActionValue& Value);
 
 	UFUNCTION()
 	void OnDeath();

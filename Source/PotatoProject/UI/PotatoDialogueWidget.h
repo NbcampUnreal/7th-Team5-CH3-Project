@@ -14,7 +14,7 @@ class POTATOPROJECT_API UPotatoDialogueWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	void StarDialogue(const FPotatoDialogueRow* DialogueRow);
+	void StartDialogue(const FPotatoDialogueRow* DialogueRow);
 	bool AdvanceDialogue();
 	
 protected:

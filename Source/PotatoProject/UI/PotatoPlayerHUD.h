@@ -21,6 +21,7 @@ class UPotatoCrosshairBase;
 class UPotatoWeaponComponent;
 class UPotatoWeaponData;
 class UPotatoDayNightCycle;
+class UPotatoDialogueWidget;
 class UPotatoResourceManager;
 
 /**
@@ -146,6 +147,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HUD|Style|Build")
 	FLinearColor BuildSlotDefaultColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.15f);
 
+protected:
+	// TODO: WBP_PlayerHUD 내부에 자식으로 추가하기
+	UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "UI")
+	TObjectPtr<UPotatoDialogueWidget> DialogueWidget;
+	
+	// Dialogue 데이터 테이블 참조
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue")
+	TObjectPtr<UDataTable> DialogueDataTable;
+	
 	// ---- 무기 선택 슬롯 강조 (알파 채널만 조정) ----
 	/**
 	 * 무기 슬롯: 선택된 Border의 알파 값 (0~1).
@@ -215,6 +225,9 @@ public:
 	/** 창고 HP 바를 수동으로 갱신합니다. (Tick에서 자동 갱신되지만 즉각 호출도 가능) */
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void RefreshStorageHP();
+	
+	UFUNCTION(BlueprintCallable, Category = "Dialogue")
+	void PlayDialogue(FName RowName);
 
 	// ================================================================
 	// Event Handler & Internal
@@ -225,6 +238,9 @@ protected:
 	
 	UFUNCTION()
 	void HandleResourceChanged(EResourceType Type, int32 NewValue);
+	
+	UFUNCTION()
+	void HandleNextDialogueInput();
 	
 	void HandleWeaponChanged(const UPotatoWeaponData* NewWeaponData);
 	void HandleAmmoChanged(int32 CurrentAmmo, int32 ReserveAmmo);
