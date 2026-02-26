@@ -13,6 +13,8 @@ class UButton;
 class UNPCListItem;
 class UPotatoNPCManagementComp;
 class APotatoNPC;
+class UNPCListItem;
+class UImage;
 
 /**
  * WBP_NPCPopup
@@ -94,6 +96,31 @@ protected:
     /** 고용 버튼 */
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UButton> Button_GoToMainMenu;
+
+    /* 초상화 */
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UImage> Image_Portrait;
+    
+    /* 생산량 증가 표시 */
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UImage> Image_Product;
+
+    //instance할 class 원본
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+    TSubclassOf<UNPCListItem> NPCListItemClass;
+
+    // 직종별 아이콘
+    UPROPERTY(EditDefaultsOnly, Category = "Icons")
+    TObjectPtr<UTexture2D> MinerIcon;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Icons")
+    TObjectPtr<UTexture2D> LumberjackIcon;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Icons")
+    TObjectPtr<UTexture2D> RockIcon;
+
+    UPROPERTY(EditDefaultsOnly, Category = "Icons")
+    TObjectPtr<UTexture2D> WoodIcon;
 
     // ================================================================
     // Internal

@@ -93,14 +93,16 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	TSubclassOf<UUserWidget> AnimalPopupClass;
-
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> NPCPopupClass;
 	// 생성된 위젯을 참조할 변수
 	UPROPERTY()
 	UAmmoPopupWidget* AmmoPopupWidget;
 	UPROPERTY()
 	UAnimalPopup* AnimalPopupWidget;
-	//UPROPERTY()
-	//UNPCPopup* NPCPopupWidget;
+	UPROPERTY()
+    UNPCPopup* NPCPopupWidget;
 	
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
     TSubclassOf<UUserWidget> PauseMenuClass;
@@ -113,6 +115,7 @@ private:
 	bool IsBuildingMode;
 
 	bool IsBarnMode;
+	bool IsNPCMode;
 	// Functions
 	float LastHitReactionTime = -10.0f;
 	//bool IsAmmoProduct;

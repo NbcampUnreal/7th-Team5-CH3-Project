@@ -14,6 +14,7 @@
 #include "Components/CapsuleComponent.h"
 #include "../Building/PotatoAnimalManagementComp.h"
 #include "../UI/NPCPopup.h"
+#include "../Building/PotatoNPCManagementComp.h"
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
 {
@@ -54,6 +55,8 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 
 	// 동물관리 가능 여부
 	IsBarnMode = false;
+	// NPC 관리 가능 여부
+	IsNPCMode = false;
 	//IsAmmoProduct = false;
 
 	if (GetCapsuleComponent())
@@ -93,6 +96,15 @@ void APotatoPlayerCharacter::BeginPlay()
 		{
 			AnimalPopupWidget->AddToViewport();
 			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+	if (NPCPopupClass)
+	{
+		NPCPopupWidget = CreateWidget<UNPCPopup>(GetWorld(), NPCPopupClass);
+		if (NPCPopupWidget)
+		{
+			NPCPopupWidget->AddToViewport();
+			NPCPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 
@@ -318,7 +330,8 @@ void APotatoPlayerCharacter::Look(const FInputActionValue& Value)
 {
 	bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
 	bool IsAnimalWidget= AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
-	if (GetController() != nullptr && IsAmmoWidget && IsAnimalWidget)
+	bool IsNPCWidget = NPCPopupWidget && !NPCPopupWidget->IsVisible();
+	if (GetController() != nullptr && IsAmmoWidget && IsAnimalWidget && IsNPCWidget)
 	{
 		const FVector2D LookAxisVector = Value.Get<FVector2D>();
 		AddControllerYawInput(LookAxisVector.X);
@@ -384,7 +397,8 @@ void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 {
 	bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
 	bool IsAnimalWidget = AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
-	if (WeaponComponent && IsAmmoWidget && IsAnimalWidget)
+	bool IsNPCWidget = NPCPopupWidget && !NPCPopupWidget->IsVisible();
+	if (WeaponComponent && IsAmmoWidget && IsAnimalWidget && IsNPCWidget)
 	{
 		WeaponComponent->Fire();
 	}
@@ -580,8 +594,8 @@ void APotatoPlayerCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 	bool bFromSweep, const FHitResult& SweepResult)
 {
-
-	if (OtherActor && (OtherActor != this) && OtherActor->GetName().Contains(TEXT("BP_TestBarn")))
+	bool ActorCheck = OtherActor && (OtherActor != this);
+	if (ActorCheck && OtherActor->GetName().Contains(TEXT("BP_TestBarn")))
 	{
 		UPotatoAnimalManagementComp* ManagementComp = OtherActor->FindComponentByClass<UPotatoAnimalManagementComp>();
 		if (ManagementComp)
@@ -590,14 +604,15 @@ void APotatoPlayerCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp,
 		}
 		IsBarnMode = true;
 	}
-	if (OtherActor && (OtherActor != this) && OtherActor->GetName().Contains(TEXT("BP_TestBarn")))
+	if (ActorCheck && ( OtherActor->GetName().Contains(TEXT("BP_TestLumberMill"))
+	   || OtherActor->GetName().Contains(TEXT("BP_TestMine")) )
+		)
 	{
-		//UPotatoNPCManagementComp* NPCMgementComp = OtherActor->FindComponentByClass<UPotatoNPCManagementComp>();
-		//if (ManagementComp)
-		//{
-		//	NPCPopupWidget->InitPopup(ManagementComp);
-		//}
-		IsBarnMode = true;
+		UPotatoNPCManagementComp* ManagementComp = OtherActor->FindComponentByClass<UPotatoNPCManagementComp>();
+		if (ManagementComp) {
+			NPCPopupWidget->InitPopup(ManagementComp);
+		}
+		IsNPCMode = true;
 	}
 }
 
@@ -618,9 +633,11 @@ void APotatoPlayerCharacter::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, A
 			}
 		}
 	}
-	if (OtherActor && OtherActor->GetName().Contains(TEXT("BP_TestLumberMill")))
+	if (OtherActor && (OtherActor->GetName().Contains(TEXT("BP_TestLumberMill"))
+		|| OtherActor->GetName().Contains(TEXT("BP_TestMine")) ) 
+		)
 	{
-		/*IsBarnMode = false;
+		IsNPCMode = false;
 		APlayerController* PlayerController = Cast<APlayerController>(GetController());
 		if (NPCPopupWidget && PlayerController)
 		{
@@ -630,26 +647,43 @@ void APotatoPlayerCharacter::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, A
 				FInputModeGameOnly InputMode;
 				PlayerController->SetInputMode(InputMode);
 			}
-		}*/
+		}
 	}
 }
 
 void APotatoPlayerCharacter::OnBarnMode(const FInputActionValue& Value)
 {
-	if (!IsBarnMode) return;
 	APlayerController* PlayerController = Cast<APlayerController>(GetController());
-	if (AnimalPopupWidget && PlayerController)
-	{
-		if (AnimalPopupWidget->IsVisible()) {
-			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-			PlayerController->bShowMouseCursor = false;
-			FInputModeGameOnly InputMode;
-			PlayerController->SetInputMode(InputMode);
+	if (IsBarnMode){
+		if (AnimalPopupWidget && PlayerController)
+		{
+			if (AnimalPopupWidget->IsVisible()) {
+				AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+				PlayerController->bShowMouseCursor = false;
+				FInputModeGameOnly InputMode;
+				PlayerController->SetInputMode(InputMode);
+			}
+			else {
+				AnimalPopupWidget->SetVisibility(ESlateVisibility::Visible);
+				PlayerController->bShowMouseCursor = true;
+				//AnimalPopupWidget->RefreshAll();
+			}
 		}
-		else {
-			AnimalPopupWidget->SetVisibility(ESlateVisibility::Visible);
-			PlayerController->bShowMouseCursor = true;
-			//AnimalPopupWidget->RefreshAll();
+	}
+	if (IsNPCMode)
+	{
+		if (NPCPopupWidget && PlayerController)
+		{
+			if (NPCPopupWidget->IsVisible()) {
+				NPCPopupWidget->SetVisibility(ESlateVisibility::Hidden);
+				PlayerController->bShowMouseCursor = false;
+				FInputModeGameOnly InputMode;
+				PlayerController->SetInputMode(InputMode);
+			}
+			else {
+				NPCPopupWidget->SetVisibility(ESlateVisibility::Visible);
+				PlayerController->bShowMouseCursor = true;
+			}
 		}
 	}
 }

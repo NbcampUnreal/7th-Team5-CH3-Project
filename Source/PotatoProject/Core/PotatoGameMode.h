@@ -47,16 +47,16 @@ private:
 
 public:
     // -- Day-night cycle BP 설정용입니다. --
-    UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
     float DayDuration = 3.0f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
     float EveningDuration = 3.0f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
     float NightDuration = 3.0f;
 
-    UPROPERTY(EditDefaultsOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "DayNight|Duration", meta = (ClampMin = "1.0", UIMin = "1.0"))
     float DawnDuration = 3.0f;
 
 public:
