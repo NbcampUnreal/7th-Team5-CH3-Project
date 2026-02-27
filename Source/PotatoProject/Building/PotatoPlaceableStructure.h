@@ -6,6 +6,8 @@
 #include "PotatoPlaceableStructure.generated.h"
 
 class UPotatoStructureData;
+class UWidgetComponent;
+class UHealthBar;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStructureInteracted, AActor*, Interactor);
 
@@ -33,6 +35,15 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Interaction")
 	FOnStructureInteracted OnInteractedDelegate;
 	
+    UPROPERTY(VisibleANywhere, BlueprintReadOnly, Category = "UI")
+    TObjectPtr<UWidgetComponent> HPBarWidgetComp = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    TObjectPtr<UHealthBar> HPBarWidget = nullptr;
+
+    UPROPERTY(EditDefaultsOnly, Category = "UI")
+    float HPBarHideDelay = 2.0f;
+
 	virtual void Interact(AActor* Interactor) override;
 	
 	// 헬퍼 함수
@@ -48,4 +59,11 @@ public:
 
 	UPROPERTY(VisibleAnywhere)
 	bool bDestroyed = false;
+
+private:
+    FTimerHandle HPBarHideTimerHandle;
+
+    void RefreshHpBar();
+    void ShowHPBar();
+    void HideHPBar();
 };

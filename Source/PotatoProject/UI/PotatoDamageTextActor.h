@@ -119,7 +119,13 @@ private:
 
 	// ---- 옵션 세트 핵심 헬퍼 ----
 	void UpdateBillboardYawOnly();
+
+	// [World Space] SetWorldScale3D 기반 거리 스케일 (PP 영향 받음)
 	void UpdateDistanceScaleAndClamp();
+
+	// [Screen Space] RenderTransform 기반 거리 스케일 (PP 영향 없음)
+	void UpdateDistanceScale_ScreenSpace();
+
 	void UpdateFade(float NowTime);
 	void Finish(); // LifeTime 종료 처리(숨김 + OnFinished)
 };

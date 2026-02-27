@@ -7,6 +7,8 @@
 class UInputMappingContext;
 class UInputAction;
 class UUserWidget;
+class APotatoPlaceableStructure;
+class UPotatoPlayerHUD;
 
 UCLASS()
 class POTATOPROJECT_API APotatoPlayerController : public APlayerController
@@ -53,10 +55,21 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input")
 	UInputAction* NextDialogueAction;
 	
+	// HUD
+public:
+	UPROPERTY(BlueprintReadWrite, Category = "HUD|Setup")
+	TObjectPtr<APotatoPlaceableStructure> WarehouseStructure;
+
+	UPROPERTY(BlueprintReadWrite, Category = "HUD")
+	TObjectPtr<UPotatoPlayerHUD> PlayerHUDWidget = nullptr;
+
 	// functions
 public:
 	APotatoPlayerController();
-	
+
 	virtual void BeginPlay() override;
     void SetUIMode(bool bEnable, UUserWidget* FocusWidget = nullptr);
+
+    UFUNCTION(BlueprintCallable, Category = "UI")
+    void RegisterWarehouseHP(APotatoPlaceableStructure* Warehouse);
 };

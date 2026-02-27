@@ -1,6 +1,7 @@
 #include "PotatoPlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "Blueprint/UserWidget.h"
+#include "Building/PotatoPlaceableStructure.h"
 
 APotatoPlayerController::APotatoPlayerController()
 	: InputMappingContext(nullptr),
@@ -52,4 +53,9 @@ void APotatoPlayerController::SetUIMode(bool bEnable, UUserWidget* FocusWidget)
         SetInputMode(InputMode);
         bShowMouseCursor = false;
     }
+}
+
+void APotatoPlayerController::RegisterWarehouseHP(APotatoPlaceableStructure* Warehouse)
+{
+    WarehouseStructure = Warehouse;
 }
