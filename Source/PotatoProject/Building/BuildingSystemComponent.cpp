@@ -6,6 +6,8 @@
 #include "GeometryTypes.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
+#include "Core/PotatoProductionComponent.h"
+#include "Core/PotatoResourceManager.h"
 
 UBuildingSystemComponent::UBuildingSystemComponent()
 {
@@ -132,9 +134,27 @@ void UBuildingSystemComponent::OnPlaceStructure(const FInputActionValue& Value)
 	{
 		return;
 	}
-
+	
+	// CDO로 자원 확인 및 차감
+	APotatoPlaceableStructure* CDO = SelectedData->StructureClass->GetDefaultObject<APotatoPlaceableStructure>();
+	if (CDO)
+	{
+		UPotatoProductionComponent* ProductionComponent = CDO->FindComponentByClass<UPotatoProductionComponent>();
+		UPotatoResourceManager* ResourceManager = GetWorld()->GetSubsystem<UPotatoResourceManager>();
+		
+		if (ProductionComponent && ResourceManager)
+		{
+			if (!ProductionComponent->TryPurchaseWithWorld(ResourceManager))
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("자원이 부족합니다!"));
+				return;
+			}
+		}
+	}
+	
+	// 스폰 시작 (Deferred Spawn)
 	FTransform SpawnTransform = GhostActor->GetActorTransform(); // 이미 스냅되어 있음
-	// Deferred Spawn
+	
 	APotatoPlaceableStructure* NewStructure = GetWorld()->SpawnActorDeferred<APotatoPlaceableStructure>(
 		SelectedData->StructureClass,
 		SpawnTransform,
@@ -147,10 +167,8 @@ void UBuildingSystemComponent::OnPlaceStructure(const FInputActionValue& Value)
 	{
 		NewStructure->StructureData = SelectedData;
 		UGameplayStatics::FinishSpawningActor(NewStructure, SpawnTransform);
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
-		                                 FString::Printf(TEXT("%s 설치 성공!"), *SelectedData->DisplayName.ToString()));
 
-		// TODO: 리소스 차감 및 사운드, 파티클 이펙트 재생
+		// TODO: 설치 성공 사운드, 파티클 이펙트 재생
 	}
 }
 
