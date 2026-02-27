@@ -15,6 +15,7 @@
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundConcurrency.h"
 
+#include "UObject/ObjectKey.h"
 #include "UObject/UnrealType.h" // UEnum
 
 // ======================================================
@@ -31,41 +32,27 @@
 #endif
 
 // ======================================================
-// Burst gate (SFX)
+// Safer "no streaming load during combat" switch
+//  - 권장: 프리셋 적용 시점에 미리 로드(스폰 때)
+//  - 여기서는 런타임 LoadSynchronous를 기본적으로 꺼서 스톨/불안정 방지
 // ======================================================
-static double GSkillSfxGateWindowSec = 0.08;        // 80ms window
-static int32  GSkillSfxGateMaxPlaysPerWindow = 3;   // allow up to 3 per window per sound
+#ifndef SKILL_PRESENT_ALLOW_SYNC_LOAD
+#define SKILL_PRESENT_ALLOW_SYNC_LOAD 0
+#endif
 
-struct FSfxGateBucket
+template<typename T>
+static T* TryGetOrLoadSync(TSoftObjectPtr<T> SoftPtr)
 {
-	double WindowStart = 0.0;
-	int32 PlaysInWindow = 0;
-};
+	T* Obj = SoftPtr.Get();
+	if (Obj) return Obj;
 
-static TMap<TWeakObjectPtr<USoundBase>, FSfxGateBucket> GSfxGate;
-
-static bool PassesSfxBurstGate(const UWorld* World, USoundBase* Sound)
-{
-	if (!World || !Sound) return true;
-
-	const double Now = World->GetTimeSeconds();
-	FSfxGateBucket& B = GSfxGate.FindOrAdd(Sound);
-
-	if (Now - B.WindowStart > GSkillSfxGateWindowSec)
+#if SKILL_PRESENT_ALLOW_SYNC_LOAD
+	if (!SoftPtr.IsNull())
 	{
-		B.WindowStart = Now;
-		B.PlaysInWindow = 0;
+		return SoftPtr.LoadSynchronous();
 	}
-
-	if (B.PlaysInWindow >= GSkillSfxGateMaxPlaysPerWindow)
-	{
-		SKP_LOG(Verbose, "SFXGate DROP Sound=%s Plays=%d Window=%.3f",
-			*GetNameSafe(Sound), B.PlaysInWindow, (float)GSkillSfxGateWindowSec);
-		return false;
-	}
-
-	B.PlaysInWindow++;
-	return true;
+#endif
+	return nullptr;
 }
 
 // ======================================================
@@ -75,24 +62,18 @@ static bool IsFiniteVector3(const FVector& V)
 {
 	return FMath::IsFinite((double)V.X) && FMath::IsFinite((double)V.Y) && FMath::IsFinite((double)V.Z);
 }
-
 static bool IsFiniteRotator(const FRotator& R)
 {
 	return FMath::IsFinite((double)R.Pitch) && FMath::IsFinite((double)R.Yaw) && FMath::IsFinite((double)R.Roll);
 }
-
 static bool IsFiniteScale3(const FVector& S)
 {
 	return FMath::IsFinite((double)S.X) && FMath::IsFinite((double)S.Y) && FMath::IsFinite((double)S.Z);
 }
 
-// ======================================================
-// Debug string helpers
-// ======================================================
 static const TCHAR* NetModeToCStr(const UWorld* World)
 {
 	if (!World) return TEXT("NoWorld");
-
 	switch (World->GetNetMode())
 	{
 	case NM_Standalone:      return TEXT("Standalone");
@@ -106,36 +87,93 @@ static const TCHAR* NetModeToCStr(const UWorld* World)
 static FString EnumToString_Safe(const TCHAR* EnumPathName, int64 Value)
 {
 	const UEnum* EnumObj = FindObject<UEnum>(nullptr, EnumPathName);
-	if (EnumObj)
-	{
-		return EnumObj->GetNameStringByValue(Value);
-	}
+	if (EnumObj) return EnumObj->GetNameStringByValue(Value);
 	return FString::Printf(TEXT("%lld"), Value);
 }
 
-static bool PassesFxDistanceGate(USpecialSkillComponent* Comp, const FVector& SpawnLoc, const FPotatoMonsterSpecialSkillPresetRow& Row)
+// ======================================================
+// Distance gate (VFX+SFX 공통으로 써도 됨)
+// ======================================================
+static bool PassesFxDistanceGate(USpecialSkillComponent* Comp, const FVector& SpawnLoc, float MaxDist)
 {
 	if (!Comp) return true;
-	if (Row.MaxFxDistance <= 0.f) return true;
+	if (MaxDist <= 0.f) return true;
 
 	UWorld* World = Comp->GetWorld();
-	if (!World) return true;
+	if (!World || World->bIsTearingDown) return false;
 
 	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
 	if (!PlayerPawn) return true;
 
 	const float Dist = FVector::Dist(PlayerPawn->GetActorLocation(), SpawnLoc);
-	const bool bPass = (Dist <= Row.MaxFxDistance);
-
-	if (!bPass)
-	{
-		SKP_LOG(Log, "DistGate DROP Owner=%s Dist=%.1f > Max=%.1f SpawnLoc=%s",
-			*GetNameSafe(Comp->GetOwner()), Dist, Row.MaxFxDistance, *SpawnLoc.ToString());
-	}
-
-	return bPass;
+	return (Dist <= MaxDist);
 }
 
+// ======================================================
+// Safer SFX burst gate
+//  - 기존: "사운드별 전역" 드랍 → 다수 몬스터면 소리 씹힘 매우 흔함
+//  - 개선: (Sound + Owner) 단위로 드랍. + 보스/중요스킬은 완화 가능
+// ======================================================
+static double GSkillSfxGateWindowSec = 0.06;  // 조금 더 짧게
+static int32  GSkillSfxGateMaxPlaysPerWindowPerOwner = 2; // Owner당 2회
+
+struct FSfxGateKey
+{
+	FObjectKey SoundKey;
+	TWeakObjectPtr<AActor> Owner;
+
+	bool operator==(const FSfxGateKey& Other) const
+	{
+		return SoundKey == Other.SoundKey && Owner == Other.Owner;
+	}
+};
+
+FORCEINLINE uint32 GetTypeHash(const FSfxGateKey& K)
+{
+	return HashCombine(GetTypeHash(K.SoundKey), GetTypeHash(K.Owner));
+}
+
+struct FSfxGateBucket
+{
+	double WindowStart = 0.0;
+	int32 PlaysInWindow = 0;
+};
+
+static TMap<FSfxGateKey, FSfxGateBucket> GSfxGate;
+
+static bool PassesSfxBurstGate(const UWorld* World, AActor* Owner, USoundBase* Sound, bool bImportant)
+{
+	if (!World || !Owner || !Sound) return true;
+	if (bImportant) return true; // 보스/중요 스킬은 Gate 면제(원하면 정책 바꿔도 됨)
+
+	const double Now = World->GetTimeSeconds();
+
+	FSfxGateKey Key;
+	Key.SoundKey = FObjectKey(Sound);
+	Key.Owner = Owner;
+
+	FSfxGateBucket& B = GSfxGate.FindOrAdd(Key);
+
+	if (Now - B.WindowStart > GSkillSfxGateWindowSec)
+	{
+		B.WindowStart = Now;
+		B.PlaysInWindow = 0;
+	}
+
+	if (B.PlaysInWindow >= GSkillSfxGateMaxPlaysPerWindowPerOwner)
+	{
+		SKP_LOG(VeryVerbose, "SFXGate DROP Owner=%s Sound=%s Plays=%d Window=%.3f",
+			*GetNameSafe(Owner), *GetNameSafe(Sound), B.PlaysInWindow, (float)GSkillSfxGateWindowSec);
+		return false;
+	}
+
+	B.PlaysInWindow++;
+	return true;
+}
+
+// ======================================================
+// Origin resolver (너의 Row.TargetType 정책 유지)
+// ======================================================
 static FVector ResolveSkillOrigin(AActor* Owner, AActor* Target, const FPotatoMonsterSpecialSkillPresetRow& Row)
 {
 	if (!Owner) return FVector::ZeroVector;
@@ -147,67 +185,54 @@ static FVector ResolveSkillOrigin(AActor* Owner, AActor* Target, const FPotatoMo
 
 	if (Row.TargetType == EMonsterSpecialTargetType::Location)
 	{
-		if (IsValid(Target))
-		{
-			return Target->GetActorLocation();
-		}
+		if (IsValid(Target)) return Target->GetActorLocation();
 		return Owner->GetActorLocation() + Owner->GetActorForwardVector() * FMath::Max(0.f, Row.Range);
 	}
 
 	return IsValid(Target) ? Target->GetActorLocation() : Owner->GetActorLocation();
 }
 
+// ======================================================
+// VFX slot
+// ======================================================
 static void PlayVFXSlot(USpecialSkillComponent* Comp, const FPotatoSkillVFXSlot& Slot, const FVector& Origin, const FRotator& Facing)
 {
 	if (!Comp) return;
 
+	AActor* Owner = Comp->GetOwner();
+	if (!IsValid(Owner) || Owner->IsActorBeingDestroyed()) return;
+
 	UWorld* World = Comp->GetWorld();
-	if (!World) return;
+	if (!World || World->bIsTearingDown) return;
 
 	if (!Slot.HasAny())
 	{
-		SKP_LOG(VeryVerbose, "VFX Slot empty. Owner=%s", *GetNameSafe(Comp->GetOwner()));
+		SKP_LOG(VeryVerbose, "VFX Slot empty Owner=%s", *GetNameSafe(Owner));
 		return;
 	}
 
 	const FVector Loc = Origin + Slot.LocationOffset;
 	const FRotator Rot = (Facing + Slot.RotationOffset);
 
-	// NaN/Inf 방어
 	if (!IsFiniteVector3(Loc) || !IsFiniteRotator(Rot) || !IsFiniteScale3(Slot.Scale))
 	{
-		SKP_LOG(Error, "VFX INVALID TRANSFORM Owner=%s Origin=%s Loc=%s Rot=%s Scale=%s",
-			*GetNameSafe(Comp->GetOwner()),
-			*Origin.ToString(),
-			*Loc.ToString(),
-			*Rot.ToString(),
-			*Slot.Scale.ToString());
+		SKP_LOG(Error, "VFX INVALID TRANSFORM Owner=%s Loc=%s Rot=%s Scale=%s",
+			*GetNameSafe(Owner), *Loc.ToString(), *Rot.ToString(), *Slot.Scale.ToString());
 		return;
 	}
-
-	SKP_LOG(VeryVerbose, "VFX Begin Owner=%s Net=%s Loc=%s Rot=%s Scale=%s Socket=%s",
-		*GetNameSafe(Comp->GetOwner()),
-		NetModeToCStr(World),
-		*Loc.ToString(),
-		*Rot.ToString(),
-		*Slot.Scale.ToString(),
-		*Slot.AttachSocket.ToString());
 
 	// Attach
 	if (!Slot.AttachSocket.IsNone())
 	{
-		AActor* Owner = Comp->GetOwner();
 		USkeletalMeshComponent* Skel = nullptr;
 		if (ACharacter* C = Cast<ACharacter>(Owner)) Skel = C->GetMesh();
-		if (!Skel) Skel = Owner ? Owner->FindComponentByClass<USkeletalMeshComponent>() : nullptr;
+		if (!Skel) Skel = Owner->FindComponentByClass<USkeletalMeshComponent>();
 
-		if (Skel && Skel->DoesSocketExist(Slot.AttachSocket))
+		if (Skel && Skel->IsRegistered() && Skel->DoesSocketExist(Slot.AttachSocket))
 		{
 			if (!Slot.Niagara.IsNull())
 			{
-				UNiagaraSystem* NS = Slot.Niagara.Get();
-				if (!NS) NS = Slot.Niagara.LoadSynchronous();
-
+				UNiagaraSystem* NS = TryGetOrLoadSync(Slot.Niagara);
 				if (NS)
 				{
 					UNiagaraComponent* NC = UNiagaraFunctionLibrary::SpawnSystemAttached(
@@ -221,16 +246,15 @@ static void PlayVFXSlot(USpecialSkillComponent* Comp, const FPotatoSkillVFXSlot&
 				}
 				else
 				{
-					SKP_LOG(Warning, "VFX Niagara load failed Owner=%s Asset=%s", *GetNameSafe(Owner), *Slot.Niagara.ToString());
+					SKP_LOG(VeryVerbose, "VFX Niagara not loaded (skip) Owner=%s Asset=%s",
+						*GetNameSafe(Owner), *Slot.Niagara.ToString());
 				}
 				return;
 			}
 
 			if (!Slot.Cascade.IsNull())
 			{
-				UParticleSystem* PS = Slot.Cascade.Get();
-				if (!PS) PS = Slot.Cascade.LoadSynchronous();
-
+				UParticleSystem* PS = TryGetOrLoadSync(Slot.Cascade);
 				if (PS)
 				{
 					UParticleSystemComponent* PC = UGameplayStatics::SpawnEmitterAttached(
@@ -244,109 +268,100 @@ static void PlayVFXSlot(USpecialSkillComponent* Comp, const FPotatoSkillVFXSlot&
 				}
 				else
 				{
-					SKP_LOG(Warning, "VFX Cascade load failed Owner=%s Asset=%s", *GetNameSafe(Owner), *Slot.Cascade.ToString());
+					SKP_LOG(VeryVerbose, "VFX Cascade not loaded (skip) Owner=%s Asset=%s",
+						*GetNameSafe(Owner), *Slot.Cascade.ToString());
 				}
 				return;
 			}
 		}
-		else
-		{
-			SKP_LOG(Warning, "VFX Attach failed Owner=%s Mesh=%s Socket=%s",
-				*GetNameSafe(Owner),
-				*GetNameSafe(Skel),
-				*Slot.AttachSocket.ToString());
-		}
 	}
 
-	// Location spawn
+	// AtLocation
 	if (!Slot.Niagara.IsNull())
 	{
-		UNiagaraSystem* NS = Slot.Niagara.Get();
-		if (!NS) NS = Slot.Niagara.LoadSynchronous();
+		UNiagaraSystem* NS = TryGetOrLoadSync(Slot.Niagara);
 		if (NS)
 		{
 			UNiagaraComponent* NC = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 				World, NS, Loc, Rot, Slot.Scale, true, true, ENCPoolMethod::AutoRelease);
 
-			SKP_LOG(Log, "VFX SpawnAtLocation Niagara OK Owner=%s NS=%s Comp=%s Pool=AutoRelease",
-				*GetNameSafe(Comp->GetOwner()), *GetNameSafe(NS), *GetNameSafe(NC));
+			SKP_LOG(Log, "VFX SpawnAtLocation Niagara OK Owner=%s NS=%s Comp=%s",
+				*GetNameSafe(Owner), *GetNameSafe(NS), *GetNameSafe(NC));
 		}
 		else
 		{
-			SKP_LOG(Warning, "VFX Niagara load failed Owner=%s Asset=%s", *GetNameSafe(Comp->GetOwner()), *Slot.Niagara.ToString());
+			SKP_LOG(VeryVerbose, "VFX Niagara not loaded (skip) Owner=%s Asset=%s",
+				*GetNameSafe(Owner), *Slot.Niagara.ToString());
 		}
 		return;
 	}
 
 	if (!Slot.Cascade.IsNull())
 	{
-		UParticleSystem* PS = Slot.Cascade.Get();
-		if (!PS) PS = Slot.Cascade.LoadSynchronous();
+		UParticleSystem* PS = TryGetOrLoadSync(Slot.Cascade);
 		if (PS)
 		{
 			UParticleSystemComponent* PC = UGameplayStatics::SpawnEmitterAtLocation(
 				World, PS, FTransform(Rot, Loc, Slot.Scale), true);
 
 			SKP_LOG(Log, "VFX SpawnAtLocation Cascade OK Owner=%s PS=%s Comp=%s",
-				*GetNameSafe(Comp->GetOwner()), *GetNameSafe(PS), *GetNameSafe(PC));
+				*GetNameSafe(Owner), *GetNameSafe(PS), *GetNameSafe(PC));
 		}
 		else
 		{
-			SKP_LOG(Warning, "VFX Cascade load failed Owner=%s Asset=%s", *GetNameSafe(Comp->GetOwner()), *Slot.Cascade.ToString());
+			SKP_LOG(VeryVerbose, "VFX Cascade not loaded (skip) Owner=%s Asset=%s",
+				*GetNameSafe(Owner), *Slot.Cascade.ToString());
 		}
 		return;
 	}
 }
 
-static void PlaySFXSlot(USpecialSkillComponent* Comp, const FPotatoSkillSFXSlot& Slot, const FVector& Origin)
+// ======================================================
+// SFX slot (드랍 원인 추적 강화)
+// ======================================================
+static void PlaySFXSlot(USpecialSkillComponent* Comp, const FPotatoSkillSFXSlot& Slot, const FVector& Origin, float MaxFxDist, bool bImportant)
 {
 	if (!Comp) return;
 
+	AActor* Owner = Comp->GetOwner();
+	if (!IsValid(Owner) || Owner->IsActorBeingDestroyed()) return;
+
 	UWorld* World = Comp->GetWorld();
-	if (!World) return;
+	if (!World || World->bIsTearingDown) return;
 
-	const bool bHasSoundRef = (!Slot.Sound.IsNull()) || (Slot.Sound.Get() != nullptr);
-	if (!bHasSoundRef)
+	// DS no audio
+	if (World->GetNetMode() == NM_DedicatedServer) return;
+
+	// 거리 게이트: "VFX는 보이는데 SFX는 안 들림"을 줄이려면
+	// SFX도 같은 거리 정책을 타는 게 보통 안전함(원하면 분리)
+	if (!PassesFxDistanceGate(Comp, Origin, MaxFxDist))
 	{
-		SKP_LOG(Warning, "SFX Slot considered empty (no sound ref). Owner=%s", *GetNameSafe(Comp->GetOwner()));
+		SKP_LOG(VeryVerbose, "SFX dropped by distance gate Owner=%s", *GetNameSafe(Owner));
 		return;
 	}
 
-	// DS에서는 오디오 없음 (멀티에서 원인 분리)
-	if (World->GetNetMode() == NM_DedicatedServer)
-	{
-		SKP_LOG(Verbose, "SFX Skip DedicatedServer Owner=%s", *GetNameSafe(Comp->GetOwner()));
-		return;
-	}
-
-	USoundBase* S = Slot.Sound.Get();
-	if (!S && !Slot.Sound.IsNull()) S = Slot.Sound.LoadSynchronous();
-
+	USoundBase* S = TryGetOrLoadSync(Slot.Sound);
 	if (!S)
 	{
-		SKP_LOG(Warning, "SFX Sound null/load failed Owner=%s Asset=%s",
-			*GetNameSafe(Comp->GetOwner()),
-			Slot.Sound.IsNull() ? TEXT("Null") : *Slot.Sound.ToString());
+		SKP_LOG(VeryVerbose, "SFX not loaded (skip) Owner=%s Asset=%s",
+			*GetNameSafe(Owner), Slot.Sound.IsNull() ? TEXT("Null") : *Slot.Sound.ToString());
 		return;
 	}
 
-	if (!PassesSfxBurstGate(World, S))
+	if (!PassesSfxBurstGate(World, Owner, S, bImportant))
 	{
-		SKP_LOG(Verbose, "SFX Dropped by BurstGate Owner=%s Sound=%s", *GetNameSafe(Comp->GetOwner()), *GetNameSafe(S));
 		return;
 	}
 
-	USoundAttenuation* Atten = Slot.Attenuation.Get();
-	if (!Atten && !Slot.Attenuation.IsNull()) Atten = Slot.Attenuation.LoadSynchronous();
-
-	USoundConcurrency* Con = Slot.Concurrency.Get();
-	if (!Con && !Slot.Concurrency.IsNull()) Con = Slot.Concurrency.LoadSynchronous();
+	USoundAttenuation* Atten = TryGetOrLoadSync(Slot.Attenuation);
+	USoundConcurrency* Con = TryGetOrLoadSync(Slot.Concurrency);
 
 	const float Pitch = FMath::Clamp(Slot.PitchMultiplier + FMath::FRandRange(-0.03f, 0.03f), 0.5f, 2.0f);
-	const float Vol = FMath::Max(0.f, Slot.VolumeMultiplier);
+	const float Vol   = FMath::Max(0.f, Slot.VolumeMultiplier);
 
+	// Concurrency에 막히는 경우가 많아서 "Con 이름" 로그가 필요
 	SKP_LOG(Log, "SFX Play Owner=%s Net=%s Sound=%s Vol=%.2f Pitch=%.2f Origin=%s Atten=%s Con=%s",
-		*GetNameSafe(Comp->GetOwner()),
+		*GetNameSafe(Owner),
 		NetModeToCStr(World),
 		*GetNameSafe(S),
 		Vol,
@@ -358,6 +373,9 @@ static void PlaySFXSlot(USpecialSkillComponent* Comp, const FPotatoSkillSFXSlot&
 	UGameplayStatics::PlaySoundAtLocation(World, S, Origin, Vol, Pitch, 0.f, Atten, Con);
 }
 
+// ======================================================
+// Presentation common
+// ======================================================
 static void PlayPresentationCommon(
 	USpecialSkillComponent* Comp,
 	const FPotatoMonsterSpecialSkillPresetRow& Row,
@@ -366,25 +384,16 @@ static void PlayPresentationCommon(
 	const FPotatoSkillSFXSlot& Sfx,
 	const TCHAR* PhaseName)
 {
-	if (!Comp)
-	{
-		SKP_LOG(Warning, "Present Comp null Phase=%s", PhaseName);
-		return;
-	}
+	if (!Comp) return;
 
 	AActor* Owner = Comp->GetOwner();
-	if (!Owner)
-	{
-		SKP_LOG(Warning, "Present Owner null Phase=%s", PhaseName);
-		return;
-	}
+	if (!IsValid(Owner) || Owner->IsActorBeingDestroyed()) return;
 
 	UWorld* World = Comp->GetWorld();
+	if (!World || World->bIsTearingDown) return;
 
 	const FVector Origin = ResolveSkillOrigin(Owner, Target, Row);
 
-	// enum 문자열은 가장 안전하게 UEnum으로 (EnumPathName은 너 enum의 실제 경로로 바꿔도 됨)
-	// 못 찾으면 숫자로 출력됨.
 	const FString TargetTypeStr = EnumToString_Safe(TEXT("/Script/PotatoProject.EMonsterSpecialTargetType"), (int64)Row.TargetType);
 
 	SKP_LOG(VeryVerbose, "Present Phase=%s Owner=%s Net=%s Target=%s TargetType=%s Range=%.1f MaxFxDist=%.1f Origin=%s",
@@ -397,32 +406,36 @@ static void PlayPresentationCommon(
 		Row.MaxFxDistance,
 		*Origin.ToString());
 
-	if (!PassesFxDistanceGate(Comp, Origin, Row))
+	// VFX/SFX 공통 거리 정책
+	if (!PassesFxDistanceGate(Comp, Origin, Row.MaxFxDistance))
 	{
-		SKP_LOG(Log, "Present DROP DistanceGate Phase=%s Owner=%s", PhaseName, *GetNameSafe(Owner));
+		SKP_LOG(VeryVerbose, "Present DROP DistanceGate Phase=%s Owner=%s", PhaseName, *GetNameSafe(Owner));
 		return;
 	}
 
 	const FRotator Facing = Owner->GetActorRotation();
 	PlayVFXSlot(Comp, Vfx, Origin, Facing);
-	PlaySFXSlot(Comp, Sfx, Origin);
+
+	// "중요 스킬" 판정 정책(예: 보스/엘리트 Execute는 중요)
+	// Row에 bImportantSfx 같은 필드가 있으면 그걸 쓰는 게 정석인데,
+	// 여기선 Phase=Execute를 중요로 간주(원하면 바꿔)
+	const bool bImportant = (FCString::Stricmp(PhaseName, TEXT("Execute")) == 0);
+
+	PlaySFXSlot(Comp, Sfx, Origin, Row.MaxFxDistance, bImportant);
 }
 
 void FSpecialSkillPresentation::PlayTelegraph(USpecialSkillComponent* Comp, const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
 {
 	PlayPresentationCommon(Comp, Row, Target, Row.Presentation.TelegraphVFX, Row.Presentation.TelegraphSFX, TEXT("Telegraph"));
 }
-
 void FSpecialSkillPresentation::PlayCast(USpecialSkillComponent* Comp, const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
 {
 	PlayPresentationCommon(Comp, Row, Target, Row.Presentation.CastVFX, Row.Presentation.CastSFX, TEXT("Cast"));
 }
-
 void FSpecialSkillPresentation::PlayExecute(USpecialSkillComponent* Comp, const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
 {
 	PlayPresentationCommon(Comp, Row, Target, Row.Presentation.ExecuteVFX, Row.Presentation.ExecuteSFX, TEXT("Execute"));
 }
-
 void FSpecialSkillPresentation::PlayEnd(USpecialSkillComponent* Comp, const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
 {
 	PlayPresentationCommon(Comp, Row, Target, Row.Presentation.EndVFX, Row.Presentation.EndSFX, TEXT("End"));
