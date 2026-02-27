@@ -561,6 +561,39 @@ void APotatoPlayerCharacter::OnDeath()
 	}
 }
 
+void APotatoPlayerCharacter::StartRegenCooldown()
+{
+    GetWorldTimerManager().ClearTimer(RegenDelayTimerHandle);
+    GetWorldTimerManager().ClearTimer(RegenTickTimerHandle);
+    
+    if (bIsDead || CurrentHP >= MaxHP)
+    {
+        return;
+    }
+
+    // 반복이 아니라 딜레이만 설정함
+    GetWorldTimerManager().SetTimer(RegenDelayTimerHandle, this, &APotatoPlayerCharacter::TickRegen, RegenDelay, false);
+}
+
+void APotatoPlayerCharacter::TickRegen()
+{
+    if (bIsDead || CurrentHP >= MaxHP)
+    {
+        GetWorldTimerManager().ClearTimer(RegenTickTimerHandle); // 체젠 중지
+        return;
+    }
+
+    CurrentHP = FMath::Clamp(CurrentHP + RegenHPRate * RegenTickInterval, 0.0f, MaxHP);
+    OnHPChanged.Broadcast(CurrentHP, MaxHP);
+
+    // 첫 틱 이후 반복 전환 실시
+    if (!GetWorldTimerManager().IsTimerActive(RegenTickTimerHandle))
+    {
+        // 반복 설정
+        GetWorldTimerManager().SetTimer(RegenTickTimerHandle, this, &APotatoPlayerCharacter::TickRegen, RegenTickInterval, true);
+    }
+}
+
 float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser)
 {
 	float ActualDamage = Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
@@ -570,6 +603,7 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
         if (bIsDead) return 0.0f; // 이미 사망한 경우 추가 피해 방지
 
 		CurrentHP = FMath::Clamp(CurrentHP - ActualDamage, 0.0f, MaxHP);
+        StartRegenCooldown(); // 피해를 입으면 체력 재생 대기 시작
 		//UE_LOG(LogTemp, Warning, TEXT("Remaining Health: %f"), CurrentHealth);
 		
 		if (OnHPChanged.IsBound())

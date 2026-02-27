@@ -46,7 +46,7 @@ void UPotatoResourceManager::EndSystem()
     Crop = 0;
     Livestock = 0;
     
-    // 생산 레지스트리 초기화
+    // 생산 레지스터리 초기화
     TotalProductionPerMinuteWood = 0;
     TotalProductionPerMinuteStone = 0;
     TotalProductionPerMinuteCrop = 0;
@@ -142,16 +142,16 @@ void UPotatoResourceManager::RegisterProduction(int32 InWood, int32 InStone, int
     TotalProductionPerMinuteStone += InStone;
     TotalProductionPerMinuteCrop += InCrop;
     TotalProductionPerMinuteLivestock += InLivestock;
-    // 필요시 이곳에 델리게이트 추가
+    BroadcastAll();
 }
 
 void UPotatoResourceManager::UnregisterProduction(int32 InWood, int32 InStone, int32 InCrop, int32 InLivestock)
 {
-    TotalProductionPerMinuteWood -= InWood;
-    TotalProductionPerMinuteStone -= InStone;
-    TotalProductionPerMinuteCrop -= InCrop;
-    TotalProductionPerMinuteLivestock -= InLivestock;
-    // 필요시 이곳에 델리게이트 추가
+    TotalProductionPerMinuteWood      = FMath::Max(0, TotalProductionPerMinuteWood      - InWood);
+    TotalProductionPerMinuteStone     = FMath::Max(0, TotalProductionPerMinuteStone     - InStone);
+    TotalProductionPerMinuteCrop      = FMath::Max(0, TotalProductionPerMinuteCrop      - InCrop);
+    TotalProductionPerMinuteLivestock = FMath::Max(0, TotalProductionPerMinuteLivestock - InLivestock);
+    BroadcastAll();
 }
 
 int32 UPotatoResourceManager::GetTotalProductionPerMinute(EResourceType Type) const
@@ -184,13 +184,17 @@ void UPotatoResourceManager::OnProductionTick()
 // 초당 생산량 누적 후 정수 단위로 자원 추가
 void UPotatoResourceManager::AccumulateAndFlush(int32 TotalPerMinute, float& Accumulated, float Interval, EResourceType Type)
 {
-    if (TotalPerMinute <= 0) return;
+    if (TotalPerMinute <= 0)
+    {
+        Accumulated = 0.f; // 생산량 0이면 잔여분 리셋
+        return;
+    }
 
     const float PerSecond = static_cast<float>(TotalPerMinute) / 60.f;
     Accumulated += PerSecond * Interval;
 
     const int32 WholeAmount = FMath::FloorToInt32(Accumulated);
-    if (WholeAmount < 0) return;
+    if (WholeAmount <= 0) return;
 
     Accumulated -= static_cast<float>(WholeAmount);
     AddResource(Type, WholeAmount);

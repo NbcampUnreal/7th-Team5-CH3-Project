@@ -3,6 +3,7 @@
 #include "UI/PotatoPlayerHUD.h"
 
 #include "PotatoDialogueWidget.h"
+#include "Animation/WidgetAnimation.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
@@ -18,6 +19,7 @@
 #include "Building/PotatoStructureData.h"
 #include "Combat/PotatoWeaponComponent.h"
 #include "Player/PotatoPlayerCharacter.h"
+#include "Player/PotatoPlayerController.h"
 
 #include "PotatoDialogueData.h"
 #include "PotatoDialogueWidget.h"
@@ -31,6 +33,12 @@ void UPotatoPlayerHUD::NativeConstruct()
 {
 	Super::NativeConstruct();
 
+	// PlayerController에 HUD 참조 등록
+	if (APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetOwningPlayer()))
+	{
+		PC->PlayerHUDWidget = this;
+	}
+
 	// BuildSlot Border 배열 초기화 (WBP 슬롯 순서와 동일)
 	BuildSlotBorders = {Border_2, Border_3, Border_4, Border_5};
 
@@ -40,10 +48,7 @@ void UPotatoPlayerHUD::NativeConstruct()
 	// 창고 자동 탐색 (직접 할당된 경우 스킵)
 	if (!WarehouseStructure)
 	{
-		// TODO: 실제 창고 BP 태그 또는 클래스로 탐색하세요.
-		// 예시: UGameplayStatics::GetActorOfClass(this, APotatoWarehouse::StaticClass())
-		// WarehouseStructure = Cast<APotatoPlaceableStructure>(
-		//     UGameplayStatics::GetActorOfClass(this, APotatoPlaceableStructure::StaticClass()));
+		// 해당 내용은 BP에서 Actor가 BeginPlay시 수행합니다.
 	}
 
 	// BuildMode 패널 초기 상태: 숨김
@@ -51,6 +56,11 @@ void UPotatoPlayerHUD::NativeConstruct()
 	{
 		Border_0->SetVisibility(ESlateVisibility::Collapsed);
 	}
+
+    if (MessageText)
+    {
+        MessageText->SetVisibility(ESlateVisibility::Collapsed);
+    }
 
 	// 초기 갱신
 	RefreshStorageHP();
@@ -153,9 +163,49 @@ void UPotatoPlayerHUD::SetMessageText(const FText& InText, bool bVisible)
 	}
 }
 
+void UPotatoPlayerHUD::ShowMessageWithDuration(const FText& InText, float Duration, bool bPlayAnim)
+{
+	SetMessageText(InText, true);
+
+	if (bPlayAnim && ShowMessageText)
+	{
+		PlayAnimation(ShowMessageText, 0.0f, 0, EUMGSequencePlayMode::Forward, 1.0f); // 0 = 루프
+	}
+
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(MessageHideTimer);
+		World->GetTimerManager().SetTimer(MessageHideTimer, this, &UPotatoPlayerHUD::HideMessageText, Duration, false);
+	}
+}
+
+void UPotatoPlayerHUD::HideMessageText()
+{
+	if (ShowMessageText && IsAnimationPlaying(ShowMessageText))
+	{
+		StopAnimation(ShowMessageText);
+	}
+
+	if (MessageText)
+	{
+		MessageText->SetVisibility(ESlateVisibility::Collapsed);
+	}
+}
+
 void UPotatoPlayerHUD::RefreshStorageHP()
 {
-	if (!StorageHPBar || !WarehouseStructure) return;
+	if (!StorageHPBar) return;
+
+	// 아직 없으면 PC에서 lazy resolve
+	if (!WarehouseStructure)
+	{
+		if (APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetOwningPlayer()))
+		{
+			WarehouseStructure = PC->WarehouseStructure;
+		}
+	}
+
+	if (!WarehouseStructure) return;
 
 	const UPotatoStructureData* Data = WarehouseStructure->StructureData;
 	if (!Data) return;
@@ -212,11 +262,7 @@ void UPotatoPlayerHUD::HandleResourceChanged(EResourceType Type, int32 NewValue)
 	auto FormatResourceText = [&](int32 Amount, EResourceType InType) -> FText
 	{
 		const int32 Rate = ResourceManager->GetTotalProductionPerMinute(InType);
-		if (Rate > 0)
-		{
-			return FText::Format(NSLOCTEXT("HUD", "ResRate", "{0}(+{1}/min)"), Amount, Rate);
-		}
-		return FText::AsNumber(Amount);
+		return FText::Format(NSLOCTEXT("HUD", "ResRate", "{0}(+{1}/min)"), Amount, Rate);
 	};
 	
 	FText NewText = FormatResourceText(NewValue, Type);

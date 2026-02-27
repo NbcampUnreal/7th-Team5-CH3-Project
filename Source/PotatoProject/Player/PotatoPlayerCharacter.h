@@ -71,6 +71,18 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
 	float CurrentHP = 100.0f;
 	
+    // 체력 재생 대기 시간 (초)
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
+    float RegenDelay = 5.0f; 
+
+    // 초당 체력 재생량
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
+    float RegenHPRate = 5.0f;
+
+    // 회복 틱 간격
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
+    float RegenTickInterval = 0.25;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stats")
     bool bIsDead = false;
 
@@ -124,6 +136,12 @@ private:
 	//bool IsAmmoProduct;
 	
 	// Functions
+    FTimerHandle RegenDelayTimerHandle;
+    FTimerHandle RegenTickTimerHandle;
+
+    void StartRegenCooldown(); // TakeDamage에서 호출
+    void TickRegen(); // 반복 회복 틱
+
 public:
 	APotatoPlayerCharacter();
 	

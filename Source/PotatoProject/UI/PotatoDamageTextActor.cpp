@@ -19,12 +19,22 @@ APotatoDamageTextActor::APotatoDamageTextActor()
 	WidgetComp = CreateDefaultSubobject<UWidgetComponent>(TEXT("WidgetComp"));
 	WidgetComp->SetupAttachment(RootComponent);
 
-	//  World Space로 전환 (입체감)
-	WidgetComp->SetWidgetSpace(EWidgetSpace::World);
+	// ============================================================
+	// [테스트] 렌더링 모드 전환 — 한 블록만 활성화
+	// ============================================================
+
+	// ▼ [World Space] 입체감 있음, Post Process 영향 받음
+	//WidgetComp->SetWidgetSpace(EWidgetSpace::World);
+    //WidgetComp->SetTwoSided(true);
+
+	// ▼ [Screen Space] 순수 UI, Post Process 영향 없음
+    WidgetComp->SetWidgetSpace(EWidgetSpace::Screen);
+	WidgetComp->SetTwoSided(false); // Screen Space에서는 불필요
+
+	// ============================================================
 
 	WidgetComp->SetDrawAtDesiredSize(true);
 	WidgetComp->SetPivot(FVector2D(0.5f, 0.5f));
-	WidgetComp->SetTwoSided(true);
 
 
 	SetActorHiddenInGame(true);
@@ -107,8 +117,12 @@ void APotatoDamageTextActor::ShowDamage(
 	}
 
 	// 첫 프레임 삐끗 방지: 즉시 한 번 업데이트
-	UpdateBillboardYawOnly();
-	UpdateDistanceScaleAndClamp();
+	// [World Space] 빌보드 + 거리 스케일
+	/*UpdateBillboardYawOnly();
+	UpdateDistanceScaleAndClamp();*/
+
+	// [Screen Space] 거리 스케일만 (빌보드 자동)
+	UpdateDistanceScale_ScreenSpace();
 }
 
 void APotatoDamageTextActor::Tick(float DeltaSeconds)
@@ -122,11 +136,11 @@ void APotatoDamageTextActor::Tick(float DeltaSeconds)
 	// 위로 떠오르기
 	SetActorLocation(StartLoc + FVector(0.f, 0.f, CurrentRiseSpeed * Elapsed));
 
-	//  카메라 빌보드 (Yaw-only)
-	UpdateBillboardYawOnly();
-
-	//  거리 스케일 + 근접 클램프
-	UpdateDistanceScaleAndClamp();
+	// [World Space] 빌보드 + 거리 스케일
+	//UpdateBillboardYawOnly();
+	//UpdateDistanceScaleAndClamp();
+	// [Screen Space] 거리 스케일만 (빌보드 자동)
+	UpdateDistanceScale_ScreenSpace();
 
 	//  FadeOut
 	if (bFadeOut)
@@ -213,6 +227,36 @@ void APotatoDamageTextActor::UpdateDistanceScaleAndClamp()
 	Scale = FMath::Clamp(Scale, MinScale, MaxScale);
 
 	WidgetComp->SetWorldScale3D(FVector(Scale));
+}
+
+// [Screen Space] RenderTransform 기반 거리 스케일 — PP 영향 없음
+void APotatoDamageTextActor::UpdateDistanceScale_ScreenSpace()
+{
+	if (!WidgetComp) return;
+	if (!bUseDistanceScale && !bClampTooClose) return;
+
+	APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0);
+	if (!Cam) return;
+
+	float Dist = FVector::Dist(Cam->GetCameraLocation(), WidgetComp->GetComponentLocation());
+
+	if (bClampTooClose)
+		Dist = FMath::Max(Dist, MinEffectiveDistance);
+
+	if (!bUseDistanceScale) return;
+
+	const float SafeRef = FMath::Max(ReferenceDistance, 1.f);
+	const float Raw = Dist / SafeRef;
+	float Scale = FMath::Lerp(1.f, Raw, DistanceScaleStrength);
+	Scale = FMath::Clamp(Scale, MinScale, MaxScale);
+
+	// Screen Space에서는 SetWorldScale3D 대신 위젯 RenderTransform으로 스케일 적용
+	if (UUserWidget* W = WidgetComp->GetUserWidgetObject())
+	{
+		FWidgetTransform T;
+		T.Scale = FVector2D(Scale, Scale);
+		W->SetRenderTransform(T);
+	}
 }
 
 void APotatoDamageTextActor::UpdateFade(float NowTime)

@@ -16,6 +16,7 @@
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Camera/PlayerCameraManager.h"
 #include "TimerManager.h"
 #include "../UI/HealthBar.h"
 #include "../UI/PotatoDamageTextPoolActor.h"
@@ -393,9 +394,16 @@ float APotatoMonster::TakeDamage(
 		const int32 Dir = (DamageStackIndex % 2 == 0) ? 1 : -1;
 		const float XOffset = Dir * DamageStackOffsetStep * (DamageStackIndex / 2 + 1);
 
+		// [World Space]  월드 X축 기준 좌우 분산 — 카메라 각도에 따라 묻힐 수 있음
+		// FVector DamageLoc = GetActorLocation() + FVector(XOffset, 0.f, BaseZ + 20.f);
+
+		// [Screen Space] 카메라 Right 벡터 기준 좌우 분산 — 카메라 방향 무관하게 항상 화면 좌우
+		APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0);
+		const FVector CamRight = Cam ? Cam->GetActorRightVector() : FVector::RightVector;
 		FVector DamageLoc =
 			GetActorLocation()
-			+ FVector(XOffset, 0.f, BaseZ + 20.f);
+			+ CamRight * XOffset
+			+ FVector(0.f, 0.f, BaseZ + 20.f);
 
 		DamageTextPool->SpawnDamageText(
 			FMath::RoundToInt(Applied),

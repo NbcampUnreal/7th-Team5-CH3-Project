@@ -12,6 +12,7 @@
 #include "Core/PotatoGameStateBase.h"
 #include "UI/GameOverScreen.h"
 #include "Player/PotatoPlayerController.h"
+#include "UI/PotatoPlayerHUD.h"
 
 APotatoGameMode::APotatoGameMode() 
 {
@@ -119,8 +120,16 @@ void APotatoGameMode::StartDayPhase()
 
 void APotatoGameMode::StartWarningPhase()
 {
-    // 이 함수들 아래에
     OnWarningPhase.Broadcast();
+
+    if (APotatoPlayerController* PC = GetWorld()->GetFirstPlayerController<APotatoPlayerController>())
+    {
+        if (PC->PlayerHUDWidget)
+        {
+            PC->PlayerHUDWidget->ShowMessageWithDuration(
+                NSLOCTEXT("HUD", "EveningWarning", "밤이 찾아옵니다"), 3.0f, true);
+        }
+    }
 }
 
 void APotatoGameMode::StartNightPhase()

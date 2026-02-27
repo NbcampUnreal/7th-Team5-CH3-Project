@@ -152,6 +152,10 @@ protected:
 	// TODO: WBP_PlayerHUD 내부에 자식으로 추가하기
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UPotatoDialogueWidget> DialogueWidget;
+
+	// WBP_PlayerHUD 에 정의된 ShowMessageText 애니메이션
+	UPROPERTY(Transient, meta = (BindWidgetAnim))
+	TObjectPtr<UWidgetAnimation> ShowMessageText;
 	
 	// Dialogue 데이터 테이블 참조
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Dialogue")
@@ -229,6 +233,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void SetMessageText(const FText& InText, bool bVisible = true);
 
+	/**
+	 * 메시지를 Duration초 동안 표시한 뒤 숨깁니다.
+	 * @param InText       표시할 텍스트
+	 * @param Duration     표시 시간 (초)
+	 * @param bPlayAnim    true면 ShowMessageText 애니메이션을 루프 재생
+	 */
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void ShowMessageWithDuration(const FText& InText, float Duration, bool bPlayAnim = false);
+
+	/** 메시지를 즉시 숨기고 타이머/애니메이션을 정리합니다. */
+	UFUNCTION(BlueprintCallable, Category = "HUD")
+	void HideMessageText();
+
 	/** 창고 HP 바를 수동으로 갱신합니다. (Tick에서 자동 갱신되지만 즉각 호출도 가능) */
 	UFUNCTION(BlueprintCallable, Category = "HUD")
 	void RefreshStorageHP();
@@ -284,4 +301,5 @@ private:
 	/** 시계 바늘 부드러운 이징용 경과 시간 (-1 = 미초기화) */
 	float SmoothElapsedTime = -1.f;
 
+	FTimerHandle MessageHideTimer;
 };
