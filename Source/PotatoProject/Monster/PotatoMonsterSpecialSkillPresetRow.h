@@ -1,4 +1,5 @@
-﻿#pragma once
+﻿// PotatoMonsterSpecialSkillPresetRow.h (추가 필드 포함 버전)
+#pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/DataTable.h"
@@ -11,9 +12,6 @@ class USoundBase;
 class USoundAttenuation;
 class USoundConcurrency;
 
-/**
- * Skill SFX Slot (AnimSet의 FPotatoSFXSlot과 동일 개념 - 스킬 전용)
- */
 USTRUCT(BlueprintType)
 struct POTATOPROJECT_API FPotatoSkillSFXSlot
 {
@@ -38,11 +36,6 @@ public:
 	FORCEINLINE bool HasAny() const { return Sound != nullptr; }
 };
 
-/**
- * Skill VFX Slot (AnimSet의 FPotatoVFXSlot과 동일 개념 - 스킬 전용)
- * - Niagara/Cascade 둘 중 하나만 써도 됨
- * - bAutoScale 등은 “스킬 연출에도” 동일하게 쓸 수 있게 유지
- */
 USTRUCT(BlueprintType)
 struct POTATOPROJECT_API FPotatoSkillVFXSlot
 {
@@ -55,25 +48,18 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="VFX")
 	TSoftObjectPtr<UParticleSystem> Cascade = nullptr;
 
-	// 기본 스케일 (에셋에서 조절)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="VFX")
 	FVector Scale = FVector(1.f, 1.f, 1.f);
 
-	// 어디에 스폰할지 보정
-	// - 보통: 스킬 Origin(Owner 위치 또는 Target 위치) 기준
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="VFX")
 	FVector LocationOffset = FVector::ZeroVector;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="VFX")
 	FRotator RotationOffset = FRotator::ZeroRotator;
 
-	// 소켓에 붙이는 연출이 필요하면 사용 (Owner의 Mesh 소켓)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="VFX")
 	FName AttachSocket = NAME_None;
 
-	// ------------------------------------------------------------
-	// AutoScale (per-slot)
-	// ------------------------------------------------------------
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="VFX|AutoScale")
 	bool bAutoScale = false;
 
@@ -96,10 +82,6 @@ public:
 	FORCEINLINE bool HasAny() const { return (Niagara != nullptr) || (Cascade != nullptr); }
 };
 
-/**
- * 스킬 파이프라인 단계별 Presentation 묶음
- * - Telegraph / Cast / Execute / End 를 분리
- */
 USTRUCT(BlueprintType)
 struct POTATOPROJECT_API FPotatoSkillPresentation
 {
@@ -108,44 +90,51 @@ struct POTATOPROJECT_API FPotatoSkillPresentation
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation|Telegraph")
 	FPotatoSkillVFXSlot TelegraphVFX;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation|Telegraph")
 	FPotatoSkillSFXSlot TelegraphSFX;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation|Cast")
 	FPotatoSkillVFXSlot CastVFX;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation|Cast")
 	FPotatoSkillSFXSlot CastSFX;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation|Execute")
 	FPotatoSkillVFXSlot ExecuteVFX;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation|Execute")
 	FPotatoSkillSFXSlot ExecuteSFX;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation|End")
 	FPotatoSkillVFXSlot EndVFX;
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation|End")
 	FPotatoSkillSFXSlot EndSFX;
 };
 
-/**
- * MonsterSpecialSkillPresetTable
- * - RowName = SkillId
- * - Logic/Trigger/Shape 유지
- * - Execution(실행 방식) 추가
- * - Presentation(단계별 VFX/SFX) 추가
- */
+// ============================================================
+// ✅ NEW: Spawn mode for Execution=Projectile(SpawnActor) unification
+// ============================================================
+
+UENUM(BlueprintType)
+enum class EPotatoSkillSpawnMode : uint8
+{
+	// 발사체(방향/속도/스윕/OnHit 기반)
+	Projectile,
+
+	// 설치형: Owner 위치에 스폰 (불기둥 같은)
+	AtOwner,
+
+	// 설치형: Target 위치에 스폰 (장판/불기둥)
+	AtTarget,
+
+	// 설치형: Target 앞 Range 지점에 스폰
+	ForwardOffset
+};
+
+// ============================================================
+
 USTRUCT(BlueprintType)
 struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowBase
 {
 	GENERATED_BODY()
-
-	// =========================
-	// 기존: 무엇/언제/모양
-	// =========================
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Special")
 	EMonsterSpecialLogic Logic = EMonsterSpecialLogic::None;
@@ -156,17 +145,10 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shape")
 	EMonsterSpecialShape Shape = EMonsterSpecialShape::None;
 
-	// =========================
-	// 추가: 어떻게 실행할지(Execution)
-	// =========================
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Special")
 	EMonsterSpecialExecution Execution = EMonsterSpecialExecution::None;
 
-	// =========================
 	// Target / Gating
-	// =========================
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Target")
 	EMonsterSpecialTargetType TargetType = EMonsterSpecialTargetType::CurrentTarget;
 
@@ -182,10 +164,7 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Trigger", meta=(ClampMin="0"))
 	float MaxRange = 0.f;
 
-	// =========================
 	// Timing
-	// =========================
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Timing", meta=(ClampMin="0"))
 	float Cooldown = 5.f;
 
@@ -198,10 +177,7 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Timing")
 	bool bExecuteOnNextTick = true;
 
-	// =========================
 	// Shape params
-	// =========================
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shape", meta=(ClampMin="0"))
 	float Radius = 0.f;
 
@@ -214,13 +190,11 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shape")
 	bool bHitOncePerTarget = true;
 
-	// =========================
 	// Effect
-	// =========================
-
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Effect")
 	float DamageMultiplier = 1.f;
 
+	// DOT
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Effect|DOT", meta=(ClampMin="0"))
 	float DotDps = 0.f;
 
@@ -233,27 +207,104 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Effect|DOT")
 	EMonsterDotStackPolicy DotStackPolicy = EMonsterDotStackPolicy::RefreshDuration;
 
+	// CC
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Effect|CC", meta=(ClampMin="0"))
 	float StunDuration = 0.f;
 
-	// =========================
-	// Projectile
-	// =========================
+	// ============================================================
+	// ✅ NEW: Projectile(독침) / SpawnActor(불기둥) 공용 스폰 세팅
+	// ============================================================
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile")
-	TSoftClassPtr<AActor> ProjectileClass;
+	/**
+	 * Execution=Projectile일 때 스폰되는 클래스
+	 * - 진짜 투사체(APotatoMonsterProjectile)도 가능
+	 * - 설치형(APotatoFirePillarActor)도 가능
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn")
+	TSoftClassPtr<AActor> ProjectileClass; // 이름 유지(호환)
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn")
+	EPotatoSkillSpawnMode SpawnMode = EPotatoSkillSpawnMode::Projectile;
+
+	// 소켓/오프셋(Owner 기준)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn")
 	FName SpawnSocket;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn")
 	FVector SpawnOffset = FVector::ZeroVector;
 
-	// =========================
-	// Budget / FX Gate
-	// =========================
+	// 설치형을 바닥에 붙이기(불기둥 추천)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Ground")
+	bool bSnapToGround = false;
 
-	// 0이면 제한 없음(프로젝트 정책에 따라 해석)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Ground", meta=(EditCondition="bSnapToGround", ClampMin="0"))
+	float GroundTraceDistance = 5000.f;
+
+	/**
+	 * SpawnMode=AtTarget일 때
+	 * - true  : Owner → Target 방향을 바라보게(Yaw only)
+	 * - false : Owner 회전 유지
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Rotation")
+	bool bFaceTargetOnSpawn = false;
+
+	/**
+	 * Yaw만 적용할지 (Pitch/Roll 제거)
+	 * - 일반적으로 true 권장 (장판/불기둥/투사체 모두 안전)
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Spawn|Rotation",
+		meta=(EditCondition="bFaceTargetOnSpawn"))
+	bool bYawOnlyRotation = true;
+	// ============================================================
+	// ✅ NEW: Projectile 이동/충돌(독침)
+	// ============================================================
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile", meta=(ClampMin="0"))
+	float ProjectileSpeed = 1800.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile", meta=(ClampMin="0"))
+	float ProjectileLifeSeconds = 5.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile", meta=(ClampMin="0"))
+	float ProjectileTraceRadius = 12.f;
+
+	// ============================================================
+	// ✅ NEW: Projectile 폭발 AoE DOT(독침 광역)
+	// ============================================================
+
+	// 0이면 단일 OnHit DOT
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile|Explode", meta=(ClampMin="0"))
+	float ExplodeRadius = 0.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile|Explode")
+	bool bExplodeAffectsStructures = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Projectile|Explode", meta=(ClampMin="0"))
+	int32 ExplodeMaxTargets = 0; // 0이면 제한 없음
+
+	// ============================================================
+	// ✅ NEW: Spawned Actor 옵션(불기둥)
+	// ============================================================
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|Life", meta=(ClampMin="0"))
+	float SpawnedLifeTime = 5.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|DOT")
+	bool bSpawnedPlayerOnly = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|Move")
+	bool bSpawnedEnableMove = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|Move", meta=(ClampMin="0"))
+	float SpawnedMoveSpeed = 220.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|Move", meta=(ClampMin="0"))
+	float SpawnedWanderRadius = 500.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|Move", meta=(ClampMin="0.01"))
+	float SpawnedRepathInterval = 0.8f;
+
+	// Budget / FX Gate
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Budget", meta=(ClampMin="0"))
 	float MaxFxDistance = 0.f;
 
@@ -263,16 +314,7 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Budget", meta=(ClampMin="0"))
 	int32 SfxCost = 0;
 
-	// =========================
-	// Presentation (NEW)
-	// =========================
-
-	/**
-	 * 스킬 파이프라인 단계별 연출
-	 * - BeginTelegraph / BeginCast / Execute / End
-	 */
+	// Presentation
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation")
 	FPotatoSkillPresentation Presentation;
-
-
 };
