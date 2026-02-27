@@ -14,7 +14,7 @@
 #include "Sound/SoundBase.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundConcurrency.h"
-
+#include "SkillTransformResolver.h"
 #include "UObject/ObjectKey.h"
 #include "UObject/UnrealType.h" // UEnum
 
@@ -171,26 +171,6 @@ static bool PassesSfxBurstGate(const UWorld* World, AActor* Owner, USoundBase* S
 	return true;
 }
 
-// ======================================================
-// Origin resolver (너의 Row.TargetType 정책 유지)
-// ======================================================
-static FVector ResolveSkillOrigin(AActor* Owner, AActor* Target, const FPotatoMonsterSpecialSkillPresetRow& Row)
-{
-	if (!Owner) return FVector::ZeroVector;
-
-	if (Row.TargetType == EMonsterSpecialTargetType::Self)
-	{
-		return Owner->GetActorLocation();
-	}
-
-	if (Row.TargetType == EMonsterSpecialTargetType::Location)
-	{
-		if (IsValid(Target)) return Target->GetActorLocation();
-		return Owner->GetActorLocation() + Owner->GetActorForwardVector() * FMath::Max(0.f, Row.Range);
-	}
-
-	return IsValid(Target) ? Target->GetActorLocation() : Owner->GetActorLocation();
-}
 
 // ======================================================
 // VFX slot
@@ -392,7 +372,7 @@ static void PlayPresentationCommon(
 	UWorld* World = Comp->GetWorld();
 	if (!World || World->bIsTearingDown) return;
 
-	const FVector Origin = ResolveSkillOrigin(Owner, Target, Row);
+	const FVector Origin =FSkillTransformResolver::ResolveOrigin(Owner, Target, Row);
 
 	const FString TargetTypeStr = EnumToString_Safe(TEXT("/Script/PotatoProject.EMonsterSpecialTargetType"), (int64)Row.TargetType);
 

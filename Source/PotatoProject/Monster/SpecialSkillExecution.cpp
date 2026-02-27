@@ -11,7 +11,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/DamageType.h"
-
+#include "SkillTransformResolver.h"
 #include "PotatoDotComponent.h"
 #include "PotatoBuffComponent.h"
 #include "PotatoMonsterProjectile.h"
@@ -486,33 +486,6 @@ static EMonsterSpecialExecution ResolveExecution(const FPotatoMonsterSpecialSkil
 }
 
 // ============================================================
-// Origin Resolve
-// ============================================================
-
-static FVector ResolveSkillOrigin(AActor* Owner, AActor* Target, const FPotatoMonsterSpecialSkillPresetRow& Row)
-{
-	if (!Owner) return FVector::ZeroVector;
-
-	if (Row.TargetType == EMonsterSpecialTargetType::Self)
-	{
-		return Owner->GetActorLocation();
-	}
-
-	if (Row.TargetType == EMonsterSpecialTargetType::Location)
-	{
-		if (IsValid(Target) && !Target->IsActorBeingDestroyed())
-		{
-			return Target->GetActorLocation();
-		}
-		return Owner->GetActorLocation() + Owner->GetActorForwardVector() * FMath::Max(0.f, Row.Range);
-	}
-
-	return (IsValid(Target) && !Target->IsActorBeingDestroyed())
-		? Target->GetActorLocation()
-		: Owner->GetActorLocation();
-}
-
-// ============================================================
 // Projectile / Spawn Helpers
 // ============================================================
 
@@ -780,7 +753,7 @@ static void Exec_InstantAoE(USpecialSkillComponent* Comp, const FPotatoMonsterSp
 	const float Damage = Comp->ComputeFinalDamage(Row);
 	if (Damage <= 0.f) return;
 
-	const FVector Origin3D = ResolveSkillOrigin(Owner, Target, Row);
+	const FVector Origin3D = FSkillTransformResolver::ResolveOrigin(Owner, Target, Row);
 	const FVector Fwd3D = Owner->GetActorForwardVector();
 
 	TArray<AActor*> Victims;
