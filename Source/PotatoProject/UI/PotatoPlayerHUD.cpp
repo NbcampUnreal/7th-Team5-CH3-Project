@@ -13,6 +13,7 @@
 #include "Core/PotatoResourceManager.h"
 #include "Core/PotatoGameMode.h"
 #include "Core/PotatoEnums.h"
+#include "Core/PotatoProductionComponent.h"
 #include "Building/BuildingSystemComponent.h"
 #include "Building/PotatoPlaceableStructure.h"
 #include "Building/PotatoStructureData.h"
@@ -260,19 +261,39 @@ void UPotatoPlayerHUD::HandleNextDialogueInput()
 
 void UPotatoPlayerHUD::HandleBuildModeToggled(bool bIsBuildMode)
 {
+	ESlateVisibility NewVisibility = bIsBuildMode ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed;
 	if (Border_0)
 	{
-		Border_0->SetVisibility(bIsBuildMode ? ESlateVisibility::SelfHitTestInvisible : ESlateVisibility::Collapsed);
+		Border_0->SetVisibility(NewVisibility);
+	}
+	if (CostBox)
+	{
+		CostBox->SetVisibility(NewVisibility);
 	}
 }
 
 void UPotatoPlayerHUD::HandleBuildSlotChanged(int32 SlotIndex, const UPotatoStructureData* SelectedData)
 {
-	UE_LOG(LogTemp, Warning, TEXT("HUD received BuildSlotChanged! SlotIndex: %d"), SlotIndex);
-
 	for (int32 i = 0; i < BuildSlotBorders.Num(); ++i)
 	{
 		SetBorderColor(BuildSlotBorders[i], (i == SlotIndex) ? BuildSlotSelectedColor : BuildSlotDefaultColor);
+	}
+	
+	// CDO로 건설에 필요한 비용 가져오기
+	if (SelectedData && SelectedData->StructureClass)
+	{
+		APotatoPlaceableStructure* CDO = SelectedData->StructureClass->GetDefaultObject<APotatoPlaceableStructure>();
+		if (CDO)
+		{
+			UPotatoProductionComponent* ProductionComponent = CDO->GetComponentByClass<UPotatoProductionComponent>();
+			if (ProductionComponent)
+			{
+				if (WoodAmount) WoodAmount->SetText(FText::AsNumber(ProductionComponent->GetBuyCostWood()));
+				if (StoneAmount) StoneAmount->SetText(FText::AsNumber(ProductionComponent->GetBuyCostStone()));
+				if (CropAmount) CropAmount->SetText(FText::AsNumber(ProductionComponent->GetBuyCostCrop()));
+				if (LivestockAmount) LivestockAmount->SetText(FText::AsNumber(ProductionComponent->GetBuyCostLivestock()));
+			}
+		}
 	}
 }
 

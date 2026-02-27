@@ -6,6 +6,7 @@
 #include "PotatoPlaceableStructure.generated.h"
 
 class UPotatoStructureData;
+class UPotatoProductionComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStructureInteracted, AActor*, Interactor);
 
@@ -24,6 +25,10 @@ public:
 	// Data Asset
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Config", meta = (ExposeOnSpawn = "true"))
 	TObjectPtr<const UPotatoStructureData> StructureData;
+	
+	// Component
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UPotatoProductionComponent> ProductionComponent;
 	
 	// Stats: 상태
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Stats")

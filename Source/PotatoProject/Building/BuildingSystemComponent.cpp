@@ -339,22 +339,22 @@ void UBuildingSystemComponent::RefreshGhostActorModel()
 	{
 		return;
 	}
-
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	GhostActor = GetWorld()->SpawnActor<APotatoPlaceableStructure>(SelectedData->StructureClass, FVector::ZeroVector,
-	                                                               FRotator::ZeroRotator, SpawnParams);
-
+	
+	FTransform SpawnTransform = FTransform::Identity;
+	
+	GhostActor = GetWorld()->SpawnActorDeferred<APotatoPlaceableStructure>(
+		SelectedData->StructureClass,
+		SpawnTransform,
+		GetOwner(),
+		nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	
 	if (GhostActor)
 	{
 		GhostActor->StructureData = SelectedData;
 		GhostActor->SetActorEnableCollision(false);
+		UGameplayStatics::FinishSpawningActor(GhostActor, SpawnTransform);
 		UpdateGhostActorTransform();
-
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
-		                                 FString::Printf(
-			                                 TEXT("GhostActor %s Created"), *SelectedData->DisplayName.ToString()));
 	}
 }
 

@@ -1,5 +1,6 @@
 ﻿#include "PotatoPlaceableStructure.h"
 #include "PotatoStructureData.h"
+#include "Core/PotatoProductionComponent.h"
 
 APotatoPlaceableStructure::APotatoPlaceableStructure()
 {
@@ -7,6 +8,7 @@ APotatoPlaceableStructure::APotatoPlaceableStructure()
 	PrimaryActorTick.bStartWithTickEnabled = false;
 	
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
+	ProductionComponent = CreateDefaultSubobject<UPotatoProductionComponent>(TEXT("ProductionComponent"));
 }
 
 void APotatoPlaceableStructure::BeginPlay()

@@ -66,6 +66,9 @@ public:
 
 	// ---- 미니 자원 아이콘 행 (HorizontalBox_282) ----
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+	TObjectPtr<UWidget> CostBox;
+	
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UTextBlock> WoodAmount;
 
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
