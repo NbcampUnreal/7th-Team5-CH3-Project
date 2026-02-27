@@ -46,4 +46,7 @@ protected:
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Combat")
 	bool bShouldUseCombatUpperBody;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "State")
+	bool bIsDead = false;
 };

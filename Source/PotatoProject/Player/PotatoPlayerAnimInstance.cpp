@@ -28,6 +28,13 @@ void UPotatoPlayerAnimInstance::NativeUpdateAnimation(float DeltaTime)
 		return;
 	}
 	
+	// 0. Is Dead?
+	bIsDead = PlayerCharacter->IsDead();
+	if (bIsDead)
+	{
+		return;
+	}
+	
 	// 1. 속도
 	Velocity = MovementComponent->Velocity;
 	FVector LateralVelocity = FVector(Velocity.X, Velocity.Y, 0.0f);

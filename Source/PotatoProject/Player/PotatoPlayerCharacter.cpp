@@ -136,11 +136,6 @@ void APotatoPlayerCharacter::Tick(float DeltaTime)
 
 		CameraBoom->TargetArmLength = NewDistance;
 	}
-
-	if (CurrentHP <= 0)
-	{
-		OnDeath();
-	}
 }
 
 void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -516,8 +511,6 @@ void APotatoPlayerCharacter::OnAmmoMode(const FInputActionValue& Value)
 			AmmoPopupWidget->RefreshAll();
 		}
 	}
-
-
 }
 
 void APotatoPlayerCharacter::OnPauseGame(const FInputActionValue& Value)
@@ -548,15 +541,35 @@ void APotatoPlayerCharacter::OnNextDialogue(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::OnDeath()
 {
+	if (APlayerController* PlayerController = Cast<APlayerController>(GetController()))
+	{
+		DisableInput(PlayerController);
+	}
+	
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	GetCharacterMovement()->DisableMovement();
+	
+	if (DeathMontage)
+	{
+		float MontageDuration = PlayAnimMontage(DeathMontage) - 0.5f;
+		GetWorldTimerManager().SetTimer(
+		DeathTimerHandle,
+		this,
+		&APotatoPlayerCharacter::OnDeathFinished,
+		MontageDuration,
+		false);
+	}
+	else
+	{
+		OnDeathFinished();
+	}
+}
+
+void APotatoPlayerCharacter::OnDeathFinished()
+{
 	APotatoGameMode* GameMode = Cast<APotatoGameMode>(UGameplayStatics::GetGameMode(GetWorld()));
 	if (GameMode)
 	{
-        // TODO: 사망 애니메이션 추가
-        if (DeathMontage)
-        {
-            PlayAnimMontage(DeathMontage);
-        }
-
 		GameMode->EndGame(false, NSLOCTEXT("GameOver", "PlayerDead", "용감한 농부가 쓰러졌습니다..."));
 	}
 }
