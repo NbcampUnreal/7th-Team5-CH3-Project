@@ -626,9 +626,11 @@ void APotatoPlayerCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 	bool bFromSweep, const FHitResult& SweepResult)
 {
+
 	bool ActorCheck = OtherActor && (OtherActor != this);
-	if (ActorCheck && OtherActor->GetName().Contains(TEXT("BP_TestBarn")))
+	if (ActorCheck && OtherActor->GetName().Contains(TEXT("Barn")))
 	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("BP_Barn")));
 		UPotatoAnimalManagementComp* ManagementComp = OtherActor->FindComponentByClass<UPotatoAnimalManagementComp>();
 		if (ManagementComp)
 		{
@@ -636,10 +638,11 @@ void APotatoPlayerCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp,
 		}
 		IsBarnMode = true;
 	}
-	if (ActorCheck && ( OtherActor->GetName().Contains(TEXT("BP_TestLumberMill"))
-	   || OtherActor->GetName().Contains(TEXT("BP_TestMine")) )
+	if (ActorCheck && ( OtherActor->GetName().Contains(TEXT("LumberMill"))
+	   || OtherActor->GetName().Contains(TEXT("Mine")) )
 		)
 	{
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Barn")));
 		UPotatoNPCManagementComp* ManagementComp = OtherActor->FindComponentByClass<UPotatoNPCManagementComp>();
 		if (ManagementComp) {
 			NPCPopupWidget->InitPopup(ManagementComp);
@@ -651,7 +654,7 @@ void APotatoPlayerCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp,
 void APotatoPlayerCharacter::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (OtherActor && OtherActor->GetName().Contains(TEXT("BP_TestBarn")))
+	if (OtherActor && OtherActor->GetName().Contains(TEXT("Barn")))
 	{
 		IsBarnMode = false;
 		APlayerController* PlayerController = Cast<APlayerController>(GetController());
@@ -665,14 +668,15 @@ void APotatoPlayerCharacter::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, A
 			}
 		}
 	}
-	if (OtherActor && (OtherActor->GetName().Contains(TEXT("BP_TestLumberMill"))
-		|| OtherActor->GetName().Contains(TEXT("BP_TestMine")) ) 
+	if (OtherActor && (OtherActor->GetName().Contains(TEXT("LumberMill"))
+		|| OtherActor->GetName().Contains(TEXT("Mine")) ) 
 		)
 	{
 		IsNPCMode = false;
 		APlayerController* PlayerController = Cast<APlayerController>(GetController());
 		if (NPCPopupWidget && PlayerController)
 		{
+
 			if (NPCPopupWidget->IsVisible()) {
 				NPCPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 				PlayerController->bShowMouseCursor = false;
