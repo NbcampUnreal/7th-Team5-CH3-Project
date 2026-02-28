@@ -356,4 +356,16 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	// Presentation
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation")
 	FPotatoSkillPresentation Presentation;
+	
+	// Skill Anim (optional override)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Skill|Anim")
+	TSoftObjectPtr<UAnimMontage> AttackMontageOverride;
+
+	// 기본 공격 몽타주로 폴백할지(공격형 스킬만 true 추천)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Skill|Anim")
+	bool bFallbackToBasicAttackMontage = true;
+
+	// 텔레/캐스트/실행 중 언제 몽타주를 틀지 (기본: 캐스트 시작)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Skill|Anim")
+	bool bPlayMontageAtCastBegin = true;
 };

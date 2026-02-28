@@ -4,9 +4,9 @@
 // - SpecialSkillPresetTable: "캐시(Logic/Cooldown/DamageMultiplier 원본)"만 채움 (스케일 곱 X)
 //   * 최종 쿨/데미지 스케일 적용은 SpecialSkillComponent에서 ComputeFinal...로 처리하는 것을 정석으로 유지
 //
-// ✅ FIX:
+//  FIX:
 // - SplitSpec 복사 로직이 RankRow NULL fallback 경로에만 있었음 → 정상 경로에도 동일하게 적용
-// ✅ DEBUG:
+//  DEBUG:
 // - TypeRow/RankRow/SkillRow/DefaultId/Return Split 상태 로그 추가
 
 #include "PotatoPresetApplier.h"
@@ -22,6 +22,7 @@
 #include "PotatoMonsterSpecialSkillPresetRow.h"
 
 #include "UObject/UnrealType.h"
+#include "Utils/PotatoPresetApplyUtils.h"
 
 // forward
 static UPotatoMonsterAnimSet* LoadAnimSetSync(const TSoftObjectPtr<UPotatoMonsterAnimSet>& SoftPtr);
@@ -44,51 +45,6 @@ FName UPotatoPresetApplier::GetTypeRowName(EMonsterType InType)
 
 	const FString Name = Enum->GetNameStringByValue((int64)InType);
 	return FName(*Name);
-}
-
-// ------------------------------------------------------------
-// ✅ Helper: Split을 SkillRow에서 OutFinalStats로 복사 + (선택) Split이면 Skill 바인딩 제거
-// ------------------------------------------------------------
-static void ApplySplitFromSkillRow(const FPotatoMonsterSpecialSkillPresetRow* SkillRow, FPotatoMonsterFinalStats& OutStats, FName TypeDefaultSkillId)
-{
-	if (!SkillRow)
-	{
-		OutStats.bEnableSplit = false;
-		OutStats.SplitSpec = FPotatoSplitSpec();
-		return;
-	}
-
-	const bool bIsSplitLogic = (SkillRow->Logic == EMonsterSpecialLogic::Split);
-	const bool bIsSplitExec  = (SkillRow->Execution == EMonsterSpecialExecution::SummonSplit);
-	const bool bEnableSplit  = (SkillRow->bEnableSplit || bIsSplitLogic || bIsSplitExec);
-
-	OutStats.bEnableSplit = bEnableSplit;
-
-	if (bEnableSplit)
-	{
-		OutStats.SplitSpec.ThresholdPercents     = SkillRow->SplitThresholdPercents;
-		OutStats.SplitSpec.MinMaxHpToAllowSplit  = SkillRow->SplitMinMaxHpToAllow;
-		OutStats.SplitSpec.MaxDepth              = SkillRow->SplitMaxDepth;
-		OutStats.SplitSpec.SpawnCount            = SkillRow->SplitSpawnCount;
-		OutStats.SplitSpec.OwnerScaleMultiplier  = SkillRow->SplitOwnerScaleMultiplier;
-		OutStats.SplitSpec.ChildMaxHpRatio       = SkillRow->SplitChildMaxHpRatio;
-		OutStats.SplitSpec.SpawnJitterRadius     = SkillRow->SplitSpawnJitterRadius;
-		OutStats.SplitSpec.SpawnZOffset          = SkillRow->SplitSpawnZOffset;
-
-		// 안전: 퍼센트 비어있으면 최소 1개
-		if (OutStats.SplitSpec.ThresholdPercents.Num() == 0)
-		{
-			OutStats.SplitSpec.ThresholdPercents = { 0.5f };
-		}
-
-		// ✅ 중요: Split은 Skill 시스템(타겟/쿨타임)으로 돌리지 않도록 차단
-		OutStats.DefaultSpecialSkillId = NAME_None;
-	}
-	else
-	{
-		OutStats.SplitSpec = FPotatoSplitSpec();
-		OutStats.DefaultSpecialSkillId = TypeDefaultSkillId;
-	}
 }
 
 FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
@@ -169,13 +125,13 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 		Out.HardenTintStrengthParamName = TypeRow->HardenTintStrengthParamName;
 		Out.HardenTintStrengthValue     = TypeRow->HardenTintStrengthValue;
 
-		// ✅ 단일 DefaultSpecialSkillId
+		//  단일 DefaultSpecialSkillId
 		TypeDefaultSkillId = TypeRow->DefaultSpecialSkillId;
 
-		// ✅ AnimSet 로드/주입 (Type 기준)
+		//  AnimSet 로드/주입 (Type 기준)
 		Out.AnimSet = LoadAnimSetSync(TypeRow->AnimSet);
 
-		// ✅ BT override (SoftObjectPtr)
+		//  BT override (SoftObjectPtr)
 		if (!TypeRow->OverrideBehaviorTree.IsNull())
 		{
 			Out.BehaviorTree = TypeRow->OverrideBehaviorTree.LoadSynchronous();
@@ -241,12 +197,12 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 
 		Out.StructureDamageMultiplier = 1.f;
 
-		// ✅ 단일 스킬(타입만이라도 반영)
+		//  단일 스킬(타입만이라도 반영)
 		Out.DefaultSpecialSkillId = TypeDefaultSkillId;
 		Out.SpecialCooldownScale = 1.0f;
 		Out.SpecialDamageScale = 1.0f;
 
-		// ✅ SkillPreset 캐시 + Split 적용 (원본만 저장)
+		//  SkillPreset 캐시 + Split 적용 (원본만 저장)
 		if (Out.DefaultSpecialSkillId != NAME_None && SpecialSkillPresetTable)
 		{
 			const FPotatoMonsterSpecialSkillPresetRow* SkillRow =
@@ -308,7 +264,7 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 
 	Out.StructureDamageMultiplier = RankRow->StructureDamageMultiplier;
 
-	// ✅ Rank-wide tuning scales (최종 스케일은 SkillComp에서 사용)
+	//  Rank-wide tuning scales (최종 스케일은 SkillComp에서 사용)
 	Out.SpecialCooldownScale = FMath::Max(0.01f, RankRow->SpecialCooldownScale);
 	Out.SpecialDamageScale = FMath::Max(0.0f, RankRow->SpecialDamageScale);
 
@@ -339,7 +295,7 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 
 	// -------------------------
 	// 4) SpecialSkillPreset 캐시 적용 (원본: Logic/Cooldown/DmgMul)
-	//    + ✅ SplitSpec도 여기서 같이 반영해야 정상 경로에서 동작함
+	//    +  SplitSpec도 여기서 같이 반영해야 정상 경로에서 동작함
 	// -------------------------
 	if (Out.DefaultSpecialSkillId != NAME_None && SpecialSkillPresetTable)
 	{
@@ -360,10 +316,10 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 				SkillRow->SplitThresholdPercents.Num());
 
 			Out.DefaultSpecialLogic = SkillRow->Logic;
-			Out.DefaultSpecialCooldown = SkillRow->Cooldown;                 // ✅ 원본
-			Out.DefaultSpecialDamageMultiplier = SkillRow->DamageMultiplier; // ✅ 원본
+			Out.DefaultSpecialCooldown = SkillRow->Cooldown;                 //  원본
+			Out.DefaultSpecialDamageMultiplier = SkillRow->DamageMultiplier; //  원본
 
-			// ✅ FIX: Split 반영(정상 경로)
+			//  FIX: Split 반영(정상 경로)
 			ApplySplitFromSkillRow(SkillRow, Out, TypeDefaultSkillId);
 		}
 		else

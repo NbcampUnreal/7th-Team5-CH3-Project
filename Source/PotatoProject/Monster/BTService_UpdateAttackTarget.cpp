@@ -1,11 +1,7 @@
 ﻿// ============================================================================
-// BTService_UpdateAttackTarget.cpp (STABILIZED + Player Targeting)
+// BTService_UpdateAttackTarget.cpp (STABILIZED + Player Targeting) - Utils Refactor
 // - 기존 로직 유지
-// - 크래시 방어 강화:
-//    * Target/Component IsValid + IsRegistered 체크
-//    * GetClosestPointOnCollision 호출 가드
-//    * ActorBounds fallback 안전화
-//    * Range <= 0 방어
+// - CPP-local helpers 제거 -> 공용 Utils 사용
 // ============================================================================
 
 #include "BTService_UpdateAttackTarget.h"
@@ -13,7 +9,6 @@
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 
-#include "Components/PrimitiveComponent.h"
 #include "Components/CapsuleComponent.h"
 
 #include "Engine/World.h"
@@ -28,131 +23,33 @@
 #include "Building/PotatoPlaceableStructure.h"
 #include "Building/PotatoStructureData.h"
 
+#include "Monster/Utils/PotatoMath2D.h"
+#include "Monster/Utils/PotatoTargetGeometry.h"
+#include "Monster/Utils/PotatoMonsterRuntimeUtils.h"
+#include "Monster/Utils/PotatoPlayerQueryUtils.h"
+
 // =========================================================
-// Helpers (CPP-local)
+// Extra helpers (file-local, minimal)
 // =========================================================
 
-static float DistancePointToSegment2D(const FVector& P3, const FVector& A3, const FVector& B3)
+// 너 원본이 "거리"를 원해서 sq 버전 대신 거리 버전 하나만 유지
+static FORCEINLINE float DistancePointToSegment2D_Dist(const FVector& P3, const FVector& A3, const FVector& B3)
 {
-	const FVector P(P3.X, P3.Y, 0.f);
-	const FVector A(A3.X, A3.Y, 0.f);
-	const FVector B(B3.X, B3.Y, 0.f);
+	const FVector2D P(P3.X, P3.Y);
+	const FVector2D A(A3.X, A3.Y);
+	const FVector2D B(B3.X, B3.Y);
 
-	const FVector AB = B - A;
-	const float AB2 = FVector::DotProduct(AB, AB);
+	const FVector2D AB = B - A;
+	const float AB2 = FVector2D::DotProduct(AB, AB);
 
 	if (AB2 <= KINDA_SMALL_NUMBER)
 	{
-		return FVector::Dist(A, P);
+		return FVector2D::Distance(A, P);
 	}
 
-	const float T = FMath::Clamp(FVector::DotProduct(P - A, AB) / AB2, 0.f, 1.f);
-	const FVector Closest = A + T * AB;
-	return FVector::Dist(Closest, P);
-}
-
-//  안정화: Target/Root/Component가 Destroy/Unregister 타이밍일 수 있음
-static UPrimitiveComponent* FindFirstCollisionPrimitive(AActor* Target)
-{
-	if (!IsValid(Target)) return nullptr;
-
-	USceneComponent* Root = Target->GetRootComponent();
-	if (!IsValid(Root)) return nullptr;
-
-	if (UPrimitiveComponent* RootPrim = Cast<UPrimitiveComponent>(Root))
-	{
-		if (IsValid(RootPrim) &&
-			RootPrim->IsRegistered() &&
-			RootPrim->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
-		{
-			return RootPrim;
-		}
-	}
-
-	TInlineComponentArray<UPrimitiveComponent*> Prims;
-	Target->GetComponents(Prims);
-
-	for (UPrimitiveComponent* C : Prims)
-	{
-		if (!IsValid(C)) continue;
-		if (!C->IsRegistered()) continue;
-		if (C->GetCollisionEnabled() == ECollisionEnabled::NoCollision) continue;
-		return C;
-	}
-
-	return nullptr;
-}
-
-static FVector ClosestPointOnAABB2D_Temp(const FVector& Point, const FVector& Origin, const FVector& Extent)
-{
-	FVector Closest;
-	Closest.X = FMath::Clamp(Point.X, Origin.X - Extent.X, Origin.X + Extent.X);
-	Closest.Y = FMath::Clamp(Point.Y, Origin.Y - Extent.Y, Origin.Y + Extent.Y);
-	Closest.Z = Point.Z;
-	return Closest;
-}
-
-static bool GetClosestPoint2DOnTarget(AActor* Target, const FVector& From, FVector& OutClosest2D)
-{
-	if (!IsValid(Target)) return false;
-
-	//  Prim 기반 closest (가능하면)
-	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
-	{
-		// GetClosestPointOnCollision은 BodyInstance/Physics 상태에 따라 위험할 수 있어 추가 가드
-		if (IsValid(Prim) && Prim->IsRegistered())
-		{
-			FVector Closest3D = FVector::ZeroVector;
-			const float Dist = Prim->GetClosestPointOnCollision(From, Closest3D);
-			if (Dist >= 0.f)
-			{
-				OutClosest2D = Closest3D;
-				OutClosest2D.Z = 0.f;
-				return true;
-			}
-		}
-	}
-
-	//  fallback: Bounds
-	FVector Origin(0), Extent(0);
-	Target->GetActorBounds(true, Origin, Extent);
-
-	OutClosest2D = ClosestPointOnAABB2D_Temp(From, Origin, Extent);
-	OutClosest2D.Z = 0.f;
-	return true;
-}
-
-static bool ComputeApproachPoint2D(APotatoMonster* M, AActor* Target, float ExtraOffset, FVector& OutPoint)
-{
-	if (!M || !IsValid(Target)) return false;
-
-	const FVector From = M->GetActorLocation();
-
-	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
-	{
-		if (IsValid(Prim) && Prim->IsRegistered())
-		{
-			FVector Closest = FVector::ZeroVector;
-			const float Dist = Prim->GetClosestPointOnCollision(From, Closest);
-			if (Dist >= 0.f)
-			{
-				const FVector Dir = (From - Closest).GetSafeNormal2D();
-				OutPoint = Closest + Dir * ExtraOffset;
-				OutPoint.Z = From.Z;
-				return true;
-			}
-		}
-	}
-
-	FVector Origin(0), Extent(0);
-	Target->GetActorBounds(true, Origin, Extent);
-
-	const FVector Closest = ClosestPointOnAABB2D_Temp(From, Origin, Extent);
-	const FVector Dir = (From - Closest).GetSafeNormal2D();
-
-	OutPoint = Closest + Dir * ExtraOffset;
-	OutPoint.Z = From.Z;
-	return true;
+	const float T = FMath::Clamp(FVector2D::DotProduct(P - A, AB) / AB2, 0.f, 1.f);
+	const FVector2D Closest = A + T * AB;
+	return FVector2D::Distance(Closest, P);
 }
 
 static bool IsAliveDestructibleStructure(AActor* A)
@@ -167,32 +64,6 @@ static bool IsAliveDestructibleStructure(AActor* A)
 		}
 	}
 	return false;
-}
-
-static float GetMonsterCapsuleRadiusSafe(const APotatoMonster* M, float Fallback = 34.f)
-{
-	if (!M) return Fallback;
-	if (const UCapsuleComponent* Cap = M->FindComponentByClass<UCapsuleComponent>())
-	{
-		return Cap->GetScaledCapsuleRadius();
-	}
-	return Fallback;
-}
-
-// ---- Player helpers ----
-static APawn* GetPlayerPawnSafe(UWorld* World)
-{
-	if (!World) return nullptr;
-	APawn* P = UGameplayStatics::GetPlayerPawn(World, 0);
-	return IsValid(P) ? P : nullptr;
-}
-
-static bool IsValidAttackablePlayer(const APotatoMonster* M, const APawn* PlayerPawn)
-{
-	if (!M || !IsValid(PlayerPawn)) return false;
-	if (!PlayerPawn->CanBeDamaged()) return false;
-	if (PlayerPawn == M) return false;
-	return true;
 }
 
 // =========================================================
@@ -216,10 +87,10 @@ uint16 UBTService_UpdateAttackTarget::GetInstanceMemorySize() const
 
 bool UBTService_UpdateAttackTarget::ComputeInAttackRange(APotatoMonster* M, AActor* Target, float Range) const
 {
-	//  핵심: nullptr 말고 IsValid + Range 방어
 	if (!M || !IsValid(Target)) return false;
 	if (Range <= 0.f) return false;
 
+	//  기존 정책 유지: From은 캡슐 위치 우선
 	FVector From = M->GetActorLocation();
 	float CapsuleR = 34.f;
 	if (UCapsuleComponent* Cap = M->FindComponentByClass<UCapsuleComponent>())
@@ -231,24 +102,15 @@ bool UBTService_UpdateAttackTarget::ComputeInAttackRange(APotatoMonster* M, AAct
 	const float EffectiveRange = Range + CapsuleR;
 	const float RangeSq = FMath::Square(EffectiveRange);
 
-	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
+	//  TargetGeometry 유틸: Prim->ClosestPoint / fallback bounds
+	FVector Closest2D;
+	if (GetClosestPoint2DOnTarget(Target, From, Closest2D))
 	{
-		if (IsValid(Prim) && Prim->IsRegistered())
-		{
-			FVector ClosestPoint = FVector::ZeroVector;
-			const float Dist3D = Prim->GetClosestPointOnCollision(From, ClosestPoint);
-			if (Dist3D >= 0.f)
-			{
-				return FVector::DistSquared2D(From, ClosestPoint) <= RangeSq;
-			}
-		}
+		return FVector::DistSquared2D(From, Closest2D) <= RangeSq;
 	}
 
-	FVector Origin(0), Extent(0);
-	Target->GetActorBounds(true, Origin, Extent);
-
-	const FVector Closest = ClosestPointOnAABB2D_Temp(From, Origin, Extent);
-	return FVector::DistSquared2D(From, Closest) <= FMath::Square(EffectiveRange + BoundsRangePadding);
+	// fallback (거의 안 탐)
+	return FVector::DistSquared2D(From, Target->GetActorLocation()) <= FMath::Square(EffectiveRange + BoundsRangePadding);
 }
 
 // ---------------------------------------------------------
@@ -318,7 +180,7 @@ AActor* UBTService_UpdateAttackTarget::FindBestBlockerOnCorridor(
 		if (ForwardDot < 0.0f)
 			continue;
 
-		const float SegDist = DistancePointToSegment2D(SLoc2D, MyLoc, Goal2D);
+		const float SegDist = DistancePointToSegment2D_Dist(SLoc2D, MyLoc, Goal2D);
 		if (SegDist > CorridorWidth)
 			continue;
 
@@ -361,7 +223,7 @@ bool UBTService_UpdateAttackTarget::ShouldKeepCurrentStructureTarget(
 	const FVector Goal2D(CorridorGoalLoc.X, CorridorGoalLoc.Y, MyLoc.Z);
 	const FVector SLoc2D(SPoint2D.X, SPoint2D.Y, MyLoc.Z);
 
-	const float SegDist = DistancePointToSegment2D(SLoc2D, MyLoc, Goal2D);
+	const float SegDist = DistancePointToSegment2D_Dist(SLoc2D, MyLoc, Goal2D);
 	return (SegDist <= KeepWidth);
 }
 
@@ -580,7 +442,7 @@ void UBTService_UpdateAttackTarget::TickNode(UBehaviorTreeComponent& OwnerComp, 
 		const float CapsuleR = GetMonsterCapsuleRadiusSafe(M, 34.f);
 		const float Extra = CapsuleR + ApproachExtraOffset;
 
-		//  플레이어 추격용
+		// 플레이어 추격용
 		if (bTargetIsPlayer)
 		{
 			FVector Approach;

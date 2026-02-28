@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+// Monster/SpecialSkillComponent.cpp
 
 #include "Monster/SpecialSkillComponent.h"
 
@@ -8,11 +8,28 @@
 
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/Character.h"
+
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+
+// Owner/Combat for fallback montage
+#include "PotatoMonster.h"
+#include "PotatoCombatComponent.h"
+#include "PotatoMonsterAnimSet.h"
 
 #include "SpecialSkillPresentation.h"
 #include "SpecialSkillExecution.h"
+
 #include "Building/PotatoPlaceableStructure.h"
 #include "Building/PotatoStructureData.h"
+#include "Utils/PotatoAnimUtils.h"
+
+
+
+// ============================================================
+// USpecialSkillComponent
+// ============================================================
 
 USpecialSkillComponent::USpecialSkillComponent()
 {
@@ -36,6 +53,9 @@ void USpecialSkillComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 	bQueuedExecuteNextTick = false;
 	bQueuedEndNextTick = false;
+
+	//  세션당 1회 몽타주 재생 플래그 정리
+	bPlayedSkillMontageThisSession = false;
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -88,7 +108,7 @@ bool USpecialSkillComponent::CheckTrigger(const FPotatoMonsterSpecialSkillPreset
 	AActor* Owner = GetOwner();
 	if (!Owner) return false;
 
-	// ✅ PlayerOnly / StructureOnly 안정 필터 (기존 로직 유지)
+	//  PlayerOnly / StructureOnly 안정 필터 (기존 로직 유지)
 	auto PassTargetTypeFilter = [&](AActor* T) -> bool
 	{
 		if (!IsTargetValid(T)) return false;
@@ -107,13 +127,13 @@ bool USpecialSkillComponent::CheckTrigger(const FPotatoMonsterSpecialSkillPreset
 		}
 
 		case EMonsterSpecialTargetType::StructureOnly:
+		{
+			if (const APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(T))
 			{
-				if (const APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(T))
-				{
-					return (S->StructureData && S->StructureData->bIsDestructible && S->CurrentHealth > 0.f);
-				}
-				return false;
+				return (S->StructureData && S->StructureData->bIsDestructible && S->CurrentHealth > 0.f);
 			}
+			return false;
+		}
 
 		default:
 			return true;
@@ -179,6 +199,43 @@ bool USpecialSkillComponent::ConsumeHitOnce(AActor* Victim)
 	if (HitOnceSet.Contains(Key)) return false;
 	HitOnceSet.Add(Key);
 	return true;
+}
+
+// ============================================================
+//  Montage policy (override -> fallback basic attack)
+// - 공격형 스킬에만 적용
+// - 세션당 1회만 재생
+// ============================================================
+
+bool USpecialSkillComponent::TryPlaySkillAttackMontage(const FPotatoMonsterSpecialSkillPresetRow& Row)
+{
+	if (bPlayedSkillMontageThisSession) return false;
+	if (!IsAttackLikeSkill(Row)) return false;
+
+	AActor* Owner = GetOwner();
+	if (!Owner || Owner->IsActorBeingDestroyed()) return false;
+
+	// 1) Row 오버라이드 우선
+	UAnimMontage* Override = LoadMontageSafe(Row.AttackMontageOverride);
+	if (Override)
+	{
+		bPlayedSkillMontageThisSession = true;
+		return PlayMontage(Owner, Override, 1.f);
+	}
+
+	// 2) 오버라이드 없으면 기본 공격 몽타주 폴백(옵션)
+	if (Row.bFallbackToBasicAttackMontage)
+	{
+		APotatoMonster* Monster = Cast<APotatoMonster>(Owner);
+		UAnimMontage* Fallback = GetFallbackBasicAttackMontage(Monster);
+		if (Fallback)
+		{
+			bPlayedSkillMontageThisSession = true;
+			return PlayMontage(Owner, Fallback, 1.f);
+		}
+	}
+
+	return false;
 }
 
 // -----------------------------
@@ -314,7 +371,8 @@ bool USpecialSkillComponent::CanTryStartSkill(FName SkillId) const
 bool USpecialSkillComponent::TryStartSkill(FName SkillId, AActor* InTarget)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[Skill] TryStartSkill id=%s target=%s state=%d busy=%d"),
-	*SkillId.ToString(), *GetNameSafe(InTarget), (int32)State, IsBusy());
+		*SkillId.ToString(), *GetNameSafe(InTarget), (int32)State, IsBusy());
+
 	if (!CanTryStartSkill(SkillId)) return false;
 
 	const FPotatoMonsterSpecialSkillPresetRow* Row = FindRow(SkillId);
@@ -323,9 +381,13 @@ bool USpecialSkillComponent::TryStartSkill(FName SkillId, AActor* InTarget)
 	AActor* Owner = GetOwner();
 	if (!Owner || Owner->IsActorBeingDestroyed()) return false;
 
-	// ✅ 세션 시작
+	//  세션 시작
 	++SkillSessionId;
 	const uint32 ThisSession = SkillSessionId;
+	(void)ThisSession;
+
+	//  세션당 1회 몽타주 재생 플래그 리셋
+	bPlayedSkillMontageThisSession = false;
 
 	// 타이머 정리
 	if (UWorld* W = GetWorld())
@@ -427,6 +489,14 @@ void USpecialSkillComponent::BeginCast(const FPotatoMonsterSpecialSkillPresetRow
 	}
 
 	SetState(ESpecialSkillState::Casting);
+
+	//  공격형 스킬 몽타주 정책 (Override -> Fallback)
+	// - Row.bPlayMontageAtCastBegin == true 일 때만 시도
+	// - 세션당 1회만 재생됨
+	if (Row.bPlayMontageAtCastBegin)
+	{
+		TryPlaySkillAttackMontage(Row);
+	}
 
 	PlayPresentation_Cast(Row, CurrentTarget);
 	BP_OnCastBegin(ActiveSkillId);
@@ -557,11 +627,10 @@ void USpecialSkillComponent::EndSkill_Internal_NextTick(bool bCancelled)
 
 void USpecialSkillComponent::EndSkill_Internal(bool bCancelled)
 {
-	// End도 현재 세션에 대해서만 처리하는 게 안전함
-	// (만약 Cancel 이후 곧바로 새 스킬 시작하면, 이전 End가 새 스킬을 지워버릴 수 있음)
-	// -> 여기서는 호출 전에 세션검사 하는 패턴을 추천. (NextTick 예약 때 캡처)
-
 	bQueuedEndNextTick = false;
+
+	//  세션 종료 정리
+	bPlayedSkillMontageThisSession = false;
 
 	if (ActiveSkillId != NAME_None)
 	{
@@ -569,9 +638,9 @@ void USpecialSkillComponent::EndSkill_Internal(bool bCancelled)
 		{
 			AActor* Resolved = ResolveTargetForRow(*Row, CurrentTarget);
 
-			// ✅ Target이 무효/Null이어도 End 프레젠테이션이 안전해야 함.
-			// Presentation이 Actor 접근한다면 여기서 valid만 넘겨라.
-			if (Row->TargetType == EMonsterSpecialTargetType::Location || IsTargetValid(Resolved) || Row->TargetType == EMonsterSpecialTargetType::Self)
+			if (Row->TargetType == EMonsterSpecialTargetType::Location
+				|| IsTargetValid(Resolved)
+				|| Row->TargetType == EMonsterSpecialTargetType::Self)
 			{
 				PlayPresentation_End(*Row, Resolved);
 			}
@@ -587,6 +656,7 @@ void USpecialSkillComponent::EndSkill_Internal(bool bCancelled)
 	CurrentTarget = nullptr;
 	SetState(ESpecialSkillState::Idle);
 }
+
 void USpecialSkillComponent::CancelSkill(ESpecialSkillCancelReason Reason)
 {
 	LastCancelReason = Reason;
@@ -603,11 +673,15 @@ void USpecialSkillComponent::CancelSkill(ESpecialSkillCancelReason Reason)
 
 	bQueuedExecuteNextTick = false;
 
+	//  취소 시에도 플래그 리셋(다음 스킬에 영향 방지)
+	bPlayedSkillMontageThisSession = false;
+
 	if (!bQueuedEndNextTick)
 	{
 		QueueEndNextTick(true);
 	}
 }
+
 void USpecialSkillComponent::CancelActiveSkill()
 {
 	CancelSkill(ESpecialSkillCancelReason::None);

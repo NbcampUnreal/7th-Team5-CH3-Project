@@ -132,10 +132,10 @@ private:
 	// Runtime injected
 	// -------------------------
 	UPROPERTY()
-	TObjectPtr<AActor> DamageCauser = nullptr;
-
+	TWeakObjectPtr<AActor> DamageCauser = nullptr;
+	
 	UPROPERTY()
-	TObjectPtr<AController> InstigatorController = nullptr;
+	TWeakObjectPtr<AController> InstigatorController = nullptr;
 
 	float DotDps = 0.f;
 	float DotDuration = 0.f;

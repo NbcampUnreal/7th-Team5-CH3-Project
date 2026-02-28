@@ -175,7 +175,8 @@ public:
 
 	bool bQueuedExecuteNextTick = false;
 	bool bQueuedEndNextTick = false;
-
+	bool bPlayedSkillMontageThisSession = false;
+	bool TryPlaySkillAttackMontage(const FPotatoMonsterSpecialSkillPresetRow& Row);
 	// per-skill cooldown
 	TMap<FName, double> NextReadyTimeBySkill;
 

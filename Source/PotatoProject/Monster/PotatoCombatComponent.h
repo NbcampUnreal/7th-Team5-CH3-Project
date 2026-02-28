@@ -60,6 +60,7 @@ public:
 	UPROPERTY(Transient)
 	bool bQueuedFireProjectileNextTick = false;
 
+	const UPotatoMonsterAnimSet* GetAnimSet() const;
 private:
 	// =====================
 	// State
@@ -76,7 +77,7 @@ private:
 	// =====================
 	// Helpers
 	// =====================
-	const UPotatoMonsterAnimSet* GetAnimSet() const;
+
 
 	bool IsTargetInRange(AActor* Target) const;
 	bool IsStructureTarget(AActor* Target) const;

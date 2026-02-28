@@ -22,27 +22,8 @@
 // SpecialSkill
 #include "Monster/SpecialSkillComponent.h"
 
-static const FName TAG_LanePoint(TEXT("LanePoint"));
-
-// ------------------------------------------------------------
-// Helper: Target의 충돌 Bounds (Origin/Extent) 가져오기
-// ------------------------------------------------------------
-static void GetTargetBoundsSafe(AActor* Target, FVector& OutOrigin, FVector& OutExtent)
-{
-	if (!Target)
-	{
-		OutOrigin = FVector::ZeroVector;
-		OutExtent = FVector::ZeroVector;
-		return;
-	}
-
-	Target->GetActorBounds(true, OutOrigin, OutExtent);
-
-	if (OutExtent.IsNearlyZero())
-	{
-		Target->GetActorBounds(false, OutOrigin, OutExtent);
-	}
-}
+#include "Utils/PotatoLaneUtils.h"                  // TAG_LanePoint
+#include "Monster/Utils/PotatoTargetGeometry.h"        // GetTargetBoundsSafe
 
 UPotatoCombatComponent::UPotatoCombatComponent()
 {
@@ -60,7 +41,7 @@ const UPotatoMonsterAnimSet* UPotatoCombatComponent::GetAnimSet() const
 }
 
 // ------------------------------------------------------------
-// 최종 허용 타겟 판정
+// 최종 허용 타겟 판정 (파일 정책 로직 - 공용 Utils 대상 아님)
 // ------------------------------------------------------------
 static bool IsAllowedAttackTarget(const APotatoMonster* Monster, const AActor* Target)
 {
@@ -194,7 +175,7 @@ bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 	PendingBasicTarget = Target;
 	bIsAttacking = true;
 
-	// ✅ OnAttack 스페셜: Stats.OnAttackProcSkillId 기반 Proc
+	//  OnAttack 스페셜: Stats.OnAttackProcSkillId 기반 Proc
 	TryProcOnAttackSpecial(Monster, Target, Now);
 
 	// AttackStart SFX

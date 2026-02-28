@@ -36,7 +36,7 @@ void UBTService_TrySkillCooldown::TickNode(UBehaviorTreeComponent& OwnerComp, ui
 
 	// Target
 	AActor* Target = nullptr;
-	if (CurrentTargetKey.SelectedKeyType)
+	if (CurrentTargetKey.SelectedKeyName != NAME_None)
 	{
 		Target = Cast<AActor>(BB->GetValueAsObject(CurrentTargetKey.SelectedKeyName));
 	}

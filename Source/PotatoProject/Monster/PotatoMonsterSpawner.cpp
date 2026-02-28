@@ -7,26 +7,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "UObject/UnrealType.h"
 
-// ---------------------------------------------------------
-// Stage / WaveId helpers
-// ---------------------------------------------------------
-
-static bool IsStageOnlyName(const FName& InName, int32& OutStage)
-{
-	const FString S = InName.ToString().TrimStartAndEnd();
-	if (S.Contains(TEXT("-"))) return false;
-	if (!S.IsNumeric()) return false;
-
-	OutStage = FCString::Atoi(*S);
-	return OutStage > 0;
-}
-
-static FName MakeStageWaveId(int32 Stage, int32 Sub)
-{
-	return FName(*FString::Printf(TEXT("%d-%d"), Stage, Sub));
-}
-
-// ---------------------------------------------------------
+//  Utils (CPP-local helper 치환)
+#include "Utils/PotatoWaveIdUtils.h" // IsStageOnlyName, MakeStageWaveId
 
 APotatoMonsterSpawner::APotatoMonsterSpawner()
 {
@@ -64,7 +46,7 @@ bool APotatoMonsterSpawner::ResolveNextWaveForActiveStage(FName& OutWaveId, int3
 }
 
 // ---------------------------------------------------------
-// ✅ 등록 루트 (AliveCount/OnDestroyed/SpawnedMonsters)
+//  등록 루트 (AliveCount/OnDestroyed/SpawnedMonsters)
 // ---------------------------------------------------------
 
 void APotatoMonsterSpawner::RegisterSpawnedMonster(APotatoMonster* Monster)
@@ -74,7 +56,7 @@ void APotatoMonsterSpawner::RegisterSpawnedMonster(APotatoMonster* Monster)
 	AliveCount++;
 	SpawnedMonsters.Add(Monster);
 
-	// ✅ 반드시 UFUNCTION + (AActor*) 시그니처
+	//  반드시 UFUNCTION + (AActor*) 시그니처
 	Monster->OnDestroyed.AddDynamic(this, &APotatoMonsterSpawner::HandleSpawnedMonsterDestroyed);
 
 	UE_LOG(LogTemp, Warning, TEXT("[Spawner] Register OK | Alive=%d | Monster=%s"),
@@ -412,7 +394,7 @@ APotatoMonster* APotatoMonsterSpawner::SpawnOne(EMonsterType Type, EMonsterRank 
 	Monster->RankPresetTable = RankPresetTable;
 	Monster->SpecialSkillPresetTable = SpecialSkillPresetTable;
 
-	// ✅ Split에서 반드시 필요
+	//  Split에서 반드시 필요
 	Monster->SpawnerRef = this;
 
 	// Lane 주입 (Monster는 TArray<TObjectPtr<AActor>>)
@@ -437,17 +419,17 @@ APotatoMonster* APotatoMonsterSpawner::SpawnOne(EMonsterType Type, EMonsterRank 
 
 	Monster->FinishSpawning(Xform);
 
-	// ✅ 네 Monster.cpp는 여기서 Stats/AI/BT까지 보장
+	//  네 Monster.cpp는 여기서 Stats/AI/BT까지 보장
 	Monster->ApplyPresetsOnce();
 
-	// ✅ 등록 (AliveCount + OnDestroyed)
+	//  등록 (AliveCount + OnDestroyed)
 	RegisterSpawnedMonster(Monster);
 
 	return Monster;
 }
 
 // ---------------------------------------------------------
-// ✅ Split child spawn (Spawner 파이프라인)
+//  Split child spawn (Spawner 파이프라인)
 // ---------------------------------------------------------
 
 APotatoMonster* APotatoMonsterSpawner::SpawnSplitChildFromParent(
@@ -501,12 +483,12 @@ APotatoMonster* APotatoMonsterSpawner::SpawnSplitChildFromParent(
 	Child->LanePoints = Parent->LanePoints;
 	Child->LaneIndex = Parent->LaneIndex;
 
-	// ✅ Split에서 스포너 접근
+	//  Split에서 스포너 접근
 	Child->SpawnerRef = this;
 
 	Child->FinishSpawning(Xform);
 
-	// ✅ 프리셋 적용 + AI 보장(네 Monster.cpp가 내부에서 함)
+	//  프리셋 적용 + AI 보장(네 Monster.cpp가 내부에서 함)
 	Child->ApplyPresetsOnce();
 
 	// =========================
@@ -526,7 +508,7 @@ APotatoMonster* APotatoMonsterSpawner::SpawnSplitChildFromParent(
 		Child->SplitComp->SetSplitDepth(ChildDepth);
 	}
 
-	// ✅ 웨이브 카운트에 포함
+	//  웨이브 카운트에 포함
 	RegisterSpawnedMonster(Child);
 
 	return Child;

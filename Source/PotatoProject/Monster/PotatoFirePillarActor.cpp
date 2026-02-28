@@ -13,13 +13,14 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/Pawn.h"
+#include "GameFramework/DamageType.h"
 
-#include "PotatoDotComponent.h"
 #include "Building/PotatoPlaceableStructure.h"
 #include "Building/PotatoStructureData.h"
 #include "EngineUtils.h"
 
-// ✅ VFX 슬롯 구조체는 cpp에서 include
+//  VFX 슬롯 구조체는 cpp에서 include
 #include "PotatoMonsterSpecialSkillPresetRow.h"
 
 APotatoFirePillarActor::APotatoFirePillarActor()
@@ -31,6 +32,9 @@ APotatoFirePillarActor::APotatoFirePillarActor()
 
 	DamageSphere = CreateDefaultSubobject<USphereComponent>(TEXT("DamageSphere"));
 	DamageSphere->SetupAttachment(Root);
+
+	//  Overlap 안정 세팅
+	DamageSphere->SetGenerateOverlapEvents(true);
 	DamageSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	DamageSphere->SetCollisionObjectType(ECC_WorldDynamic);
 
@@ -68,7 +72,7 @@ void APotatoFirePillarActor::Tick(float DeltaSeconds)
 	Super::Tick(DeltaSeconds);
 
 	if (!bEnableMove) return;
-	if (!HasAuthority()) return; // 이동도 서버 권장
+	if (!HasAuthority()) return;
 
 	RepathAcc += DeltaSeconds;
 	if (RepathAcc >= RepathInterval)
@@ -108,6 +112,9 @@ void APotatoFirePillarActor::InitPillar(
 	DamageCauser = InDamageCauser;
 	InstigatorController = InInstigator;
 
+	//  “불기둥 영역/유지시간”과 “데미지”를 정확히 매칭시키기 위해
+	//    DotComponent(지속형) 대신 "틱당 ApplyDamage"로 고정.
+	//    - InDuration/InPolicy는 더 이상 불기둥 딜에 영향 없음(호환 유지용으로만 저장)
 	DotDps = FMath::Max(0.f, InDps);
 	DotDuration = FMath::Max(0.f, InDuration);
 	TickInterval = FMath::Max(0.05f, InTickInterval);
@@ -119,7 +126,7 @@ void APotatoFirePillarActor::InitPillar(
 	bPlayerOnly = bInPlayerOnly;
 	bEnableMove = bInEnableMove;
 
-	LifeTime = FMath::Max(0.1f, InLifeTime);
+	LifeTime = FMath::Max(0.05f, InLifeTime);
 	MoveSpeed = FMath::Max(0.f, InMoveSpeed);
 	WanderRadius = FMath::Max(0.f, InWanderRadius);
 	RepathInterval = FMath::Max(0.05f, InRepathInterval);
@@ -151,7 +158,7 @@ void APotatoFirePillarActor::InitPillar(
 		}
 	}
 
-	// DOT/Timer는 서버에서만 의미있게
+	// 서버에서만 의미있게
 	UWorld* W = GetWorld();
 	if (!HasAuthority() || !W || W->bIsTearingDown)
 	{
@@ -162,18 +169,20 @@ void APotatoFirePillarActor::InitPillar(
 	TM.ClearTimer(TimerLife);
 	TM.ClearTimer(TimerTick);
 
+	//  1) 스폰 타이밍 매칭: 스폰되자마자 1틱 들어가게(딜 체감/연출 매칭)
+	//  2) 유지시간 매칭: LifeTime 끝나면 Tick 타이머도 즉시 종료
 	TM.SetTimer(TimerLife, this, &APotatoFirePillarActor::EndLife, LifeTime, false);
-	TM.SetTimer(TimerTick, this, &APotatoFirePillarActor::TickDamage, TickInterval, true);
+
+	// 첫 틱 즉시(InitialDelay=0)
+	TM.SetTimer(TimerTick, this, &APotatoFirePillarActor::TickDamage, TickInterval, true, 0.f);
 }
 
 void APotatoFirePillarActor::ApplyVfxFromSlot(const FPotatoSkillVFXSlot& Slot)
 {
-	// Soft load (동기) — 스킬 연출은 보통 즉시 필요
 	UNiagaraSystem* NS = Slot.Niagara.IsNull() ? nullptr : Slot.Niagara.LoadSynchronous();
 	UParticleSystem* PS = Slot.Cascade.IsNull() ? nullptr : Slot.Cascade.LoadSynchronous();
 
-	// 위치/회전 오프셋은 “액터 자체”에 반영하지 않고 컴포넌트에서 반영하는 방식(안전)
-	const FVector LocOffset = Slot.LocationOffset;
+	const FVector  LocOffset = Slot.LocationOffset;
 	const FRotator RotOffset = Slot.RotationOffset;
 
 	if (NiagaraComp)
@@ -207,23 +216,38 @@ void APotatoFirePillarActor::ApplyVfxFromSlot(const FPotatoSkillVFXSlot& Slot)
 
 void APotatoFirePillarActor::EndLife()
 {
+	//  종료 시점에 “추가 틱”이 더 들어가는 걸 방지
+	if (UWorld* W = GetWorld())
+	{
+		FTimerManager& TM = W->GetTimerManager();
+		TM.ClearTimer(TimerTick);
+		TM.ClearTimer(TimerLife);
+	}
+
 	Destroy();
+}
+
+static bool IsPlayerPawn(const AActor* A)
+{
+	const APawn* P = Cast<APawn>(A);
+	return P && P->IsPlayerControlled();
 }
 
 bool APotatoFirePillarActor::ShouldAffectActor(AActor* Other) const
 {
 	if (!IsValid(Other) || Other->IsActorBeingDestroyed()) return false;
 	if (Other == this) return false;
-	if (Other == DamageCauser) return false;
+
+	// DamageCauser(시전자) 자신 제외
+	if (DamageCauser.IsValid() && Other == DamageCauser.Get()) return false;
 
 	if (bPlayerOnly)
 	{
-		// Pawn(플레이어)만
-		return Other->IsA(APawn::StaticClass()) && UGameplayStatics::GetPlayerController(this, 0) != nullptr;
+		return IsPlayerPawn(Other);
 	}
 
 	// Player + destructible structure
-	if (Other->IsA(APawn::StaticClass())) return true;
+	if (IsPlayerPawn(Other)) return true;
 
 	if (APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(Other))
 	{
@@ -250,7 +274,7 @@ void APotatoFirePillarActor::GatherStructuresInRadius_AABB(const FVector& Origin
 		if (!S->StructureData || !S->StructureData->bIsDestructible) continue;
 		if (S->CurrentHealth <= 0.f) continue;
 
-		// AABB 최소거리(2D로 단순 판정)
+		// AABB 최소거리(2D)
 		FVector C, E;
 		S->GetActorBounds(true, C, E);
 
@@ -281,38 +305,38 @@ void APotatoFirePillarActor::TickDamage()
 	if (!W || W->bIsTearingDown) return;
 
 	if (!DamageSphere) return;
-	if (DotDps <= 0.f || DotDuration <= 0.f) return;
+	if (DotDps <= 0.f || TickInterval <= 0.f) return;
+	if (DamageRadius <= 0.f) return;
+
+	//  틱당 데미지 = DPS * TickInterval
+	const float DamagePerTick = DotDps * TickInterval;
+	if (DamagePerTick <= 0.f) return;
 
 	TArray<AActor*> Victims;
 
-	// 1) Sphere Overlap (Pawn 계열은 여기서 잘 잡힘)
+	// 1) Pawn overlap
 	DamageSphere->GetOverlappingActors(Victims);
 
-	// 2) 구조물은 overlap이 안 잡힐 수 있어 iterator로 보강 (옵션)
+	// 2) 구조물 보강
 	if (!bPlayerOnly && bIncludeStructuresAABB)
 	{
 		GatherStructuresInRadius_AABB(GetActorLocation(), DamageRadius, Victims);
 	}
 
+	AActor* Causer = DamageCauser.IsValid() ? DamageCauser.Get() : this;
+	AController* InstCon = InstigatorController.IsValid() ? InstigatorController.Get() : nullptr;
+
 	for (AActor* V : Victims)
 	{
 		if (!ShouldAffectActor(V)) continue;
+		if (!V->CanBeDamaged()) continue;
 
-		// DOT 컴포넌트 확보
-		UPotatoDotComponent* Dot = V->FindComponentByClass<UPotatoDotComponent>();
-		if (!Dot)
-		{
-			Dot = NewObject<UPotatoDotComponent>(V, UPotatoDotComponent::StaticClass(), NAME_None, RF_Transient);
-			if (Dot) Dot->RegisterComponent();
-		}
-		if (!Dot) continue;
-
-		Dot->ApplyDot(
-			DamageCauser ? DamageCauser.Get() : this,
-			DotDps,
-			DotDuration,
-			TickInterval,
-			DotPolicy
+		UGameplayStatics::ApplyDamage(
+			V,
+			DamagePerTick,
+			InstCon,
+			Causer,
+			UDamageType::StaticClass()
 		);
 	}
 }

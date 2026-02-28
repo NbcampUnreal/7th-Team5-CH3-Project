@@ -28,7 +28,8 @@ enum class EMonsterType : uint8
 	Slime UMETA(DisplayName = "슬라임"),
 	TurtleShell UMETA(DisplayName = "가시거북"),
 	Mimic UMETA(DisplayName = "미믹"),
-	Spider UMETA(DisplayName = "거미")
+	Spider UMETA(DisplayName = "거미"),
+	Dragon UMETA(DisplayName = "용")
 };
 
 
@@ -57,6 +58,7 @@ enum class EMonsterSpecialLogic : uint8
 	AoESlash        UMETA(DisplayName = "AoESlash"),        // 즉시 AoE (원/부채꼴/라인)
 	ContactDOT      UMETA(DisplayName = "ContactDOT"),      // ✅ 표기 통일: 접촉 DOT(오라/가시)
 	PoisonStingShot UMETA(DisplayName = "PoisonStingShot"), // 독침(투사체/광역)
+	FirePillar		UMETA(DisplayName = "FirePillar")		// 불기둥
 };
 
 /** 특수 기믹이 “언제” 발동하는지 */
