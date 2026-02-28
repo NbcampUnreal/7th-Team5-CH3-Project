@@ -38,10 +38,11 @@ void UPotatoNPCManagementComp::BeginPlay()
         RegistrySystem->RegisterNPCComp(this);
     }
 
-    GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
+    // 디버그용
+    /*GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
     {
         HireNPC(ENPCType::Lumberjack);
-    });
+    });*/
 }
 
 void UPotatoNPCManagementComp::EndPlay(const EEndPlayReason::Type EndPlayReason)

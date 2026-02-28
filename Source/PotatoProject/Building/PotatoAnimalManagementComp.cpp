@@ -29,12 +29,13 @@ void UPotatoAnimalManagementComp::BeginPlay()
             *GetNameSafe(GetOwner()));
     }
 
-    GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
-    {
-         SpawnAnimal(EAnimalType::Cow);
-         SpawnAnimal(EAnimalType::Pig);
-         SpawnAnimal(EAnimalType::Chicken);
-    });
+    // 디버그용
+    //GetWorld()->GetTimerManager().SetTimerForNextTick([this]()
+    //{
+    //     SpawnAnimal(EAnimalType::Cow);
+    //     SpawnAnimal(EAnimalType::Pig);
+    //     SpawnAnimal(EAnimalType::Chicken);
+    //});
 }
 
 bool UPotatoAnimalManagementComp::SpawnAnimal(EAnimalType AnimalType)
