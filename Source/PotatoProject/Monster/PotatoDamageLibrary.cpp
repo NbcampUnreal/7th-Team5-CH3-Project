@@ -10,37 +10,8 @@
 #include "CollisionShape.h"
 #include "Engine/EngineTypes.h"
 
-static bool IsValidVictim(AActor* A)
-{
-	return IsValid(A) && !A->IsActorBeingDestroyed();
-}
-
-static void CompactHitOnceList(TArray<AActor*>& List)
-{
-	List.RemoveAll([](AActor* A)
-	{
-		return !IsValidVictim(A);
-	});
-}
-
-static bool HasHitAlready(const TArray<AActor*>& List, AActor* Victim)
-{
-	if (!IsValidVictim(Victim)) return true;
-	for (AActor* A : List)
-	{
-		if (A == Victim) return true;
-	}
-	return false;
-}
-
-static void MarkHit(TArray<AActor*>& List, AActor* Victim)
-{
-	if (!IsValidVictim(Victim)) return;
-	if (!HasHitAlready(List, Victim))
-	{
-		List.Add(Victim);
-	}
-}
+// Utils (CPP-local helper 치환)
+#include "Monster/Utils/PotatoHitOnceUtils.h"
 
 bool UPotatoDamageLibrary::TryApplyDamageOnce(
 	AActor* Victim,
@@ -73,6 +44,9 @@ bool UPotatoDamageLibrary::TryApplyDamageOnce(
 	return true;
 }
 
+// ------------------------------------------------------------
+// Overlap gather (여기는 HitOnce 유틸 대상 아님: 쿼리 정책/성능 로직)
+// ------------------------------------------------------------
 static void GatherOverlapPawnsBySphere(
 	UWorld* World,
 	const FVector& Center,

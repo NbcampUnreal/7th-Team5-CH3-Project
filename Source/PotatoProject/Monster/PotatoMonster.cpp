@@ -1,78 +1,37 @@
-﻿// PotatoMonster.cpp (STABILIZED + Split Child Context + AI Possess Fix)
-//
-// ✅ 추가/수정 요약
-// 1) Split로 스폰된 Child가 Type/Rank/Skill 테이블 포인터를 못 받아서 FinalStats가 기본값으로 떨어지는 문제 해결
-//    - CopyPresetContextFrom(Parent) 추가
-// 2) Split Child가 AIController Possess/BT 실행이 안 돼서 "안 움직이는" 문제 해결
-//    - EnsureAIControllerAndStartLogic() 추가
-//    - ApplyPresetsOnce 마지막에 EnsureAIControllerAndStartLogic() 호출
-// 3) OnFinalStatsApplied는 "프리셋 외부에서 FinalStats를 수동 주입"할 때만 쓰도록 유지
-//    - ApplyPresetsOnce 내부에서는 이미 SplitSpec 주입하므로 중복 호출은 하지 않음
-
-#include "PotatoMonster.h"
+﻿#include "PotatoMonster.h"
 
 #include "AIController.h"
 #include "Animation/AnimInstance.h"
 #include "BrainComponent.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Camera/PlayerCameraManager.h"
 #include "TimerManager.h"
 
 #include "../UI/HealthBar.h"
 #include "../UI/PotatoDamageTextPoolActor.h"
 #include "Core/PotatoGameStateBase.h"
 
-#include "PotatoSplitComponent.h"
+#include "Combat/PotatoWeaponComponent.h"
 #include "FXUtils/PotatoFXUtils.h"
 #include "Monster/SpecialSkillComponent.h"
 #include "PotatoCombatComponent.h"
 #include "PotatoHardenShellComponent.h"
 #include "PotatoPresetApplier.h"
-#include "Combat/PotatoWeaponComponent.h"
+#include "PotatoSplitComponent.h"
+
+//  Utils (CPP-local helper 치환)
+#include "Monster/Utils/PotatoAnimUtils.h"              // ComputeMinVisiblePlayRate, PlayMontage(선택), LoadMontageSafe(선택)
+#include "Monster/Utils/PotatoMonsterRuntimeUtils.h"    // GetAnimInstanceSafe, DisableMovementSafe, ScheduleTimerSafe, ComputeBoundsTopLocation
 
 // ==============================
-// Static Helpers (CPP Local)
+// (정책상 최소 helper 1개는 남겨도 됨) : UFUNCTION 존재할 때만 호출
+// - 이건 공용 Utils 정의 목록에 없으므로 여기 1개만 유지
 // ==============================
-
-static float ComputeMinVisiblePlayRate(float BaseLen, float MinVisible, float& OutFinalLen)
-{
-	OutFinalLen = BaseLen;
-
-	if (BaseLen <= KINDA_SMALL_NUMBER) return 1.f;
-	if (MinVisible <= 0.f) return 1.f;
-
-	if (BaseLen < MinVisible)
-	{
-		OutFinalLen = MinVisible;
-		return BaseLen / MinVisible; // 0~1 배속
-	}
-
-	return 1.f;
-}
-
-static UAnimInstance* GetAnimInstanceSafe(APotatoMonster* M)
-{
-	if (!M) return nullptr;
-	USkeletalMeshComponent* Skel = M->GetMesh();
-	return Skel ? Skel->GetAnimInstance() : nullptr;
-}
-
-static void DisableMovementSafe(APotatoMonster* M)
-{
-	if (!M) return;
-	if (UCharacterMovementComponent* MoveComp = M->GetCharacterMovement())
-	{
-		MoveComp->StopMovementImmediately();
-		MoveComp->DisableMovement();
-	}
-}
-
-// (선택) UFUNCTION이 존재할 때만 호출(빌드 에러 방지용)
 static bool CallUFunctionIfExists(UObject* Obj, FName FuncName)
 {
 	if (!Obj) return false;
@@ -82,58 +41,31 @@ static bool CallUFunctionIfExists(UObject* Obj, FName FuncName)
 	return true;
 }
 
-static bool ScheduleTimerSafe(
-	APotatoMonster* Obj,
-	FTimerHandle& Handle,
-	void (APotatoMonster::*Func)(),
-	float DelaySec)
+// ==============================
+// (Death) Ragdoll fallback은 Monster.cpp 고유 정책이므로 유지
+// ==============================
+static void EnableRagdollFallback(APotatoMonster* M)
 {
-	if (!IsValid(Obj) || Obj->IsActorBeingDestroyed())
-		return false;
-
-	// DelaySec NaN/Inf/음수 방어
-	if (!FMath::IsFinite(DelaySec) || DelaySec < 0.f)
-	{
-		DelaySec = 0.f;
-	}
-
-	UWorld* W = Obj->GetWorld();
-	if (!W || W->bIsTearingDown)
-		return false;
-
-	FTimerManager& TM = W->GetTimerManager();
-	TM.ClearTimer(Handle);
-
-	// ✅ 0초는 굳이 next-tick 타이머로 돌리지 말고 즉시 호출(가장 안전)
-	if (DelaySec <= 0.f)
-	{
-		(Obj->*Func)();
-		return true;
-	}
-
-	// ✅ 엔진이 제공하는 "UObject + 멤버함수" 오버로드 사용 (가장 안정적)
-	TM.SetTimer(Handle, Obj, Func, DelaySec, false);
-	return true;
-}
-
-// bounds fallback
-static FVector ComputeBoundsTopLocation(APotatoMonster* M, float ZMul, float ZAdd)
-{
-	if (!M) return FVector::ZeroVector;
-
-	if (USkeletalMeshComponent* Mesh = M->GetMesh())
-	{
-		const FVector Origin = Mesh->Bounds.Origin;
-		const float Z = Mesh->Bounds.BoxExtent.Z * ZMul + ZAdd;
-		return Origin + FVector(0.f, 0.f, Z);
-	}
+	if (!M) return;
 
 	if (UCapsuleComponent* Cap = M->GetCapsuleComponent())
 	{
-		return M->GetActorLocation() + FVector(0.f, 0.f, Cap->GetScaledCapsuleHalfHeight() * ZMul + ZAdd);
+		Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Cap->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
 	}
 
-	return M->GetActorLocation();
+	if (USkeletalMeshComponent* Mesh = M->GetMesh())
+	{
+		Mesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
+		Mesh->SetCollisionProfileName(TEXT("Ragdoll"));
+
+		Mesh->SetAllBodiesSimulatePhysics(true);
+		Mesh->SetSimulatePhysics(true);
+		Mesh->WakeAllRigidBodies();
+		Mesh->bBlendPhysics = true;
+
+		Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
+	}
 }
 
 // ============================================================
@@ -178,7 +110,7 @@ APotatoMonster::APotatoMonster()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	// ✅ Split Child도 SpawnDefaultController가 정상 동작하도록
+	//  Split Child도 SpawnDefaultController가 정상 동작하도록
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
 	CombatComp = CreateDefaultSubobject<UPotatoCombatComponent>(TEXT("CombatComp"));
@@ -230,34 +162,34 @@ void APotatoMonster::BeginPlay()
 	bHasLastHitPoint = false;
 	LastHitPointWS = FVector::ZeroVector;
 	LastHitBoneName = NAME_None;
-	
+
 	UE_LOG(LogTemp, Warning, TEXT("[Monster] BeginPlay Pawn=%s Controller=%s AutoPossessAI=%d AIClass=%s"),
-	*GetNameSafe(this),
-	*GetNameSafe(GetController()),
-	(int32)AutoPossessAI,
-	*GetNameSafe(AIControllerClass)
-);
+		*GetNameSafe(this),
+		*GetNameSafe(GetController()),
+		(int32)AutoPossessAI,
+		*GetNameSafe(AIControllerClass)
+	);
 }
 
 // ============================================================
-// ✅ Split Child Context / AI Fix
+//  Split Child Context / AI Fix
 // ============================================================
 
 void APotatoMonster::CopyPresetContextFrom(const APotatoMonster* Parent)
 {
 	if (!IsValid(Parent)) return;
 
-	// ✅ 테이블/컨텍스트 복사 (Split Child가 가장 자주 놓치는 부분)
+	//  테이블/컨텍스트 복사 (Split Child가 가장 자주 놓치는 부분)
 	TypePresetTable         = Parent->TypePresetTable;
 	RankPresetTable         = Parent->RankPresetTable;
 	SpecialSkillPresetTable = Parent->SpecialSkillPresetTable;
 	DefaultBehaviorTree     = Parent->DefaultBehaviorTree;
 
-	// ✅ 스탯 빌드에 필요한 값들
+	//  스탯 빌드에 필요한 값들
 	WaveBaseHP           = Parent->WaveBaseHP;
 	PlayerReferenceSpeed = Parent->PlayerReferenceSpeed;
 
-	// ✅ 정책: Split이면 보통 동일 타입/랭크 유지
+	//  정책: Split이면 보통 동일 타입/랭크 유지
 	MonsterType = Parent->MonsterType;
 	Rank        = Parent->Rank;
 
@@ -388,7 +320,7 @@ void APotatoMonster::ApplyPresetsOnce()
 	UpdateHPBarLocation();
 	RefreshHPBar();
 
-	// ✅ Split Child 포함: 프리셋 적용 후 AI/BT 보장
+	//  Split Child 포함: 프리셋 적용 후 AI/BT 보장
 	EnsureAIControllerAndStartLogic();
 }
 
@@ -417,7 +349,7 @@ float APotatoMonster::TakeDamage(
 		if (Incoming <= 0.f) return 0.f;
 	}
 
-	// ✅ BUG FIX: Applied는 DamageAmount가 아니라 Incoming을 써야 함
+	//  BUG FIX: Applied는 DamageAmount가 아니라 Incoming을 써야 함
 	const float Applied = Incoming;
 	if (Applied <= 0.f) return 0.f;
 
@@ -430,7 +362,7 @@ float APotatoMonster::TakeDamage(
 		HardenShellComp->PostDamageCheck();
 	}
 
-	// ✅ HP 기반 Split 체크
+	//  HP 기반 Split 체크
 	if (SplitComp)
 	{
 		SplitComp->PostDamageCheck();
@@ -484,9 +416,6 @@ float APotatoMonster::TakeDamage(
 
 		const int32 Dir = (DamageStackIndex % 2 == 0) ? 1 : -1;
 		const float XOffset = Dir * DamageStackOffsetStep * (DamageStackIndex / 2 + 1);
-
-		// [World Space]  월드 X축 기준 좌우 분산 — 카메라 각도에 따라 묻힐 수 있음
-		// FVector DamageLoc = GetActorLocation() + FVector(XOffset, 0.f, BaseZ + 20.f);
 
 		// [Screen Space] 카메라 Right 벡터 기준 좌우 분산 — 카메라 방향 무관하게 항상 화면 좌우
 		APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0);
@@ -611,7 +540,7 @@ void APotatoMonster::TryPlayHitReact()
 
 		const float BaseLen = AS->HitReactMontage->GetPlayLength();
 		float FinalLen = BaseLen;
-		ComputeMinVisiblePlayRate(BaseLen, HitReactMinVisibleTime, FinalLen);
+		(void)ComputeMinVisiblePlayRate(BaseLen, HitReactMinVisibleTime, FinalLen);
 
 		float StunTime = FMath::Clamp(FinalLen, 0.1f, HitReactMaxStunTime);
 		if (!FMath::IsFinite(StunTime)) StunTime = 0.1f;
@@ -696,30 +625,6 @@ void APotatoMonster::StopAIForDead()
 		{
 			Brain->StopLogic(TEXT("Dead"));
 		}
-	}
-}
-
-static void EnableRagdollFallback(APotatoMonster* M)
-{
-	if (!M) return;
-
-	if (UCapsuleComponent* Cap = M->GetCapsuleComponent())
-	{
-		Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Cap->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
-	}
-
-	if (USkeletalMeshComponent* Mesh = M->GetMesh())
-	{
-		Mesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-		Mesh->SetCollisionProfileName(TEXT("Ragdoll"));
-
-		Mesh->SetAllBodiesSimulatePhysics(true);
-		Mesh->SetSimulatePhysics(true);
-		Mesh->WakeAllRigidBodies();
-		Mesh->bBlendPhysics = true;
-
-		Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 	}
 }
 
@@ -854,7 +759,7 @@ void APotatoMonster::SetAnimSet(UPotatoMonsterAnimSet* InSet)
 
 void APotatoMonster::OnFinalStatsApplied()
 {
-	// ✅ "외부에서 Monster->FinalStats = AppliedStats;" 후 수동 호출하는 용도
+	//  "외부에서 Monster->FinalStats = AppliedStats;" 후 수동 호출하는 용도
 	// ApplyPresetsOnce 내부에서는 이미 Split/Harden/Skill/AnimSet까지 적용하므로
 	// 여기서는 최소 범위만 유지 (필요한 것만)
 	if (SplitComp)

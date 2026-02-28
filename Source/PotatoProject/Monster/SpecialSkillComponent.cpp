@@ -112,7 +112,7 @@ void USpecialSkillComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	bQueuedExecuteNextTick = false;
 	bQueuedEndNextTick = false;
 
-	// ✅ 세션당 1회 몽타주 재생 플래그 정리
+	//  세션당 1회 몽타주 재생 플래그 정리
 	bPlayedSkillMontageThisSession = false;
 
 	Super::EndPlay(EndPlayReason);
@@ -166,7 +166,7 @@ bool USpecialSkillComponent::CheckTrigger(const FPotatoMonsterSpecialSkillPreset
 	AActor* Owner = GetOwner();
 	if (!Owner) return false;
 
-	// ✅ PlayerOnly / StructureOnly 안정 필터 (기존 로직 유지)
+	//  PlayerOnly / StructureOnly 안정 필터 (기존 로직 유지)
 	auto PassTargetTypeFilter = [&](AActor* T) -> bool
 	{
 		if (!IsTargetValid(T)) return false;
@@ -260,7 +260,7 @@ bool USpecialSkillComponent::ConsumeHitOnce(AActor* Victim)
 }
 
 // ============================================================
-// ✅ Montage policy (override -> fallback basic attack)
+//  Montage policy (override -> fallback basic attack)
 // - 공격형 스킬에만 적용
 // - 세션당 1회만 재생
 // ============================================================
@@ -439,12 +439,12 @@ bool USpecialSkillComponent::TryStartSkill(FName SkillId, AActor* InTarget)
 	AActor* Owner = GetOwner();
 	if (!Owner || Owner->IsActorBeingDestroyed()) return false;
 
-	// ✅ 세션 시작
+	//  세션 시작
 	++SkillSessionId;
 	const uint32 ThisSession = SkillSessionId;
 	(void)ThisSession;
 
-	// ✅ 세션당 1회 몽타주 재생 플래그 리셋
+	//  세션당 1회 몽타주 재생 플래그 리셋
 	bPlayedSkillMontageThisSession = false;
 
 	// 타이머 정리
@@ -548,7 +548,7 @@ void USpecialSkillComponent::BeginCast(const FPotatoMonsterSpecialSkillPresetRow
 
 	SetState(ESpecialSkillState::Casting);
 
-	// ✅ 공격형 스킬 몽타주 정책 (Override -> Fallback)
+	//  공격형 스킬 몽타주 정책 (Override -> Fallback)
 	// - Row.bPlayMontageAtCastBegin == true 일 때만 시도
 	// - 세션당 1회만 재생됨
 	if (Row.bPlayMontageAtCastBegin)
@@ -687,7 +687,7 @@ void USpecialSkillComponent::EndSkill_Internal(bool bCancelled)
 {
 	bQueuedEndNextTick = false;
 
-	// ✅ 세션 종료 정리
+	//  세션 종료 정리
 	bPlayedSkillMontageThisSession = false;
 
 	if (ActiveSkillId != NAME_None)
@@ -731,7 +731,7 @@ void USpecialSkillComponent::CancelSkill(ESpecialSkillCancelReason Reason)
 
 	bQueuedExecuteNextTick = false;
 
-	// ✅ 취소 시에도 플래그 리셋(다음 스킬에 영향 방지)
+	//  취소 시에도 플래그 리셋(다음 스킬에 영향 방지)
 	bPlayedSkillMontageThisSession = false;
 
 	if (!bQueuedEndNextTick)

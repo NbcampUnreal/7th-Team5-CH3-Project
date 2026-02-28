@@ -1,4 +1,4 @@
-﻿// Monster/SpecialSkillExecution.cpp
+﻿// Source/PotatoProject/Monster/SpecialSkillExecution.cpp
 
 #include "SpecialSkillExecution.h"
 #include "SpecialSkillComponent.h"
@@ -11,28 +11,55 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "GameFramework/DamageType.h"
+#include "EngineUtils.h" // TActorIterator
+
 #include "SkillTransformResolver.h"
+
 #include "PotatoDotComponent.h"
 #include "PotatoBuffComponent.h"
 #include "PotatoMonsterProjectile.h"
+#include "PotatoFirePillarActor.h"
+
 #include "Building/PotatoPlaceableStructure.h"
 #include "Building/PotatoStructureData.h"
-#include "PotatoFirePillarActor.h"
-#include "EngineUtils.h" // TActorIterator
+
+// ✅ 공용 유틸
+#include "Monster/Utils/PotatoActorSafety.h"
+#include "Monster/Utils/PotatoMath2D.h"
 
 // ============================================================
-// Target Helpers
+// Target Filter (Skill local)
 // ============================================================
 
-static FORCEINLINE bool IsActorSafeToTouch(AActor* A)
+static bool IsPlayerLikeActor(AActor* A)
 {
-	return IsValid(A) && !A->IsActorBeingDestroyed();
+	if (!IsValid(A) || A->IsActorBeingDestroyed()) return false;
+	if (A->ActorHasTag(TEXT("Player"))) return true;
+
+	if (APawn* P = Cast<APawn>(A))
+	{
+		return (Cast<APlayerController>(P->GetController()) != nullptr);
+	}
+	return false;
 }
 
-static UWorld* GetSafeWorld(const UObject* Obj)
+static bool IsLiveDestructibleStructure(AActor* A)
 {
-	return Obj ? Obj->GetWorld() : nullptr;
+	if (!IsValid(A) || A->IsActorBeingDestroyed()) return false;
+
+	if (APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(A))
+	{
+		if (S->StructureData && S->StructureData->bIsDestructible)
+		{
+			return (S->CurrentHealth > 0.f);
+		}
+	}
+	return false;
 }
+
+// ============================================================
+// Socket / Spawn helpers (Skill local)
+// ============================================================
 
 static bool TryGetOwnerSocketWorldTransform(AActor* Owner, FName SocketName, FTransform& OutXf)
 {
@@ -47,10 +74,6 @@ static bool TryGetOwnerSocketWorldTransform(AActor* Owner, FName SocketName, FTr
 	OutXf = Skel->GetSocketTransform(SocketName, RTS_World);
 	return true;
 }
-
-// ------------------------------------------------------------
-// Ground snap (line trace down)
-// ------------------------------------------------------------
 
 static FVector SnapToGroundIfNeeded(UWorld* World, const FVector& InLoc, float TraceDist, const AActor* IgnoreActor)
 {
@@ -68,22 +91,17 @@ static FVector SnapToGroundIfNeeded(UWorld* World, const FVector& InLoc, float T
 		Hit,
 		Start,
 		End,
-		ECC_Visibility,   //  바닥 스냅은 보통 Visibility
+		ECC_Visibility,
 		Params
 	);
 
 	if (bHit && Hit.bBlockingHit)
 	{
-		// 살짝 띄우고 싶으면 +Z 오프셋 추가 가능
 		return Hit.ImpactPoint;
 	}
 
 	return InLoc;
 }
-
-// ------------------------------------------------------------
-// Spawn transform resolver (Row.SpawnMode + bSnapToGround)
-// ------------------------------------------------------------
 
 static FTransform ResolveSpawnTransform(
 	AActor* Owner,
@@ -129,9 +147,6 @@ static FTransform ResolveSpawnTransform(
 				Loc = Owner->GetActorLocation();
 			}
 
-			// -----------------------------
-			//  Target 바라보기 옵션
-			// -----------------------------
 			if (Row.bFaceTargetOnSpawn && IsActorSafeToTouch(TargetForInit))
 			{
 				const FVector Dir = (TargetForInit->GetActorLocation() - Owner->GetActorLocation());
@@ -140,7 +155,7 @@ static FTransform ResolveSpawnTransform(
 				if (Row.bYawOnlyRotation)
 				{
 					LookRot.Pitch = 0.f;
-					LookRot.Roll = 0.f;
+					LookRot.Roll  = 0.f;
 				}
 
 				Rot = LookRot;
@@ -168,296 +183,31 @@ static FTransform ResolveSpawnTransform(
 		break;
 	}
 
-	// -----------------------------
-	// Ground snap
-	// -----------------------------
 	if (Row.bSnapToGround)
 	{
-		const float TraceDist = (Row.GroundTraceDistance > 0.f)
-			? Row.GroundTraceDistance
-			: 5000.f;
-
+		const float TraceDist = (Row.GroundTraceDistance > 0.f) ? Row.GroundTraceDistance : 5000.f;
 		Loc = SnapToGroundIfNeeded(World, Loc, TraceDist, Owner);
 	}
 
 	return FTransform(Rot, Loc);
 }
-static bool IsPlayerLikeActor(AActor* A)
-{
-	if (!IsValid(A) || A->IsActorBeingDestroyed()) return false;
-	if (A->ActorHasTag(TEXT("Player"))) return true;
 
-	if (APawn* P = Cast<APawn>(A))
-	{
-		return (Cast<APlayerController>(P->GetController()) != nullptr);
-	}
-	return false;
+static bool PassesFxDistanceGate(UWorld* World, const FVector& SpawnLoc, const FPotatoMonsterSpecialSkillPresetRow& Row)
+{
+	if (!World) return true;
+	if (Row.MaxFxDistance <= 0.f) return true;
+
+	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
+	if (!PlayerPawn) return true;
+
+	return FVector::Dist(PlayerPawn->GetActorLocation(), SpawnLoc) <= Row.MaxFxDistance;
 }
 
-static bool IsLiveDestructibleStructure(AActor* A)
+static UClass* ResolveClassSync(const TSoftClassPtr<AActor>& SoftClass)
 {
-	if (!IsValid(A) || A->IsActorBeingDestroyed()) return false;
-
-	if (APotatoPlaceableStructure* S = Cast<APotatoPlaceableStructure>(A))
-	{
-		if (S->StructureData && S->StructureData->bIsDestructible)
-		{
-			return (S->CurrentHealth > 0.f);
-		}
-	}
-	return false;
-}
-
-static bool IsValidAoETarget(AActor* A)
-{
-	return IsPlayerLikeActor(A) || IsLiveDestructibleStructure(A);
-}
-
-// ============================================================
-// Safety Helpers (Crash prevention)
-// ============================================================
-
-static UWorld* GetSafeWorld(USpecialSkillComponent* Comp)
-{
-	if (!Comp) return nullptr;
-	UWorld* W = Comp->GetWorld();
-	if (!W) return nullptr;
-	if (W->bIsTearingDown) return nullptr;
-	return W;
-}
-
-static bool IsActorSafeToTouch(AActor* A, UWorld* World)
-{
-	if (!IsValid(A) || A->IsActorBeingDestroyed()) return false;
-	if (A->HasAnyFlags(RF_BeginDestroyed)) return false;
-	if (World && A->GetWorld() != World) return false;
-	return true;
-}
-
-static AController* GetSafeInstigatorController(AActor* Owner)
-{
-	if (!IsValid(Owner) || Owner->IsActorBeingDestroyed()) return nullptr;
-
-	if (APawn* P = Cast<APawn>(Owner))
-	{
-		if (AController* C = P->GetController())
-		{
-			return C;
-		}
-	}
-	return Owner->GetInstigatorController();
-}
-
-static void ApplyDamage_Safe(AActor* Victim, float Damage, AActor* Owner)
-{
-	if (!IsValid(Victim) || Victim->IsActorBeingDestroyed()) return;
-	if (!IsValid(Owner) || Owner->IsActorBeingDestroyed()) return;
-	if (Damage <= 0.f) return;
-
-	// 구조물/액터에서 데미지 수신 자체가 꺼져 있으면 여기서 컷
-	if (!Victim->CanBeDamaged())
-	{
-		return;
-	}
-
-	AController* InstigatorCon = GetSafeInstigatorController(Owner);
-
-	UGameplayStatics::ApplyDamage(
-		Victim,
-		Damage,
-		InstigatorCon,
-		Owner,
-		UDamageType::StaticClass()
-	);
-}
-
-template<typename TComp>
-static TComp* FindOrAddComponentSafe(AActor* Host, UWorld* World)
-{
-	if (!IsActorSafeToTouch(Host, World)) return nullptr;
-
-	TComp* Existing = Host->FindComponentByClass<TComp>();
-	if (Existing && IsValid(Existing) && Existing->IsRegistered())
-	{
-		return Existing;
-	}
-
-	if (!World || World->bIsTearingDown) return nullptr;
-
-	TComp* NewC = NewObject<TComp>(Host, TComp::StaticClass(), NAME_None, RF_Transient);
-	if (!NewC) return nullptr;
-
-	NewC->RegisterComponentWithWorld(World);
-	return NewC;
-}
-
-// ============================================================
-// Math Helpers (2D)
-// ============================================================
-
-static FORCEINLINE FVector To2D(const FVector& V)
-{
-	return FVector(V.X, V.Y, 0.f);
-}
-
-static FORCEINLINE FVector2D To2D2(const FVector& V)
-{
-	return FVector2D(V.X, V.Y);
-}
-
-static FORCEINLINE void GetActorBounds3D(AActor* A, FVector& OutCenter, FVector& OutExtent)
-{
-	FVector C, E;
-	A->GetActorBounds(true, C, E);
-	OutCenter = C;
-	OutExtent = E;
-}
-
-static FORCEINLINE FVector2D AABB_Min2D(const FVector& Center3, const FVector& Extent3)
-{
-	return FVector2D(Center3.X - Extent3.X, Center3.Y - Extent3.Y);
-}
-
-static FORCEINLINE FVector2D AABB_Max2D(const FVector& Center3, const FVector& Extent3)
-{
-	return FVector2D(Center3.X + Extent3.X, Center3.Y + Extent3.Y);
-}
-
-static float DistPointToAABB2D_Sq(const FVector& P3, const FVector& BoxCenter3, const FVector& BoxExtent3)
-{
-	const float Px = P3.X;
-	const float Py = P3.Y;
-
-	const float MinX = BoxCenter3.X - BoxExtent3.X;
-	const float MaxX = BoxCenter3.X + BoxExtent3.X;
-	const float MinY = BoxCenter3.Y - BoxExtent3.Y;
-	const float MaxY = BoxCenter3.Y + BoxExtent3.Y;
-
-	const float Cx = FMath::Clamp(Px, MinX, MaxX);
-	const float Cy = FMath::Clamp(Py, MinY, MaxY);
-
-	const float Dx = Px - Cx;
-	const float Dy = Py - Cy;
-	return Dx * Dx + Dy * Dy;
-}
-
-static FVector ClosestPointOnAABB2D(const FVector& P3, const FVector& BoxCenter3, const FVector& BoxExtent3)
-{
-	FVector Out = P3;
-	Out.X = FMath::Clamp(P3.X, BoxCenter3.X - BoxExtent3.X, BoxCenter3.X + BoxExtent3.X);
-	Out.Y = FMath::Clamp(P3.Y, BoxCenter3.Y - BoxExtent3.Y, BoxCenter3.Y + BoxExtent3.Y);
-	Out.Z = 0.f;
-	return Out;
-}
-
-static bool SegmentIntersectsAABB2D(const FVector2D& A, const FVector2D& B, const FVector2D& Min, const FVector2D& Max)
-{
-	// Liang–Barsky clipping in 2D
-	const FVector2D D = B - A;
-
-	float t0 = 0.f;
-	float t1 = 1.f;
-
-	auto Clip = [&](float p, float q) -> bool
-	{
-		if (FMath::IsNearlyZero(p))
-		{
-			return q >= 0.f;
-		}
-
-		const float r = q / p;
-		if (p < 0.f)
-		{
-			if (r > t1) return false;
-			if (r > t0) t0 = r;
-		}
-		else
-		{
-			if (r < t0) return false;
-			if (r < t1) t1 = r;
-		}
-		return true;
-	};
-
-	// x
-	if (!Clip(-D.X, A.X - Min.X)) return false;
-	if (!Clip( D.X, Max.X - A.X)) return false;
-	// y
-	if (!Clip(-D.Y, A.Y - Min.Y)) return false;
-	if (!Clip( D.Y, Max.Y - A.Y)) return false;
-
-	return true;
-}
-
-static float DistPointToSegment2D_Sq_V2(const FVector2D& P, const FVector2D& A, const FVector2D& B)
-{
-	const FVector2D AB = B - A;
-	const float AB2 = FVector2D::DotProduct(AB, AB);
-
-	if (AB2 <= KINDA_SMALL_NUMBER)
-	{
-		return FVector2D::DistSquared(P, A);
-	}
-
-	const float t = FMath::Clamp(FVector2D::DotProduct(P - A, AB) / AB2, 0.f, 1.f);
-	const FVector2D C = A + t * AB;
-	return FVector2D::DistSquared(P, C);
-}
-
-static float DistSegmentToAABB2D_Sq(
-	const FVector2D& SegA,
-	const FVector2D& SegB,
-	const FVector& BoxCenter3,
-	const FVector& BoxExtent3
-)
-{
-	const FVector2D Min = AABB_Min2D(BoxCenter3, BoxExtent3);
-	const FVector2D Max = AABB_Max2D(BoxCenter3, BoxExtent3);
-
-	// 1) 교차하면 거리 0
-	if (SegmentIntersectsAABB2D(SegA, SegB, Min, Max))
-	{
-		return 0.f;
-	}
-
-	// 2) 세그먼트 끝점 -> AABB 최소거리
-	const FVector PA3(SegA.X, SegA.Y, 0.f);
-	const FVector PB3(SegB.X, SegB.Y, 0.f);
-
-	const float D1 = DistPointToAABB2D_Sq(PA3, BoxCenter3, BoxExtent3);
-	const float D2 = DistPointToAABB2D_Sq(PB3, BoxCenter3, BoxExtent3);
-
-	float Best = FMath::Min(D1, D2);
-
-	// 3) AABB 코너 -> 세그먼트 최소거리 (스치기 보강)
-	const FVector2D C0(Min.X, Min.Y);
-	const FVector2D C1(Max.X, Min.Y);
-	const FVector2D C2(Max.X, Max.Y);
-	const FVector2D C3(Min.X, Max.Y);
-
-	Best = FMath::Min(Best, DistPointToSegment2D_Sq_V2(C0, SegA, SegB));
-	Best = FMath::Min(Best, DistPointToSegment2D_Sq_V2(C1, SegA, SegB));
-	Best = FMath::Min(Best, DistPointToSegment2D_Sq_V2(C2, SegA, SegB));
-	Best = FMath::Min(Best, DistPointToSegment2D_Sq_V2(C3, SegA, SegB));
-
-	return Best;
-}
-
-static bool IsPointInCone2D(
-	const FVector2D& Origin,
-	const FVector2D& FwdN,
-	float CosMin,
-	float RadiusSq,
-	const FVector2D& P
-)
-{
-	const FVector2D To = P - Origin;
-	const float DistSq = FVector2D::DotProduct(To, To);
-	if (DistSq > RadiusSq || DistSq <= KINDA_SMALL_NUMBER) return false;
-
-	const FVector2D ToN = To.GetSafeNormal();
-	const float Dot = FVector2D::DotProduct(FwdN, ToN);
-	return Dot >= CosMin;
+	if (SoftClass.IsNull()) return nullptr;
+	if (UClass* Loaded = SoftClass.Get()) return Loaded;
+	return SoftClass.LoadSynchronous();
 }
 
 // ============================================================
@@ -486,26 +236,9 @@ static EMonsterSpecialExecution ResolveExecution(const FPotatoMonsterSpecialSkil
 }
 
 // ============================================================
-// Projectile / Spawn Helpers
+// Projectile / Spawn
 // ============================================================
 
-static bool PassesFxDistanceGate(UWorld* World, const FVector& SpawnLoc, const FPotatoMonsterSpecialSkillPresetRow& Row)
-{
-	if (!World) return true;
-	if (Row.MaxFxDistance <= 0.f) return true;
-
-	APawn* PlayerPawn = UGameplayStatics::GetPlayerPawn(World, 0);
-	if (!PlayerPawn) return true;
-
-	return FVector::Dist(PlayerPawn->GetActorLocation(), SpawnLoc) <= Row.MaxFxDistance;
-}
-
-static UClass* ResolveClassSync(const TSoftClassPtr<AActor>& SoftClass)
-{
-	if (SoftClass.IsNull()) return nullptr;
-	if (UClass* Loaded = SoftClass.Get()) return Loaded;
-	return SoftClass.LoadSynchronous();
-}
 static AActor* SpawnActorFromPreset(USpecialSkillComponent* Comp, const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* TargetForInit)
 {
 	if (!Comp) return nullptr;
@@ -514,7 +247,6 @@ static AActor* SpawnActorFromPreset(USpecialSkillComponent* Comp, const FPotatoM
 	AActor* Owner = Comp->GetOwner();
 	if (!World || !IsActorSafeToTouch(Owner, World)) return nullptr;
 
-	// Row.ProjectileClass를 “스폰할 액터 클래스”로 사용 (투사체/불기둥 둘 다 가능)
 	UClass* SpawnClass = ResolveClassSync(Row.ProjectileClass);
 	if (!SpawnClass) return nullptr;
 
@@ -533,57 +265,43 @@ static AActor* SpawnActorFromPreset(USpecialSkillComponent* Comp, const FPotatoM
 	AActor* Spawned = World->SpawnActor<AActor>(SpawnClass, SpawnXf, Params);
 	if (!Spawned) return nullptr;
 
-	// ============================================================
-	//  스폰된 액터 타입에 따라 “Row -> Init 주입”
-	// - Execution=Projectile은 스폰만 담당하지만,
-	//   스폰된 액터가 스스로 스킬 동작을 하려면 파라미터 주입은 필요
-	// ============================================================
-
-	// 1) Stingray 독침: Projectile + OnHit DOT (+ 폭발 AoE DOT)
+	// 1) Projectile
 	if (APotatoMonsterProjectile* Proj = Cast<APotatoMonsterProjectile>(Spawned))
 	{
-		// 방향/속도는 너 기존 정책대로 (Row에 있으면 Row, 없으면 Owner forward)
 		const FVector Dir = (TargetForInit && IsActorSafeToTouch(TargetForInit, World))
 			? (TargetForInit->GetActorLocation() - Spawned->GetActorLocation()).GetSafeNormal()
 			: Owner->GetActorForwardVector();
 
-		// 속도 Row에 있으면 사용, 아니면 기존 기본값 유지
 		const float Speed = (Row.ProjectileSpeed > 0.f) ? Row.ProjectileSpeed : 0.f;
 		if (Speed > 0.f) Proj->InitVelocity(Dir, Speed);
 		else Proj->InitVelocity(Dir, 0.f);
 
-		// 스킬 모드 주입
 		const float Dps  = FMath::Max(0.f, Row.DotDps);
 		const float Dur  = FMath::Max(0.f, Row.DotDuration);
 		const float Tick = FMath::Max(0.05f, Row.DotTickInterval);
 
-		// 폭발 반경: Row에 별도 필드 없으면 Radius 재사용 가능
 		const float ExplodeR = (Row.ExplodeRadius > 0.f) ? Row.ExplodeRadius : 0.f;
-
 		Proj->InitSkillDot(Dps, Dur, Tick, ExplodeR);
 
 		return Spawned;
 	}
 
-	// 2) Dragon 불기둥: SpawnActor + FirePillarActor가 DOT
+	// 2) FirePillar
 	if (APotatoFirePillarActor* Pillar = Cast<APotatoFirePillarActor>(Spawned))
 	{
-		AController* InstCon = nullptr;
-		if (APawn* P = Cast<APawn>(Owner)) InstCon = P->GetController();
-		if (!InstCon) InstCon = Owner->GetInstigatorController();
+		AController* InstCon = GetSafeInstigatorController(Owner);
 
 		const float Dps  = FMath::Max(0.f, Row.DotDps);
 		const float Dur  = FMath::Max(0.f, Row.DotDuration);
 		const float Tick = FMath::Max(0.05f, Row.DotTickInterval);
 
-		//  Row 변경 반영(Spawned* 사용)
-		const bool bPlayerOnly = Row.bSpawnedPlayerOnly;
-		const bool bMove       = Row.bSpawnedEnableMove;
+		const bool  bPlayerOnly = Row.bSpawnedPlayerOnly;
+		const bool  bMove       = Row.bSpawnedEnableMove;
 
-		const float Life     = (Row.SpawnedLifeTime > 0.f) ? Row.SpawnedLifeTime : 5.f;
-		const float MoveSpeed= (Row.SpawnedMoveSpeed > 0.f) ? Row.SpawnedMoveSpeed : 220.f;
-		const float Wander   = (Row.SpawnedWanderRadius > 0.f) ? Row.SpawnedWanderRadius : 500.f;
-		const float Repath   = (Row.SpawnedRepathInterval > 0.f) ? Row.SpawnedRepathInterval : 0.8f;
+		const float Life      = (Row.SpawnedLifeTime > 0.f) ? Row.SpawnedLifeTime : 5.f;
+		const float MoveSpeed = (Row.SpawnedMoveSpeed > 0.f) ? Row.SpawnedMoveSpeed : 220.f;
+		const float Wander    = (Row.SpawnedWanderRadius > 0.f) ? Row.SpawnedWanderRadius : 500.f;
+		const float Repath    = (Row.SpawnedRepathInterval > 0.f) ? Row.SpawnedRepathInterval : 0.8f;
 
 		Pillar->InitPillar(
 			Owner,
@@ -609,7 +327,7 @@ static AActor* SpawnActorFromPreset(USpecialSkillComponent* Comp, const FPotatoM
 }
 
 // ============================================================
-// Structure Gather (AABB-based, reliable)
+// Structure Gather (AABB-based)
 // ============================================================
 
 static void GatherStructures_InstantAoE(
@@ -642,37 +360,29 @@ static void GatherStructures_InstantAoE(
 	for (TActorIterator<APotatoPlaceableStructure> It(World); It; ++It)
 	{
 		APotatoPlaceableStructure* S = *It;
-		if (!IsValid(S) || S->IsActorBeingDestroyed()) continue;
+		if (!IsActorSafeToTouch(S, World)) continue;
 		if (S == Owner) continue;
 
 		if (!S->StructureData || !S->StructureData->bIsDestructible) continue;
 		if (S->CurrentHealth <= 0.f) continue;
 
 		FVector Center3, Extent3;
-		GetActorBounds3D(S, Center3, Extent3);
+		{
+			FVector C, E;
+			S->GetActorBounds(true, C, E);
+			Center3 = C; Extent3 = E;
+		}
 
-		const FVector2D Min = AABB_Min2D(Center3, Extent3);
-		const FVector2D Max = AABB_Max2D(Center3, Extent3);
-
-		const FVector2D C0(Min.X, Min.Y);
-		const FVector2D C1(Max.X, Min.Y);
-		const FVector2D C2(Max.X, Max.Y);
-		const FVector2D C3(Min.X, Max.Y);
-
-		// Circle / fallback : origin -> AABB 최소거리
+		// Circle
 		if (Row.Shape == EMonsterSpecialShape::Circle || Row.Shape == EMonsterSpecialShape::None)
 		{
 			if (Radius <= 0.f) continue;
-
 			const float D2 = DistPointToAABB2D_Sq(Origin3D, Center3, Extent3);
-			if (D2 <= RadiusSq)
-			{
-				InOutVictims.AddUnique(S);
-			}
+			if (D2 <= RadiusSq) InOutVictims.AddUnique(S);
 			continue;
 		}
 
-		// Line : segment -> AABB 최소거리
+		// Line
 		if (Row.Shape == EMonsterSpecialShape::Line)
 		{
 			if (Range <= 0.f) continue;
@@ -687,14 +397,11 @@ static void GatherStructures_InstantAoE(
 			}
 
 			const float D2 = DistSegmentToAABB2D_Sq(LineA, LineB, Center3, Extent3);
-			if (D2 <= WidthSq)
-			{
-				InOutVictims.AddUnique(S);
-			}
+			if (D2 <= WidthSq) InOutVictims.AddUnique(S);
 			continue;
 		}
 
-		// Cone : (AABB가 반경에 걸림) AND (각도에 걸림)
+		// Cone
 		if (Row.Shape == EMonsterSpecialShape::Cone)
 		{
 			if (Radius <= 0.f) continue;
@@ -702,8 +409,15 @@ static void GatherStructures_InstantAoE(
 			const float D2 = DistPointToAABB2D_Sq(Origin3D, Center3, Extent3);
 			if (D2 > RadiusSq) continue;
 
-			bool bHit = false;
+			const FVector2D Min = AABB_Min2D(Center3, Extent3);
+			const FVector2D Max = AABB_Max2D(Center3, Extent3);
 
+			const FVector2D C0(Min.X, Min.Y);
+			const FVector2D C1(Max.X, Min.Y);
+			const FVector2D C2(Max.X, Max.Y);
+			const FVector2D C3(Min.X, Max.Y);
+
+			bool bHit = false;
 			if (IsPointInCone2D(Origin, FwdN, CosMin, RadiusSq, C0)) bHit = true;
 			else if (IsPointInCone2D(Origin, FwdN, CosMin, RadiusSq, C1)) bHit = true;
 			else if (IsPointInCone2D(Origin, FwdN, CosMin, RadiusSq, C2)) bHit = true;
@@ -712,17 +426,13 @@ static void GatherStructures_InstantAoE(
 			if (!bHit)
 			{
 				const FVector Closest3 = ClosestPointOnAABB2D(Origin3D, Center3, Extent3);
-				const FVector2D Closest2 = To2D2(Closest3);
-				if (IsPointInCone2D(Origin, FwdN, CosMin, RadiusSq, Closest2))
+				if (IsPointInCone2D(Origin, FwdN, CosMin, RadiusSq, To2D2(Closest3)))
 				{
 					bHit = true;
 				}
 			}
 
-			if (bHit)
-			{
-				InOutVictims.AddUnique(S);
-			}
+			if (bHit) InOutVictims.AddUnique(S);
 			continue;
 		}
 
@@ -730,16 +440,13 @@ static void GatherStructures_InstantAoE(
 		if (Radius > 0.f)
 		{
 			const float D2 = DistPointToAABB2D_Sq(Origin3D, Center3, Extent3);
-			if (D2 <= RadiusSq)
-			{
-				InOutVictims.AddUnique(S);
-			}
+			if (D2 <= RadiusSq) InOutVictims.AddUnique(S);
 		}
 	}
 }
 
 // ============================================================
-// Instant AoE (Pawn overlap + Structure geometry)
+// Instant AoE
 // ============================================================
 
 static void Exec_InstantAoE(USpecialSkillComponent* Comp, const FPotatoMonsterSpecialSkillPresetRow& Row, AActor* Target)
@@ -758,7 +465,7 @@ static void Exec_InstantAoE(USpecialSkillComponent* Comp, const FPotatoMonsterSp
 
 	TArray<AActor*> Victims;
 
-	// 1) Pawn overlap (빠른 수집)
+	// 1) Pawn overlap
 	{
 		const float R = (Row.Shape == EMonsterSpecialShape::Line)
 			? FMath::Max(0.f, Row.Range)
@@ -815,7 +522,6 @@ static void Exec_InstantAoE(USpecialSkillComponent* Comp, const FPotatoMonsterSp
 						const FVector B2 = O2 + F2 * Range;
 
 						const FVector P2 = To2D(A->GetActorLocation());
-						// 기존 함수 재사용(단순)
 						const FVector AB = B2 - A2;
 						const float AB2 = FVector::DotProduct(AB, AB);
 						if (AB2 <= KINDA_SMALL_NUMBER) continue;
@@ -833,10 +539,10 @@ static void Exec_InstantAoE(USpecialSkillComponent* Comp, const FPotatoMonsterSp
 		}
 	}
 
-	// 2) Structure gather (AABB 기반)
+	// 2) Structure gather
 	GatherStructures_InstantAoE(World, Owner, Row, Origin3D, Fwd3D, Victims);
 
-	// 3) Apply Damage (안전)
+	// 3) Apply damage
 	for (AActor* V : Victims)
 	{
 		if (!IsActorSafeToTouch(V, World)) continue;
@@ -845,11 +551,13 @@ static void Exec_InstantAoE(USpecialSkillComponent* Comp, const FPotatoMonsterSp
 		{
 			if (!Comp->ConsumeHitOnce(V)) continue;
 		}
-		UE_LOG(LogTemp, Warning, TEXT("[AoE] Hit Victim=%s Class=%s Damage=%.1f Skill=%s"),
+
+		UE_LOG(LogTemp, Warning, TEXT("[AoE] Hit Victim=%s Class=%s Damage=%.1f Owner=%s"),
 			*GetNameSafe(V),
 			*GetNameSafe(V ? V->GetClass() : nullptr),
 			Damage,
 			*GetNameSafe(Owner));
+
 		ApplyDamage_Safe(V, Damage, Owner);
 	}
 }
@@ -898,7 +606,6 @@ static void Exec_SelfBuff(USpecialSkillComponent* Comp, const FPotatoMonsterSpec
 	UPotatoBuffComponent* Buff = FindOrAddComponentSafe<UPotatoBuffComponent>(Owner, World);
 	if (!Buff) return;
 
-	// Row에 BuffDuration이 없으면 DotDuration 재사용(프로젝트 정책대로 바꿔도 됨)
 	const float Dur = FMath::Max(0.f, Row.DotDuration);
 	if (Dur <= 0.f) return;
 
@@ -933,7 +640,6 @@ void FSpecialSkillExecution::Execute(USpecialSkillComponent* Comp, const FPotato
 		break;
 
 	case EMonsterSpecialExecution::Projectile:
-		//  정석: 스폰만. DOT/폭발/AoE 등은 “스폰된 액터”가 처리
 		SpawnActorFromPreset(Comp, RowCopy, Target);
 		break;
 

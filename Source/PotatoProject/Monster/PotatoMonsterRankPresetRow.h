@@ -22,7 +22,7 @@ struct POTATOPROJECT_API FPotatoMonsterRankPresetRow : public FTableRowBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Combat")
 	float StructureDamageMultiplier = 1.0f;
 
-	// ✅ 단일 스킬 구조: 스킬 로우에 곱해지는 랭크 스케일
+	//  단일 스킬 구조: 스킬 로우에 곱해지는 랭크 스케일
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Special|Tuning", meta=(ClampMin="0.01"))
 	float SpecialCooldownScale = 1.0f;
 

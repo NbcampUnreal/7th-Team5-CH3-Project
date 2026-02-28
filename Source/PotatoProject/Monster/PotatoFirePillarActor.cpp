@@ -20,7 +20,7 @@
 #include "Building/PotatoStructureData.h"
 #include "EngineUtils.h"
 
-// ✅ VFX 슬롯 구조체는 cpp에서 include
+//  VFX 슬롯 구조체는 cpp에서 include
 #include "PotatoMonsterSpecialSkillPresetRow.h"
 
 APotatoFirePillarActor::APotatoFirePillarActor()
@@ -33,7 +33,7 @@ APotatoFirePillarActor::APotatoFirePillarActor()
 	DamageSphere = CreateDefaultSubobject<USphereComponent>(TEXT("DamageSphere"));
 	DamageSphere->SetupAttachment(Root);
 
-	// ✅ Overlap 안정 세팅
+	//  Overlap 안정 세팅
 	DamageSphere->SetGenerateOverlapEvents(true);
 	DamageSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	DamageSphere->SetCollisionObjectType(ECC_WorldDynamic);
@@ -112,7 +112,7 @@ void APotatoFirePillarActor::InitPillar(
 	DamageCauser = InDamageCauser;
 	InstigatorController = InInstigator;
 
-	// ✅ “불기둥 영역/유지시간”과 “데미지”를 정확히 매칭시키기 위해
+	//  “불기둥 영역/유지시간”과 “데미지”를 정확히 매칭시키기 위해
 	//    DotComponent(지속형) 대신 "틱당 ApplyDamage"로 고정.
 	//    - InDuration/InPolicy는 더 이상 불기둥 딜에 영향 없음(호환 유지용으로만 저장)
 	DotDps = FMath::Max(0.f, InDps);
@@ -169,8 +169,8 @@ void APotatoFirePillarActor::InitPillar(
 	TM.ClearTimer(TimerLife);
 	TM.ClearTimer(TimerTick);
 
-	// ✅ 1) 스폰 타이밍 매칭: 스폰되자마자 1틱 들어가게(딜 체감/연출 매칭)
-	// ✅ 2) 유지시간 매칭: LifeTime 끝나면 Tick 타이머도 즉시 종료
+	//  1) 스폰 타이밍 매칭: 스폰되자마자 1틱 들어가게(딜 체감/연출 매칭)
+	//  2) 유지시간 매칭: LifeTime 끝나면 Tick 타이머도 즉시 종료
 	TM.SetTimer(TimerLife, this, &APotatoFirePillarActor::EndLife, LifeTime, false);
 
 	// 첫 틱 즉시(InitialDelay=0)
@@ -216,7 +216,7 @@ void APotatoFirePillarActor::ApplyVfxFromSlot(const FPotatoSkillVFXSlot& Slot)
 
 void APotatoFirePillarActor::EndLife()
 {
-	// ✅ 종료 시점에 “추가 틱”이 더 들어가는 걸 방지
+	//  종료 시점에 “추가 틱”이 더 들어가는 걸 방지
 	if (UWorld* W = GetWorld())
 	{
 		FTimerManager& TM = W->GetTimerManager();
@@ -308,7 +308,7 @@ void APotatoFirePillarActor::TickDamage()
 	if (DotDps <= 0.f || TickInterval <= 0.f) return;
 	if (DamageRadius <= 0.f) return;
 
-	// ✅ 틱당 데미지 = DPS * TickInterval
+	//  틱당 데미지 = DPS * TickInterval
 	const float DamagePerTick = DotDps * TickInterval;
 	if (DamagePerTick <= 0.f) return;
 

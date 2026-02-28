@@ -1,5 +1,5 @@
 ﻿// PotatoMonsterProjectile.cpp
-// ✅ ExplodeRadius 기반으로 VFX(UNiagaraComponent) 스케일 자동 조정 버전
+//  ExplodeRadius 기반으로 VFX(UNiagaraComponent) 스케일 자동 조정 버전
 //
 // - ExplodeRadius > 0 이면: VFX 스케일 = ExplodeRadius / VfxBaseRadiusUU
 // - ExplodeRadius <= 0 이면: 스케일 원복(1)
@@ -28,6 +28,9 @@
 // Debug draw (optional)
 #include "DrawDebugHelpers.h"
 
+//  Utils (CPP-local helper 치환)
+#include "Monster/Utils/PotatoTargetGeometry.h" // GetTargetBoundsSafe (구조물 AABB 거리 helper 제거용)
+
 // ------------------------------
 // Debug CVar (optional)
 // ------------------------------
@@ -52,7 +55,7 @@ static const TCHAR* NetModeToStr_Proj(UWorld* W)
 }
 
 // ------------------------------
-// ✅ VFX Auto Scale Tuning
+//  VFX Auto Scale Tuning
 // ------------------------------
 // Niagara가 "월드 스케일"에 반응해서 커지는 타입이라는 가정.
 // 너의 VFX가 기본적으로 '반경 약 200uu' 정도로 보이게 제작되어 있다면 200을 유지.
@@ -108,7 +111,7 @@ void APotatoMonsterProjectile::BeginPlay()
 	Super::BeginPlay();
 	SetLifeSpan(LifeSeconds);
 
-	// ✅ 안전: 혹시 스폰 직후 InitSkillDot이 늦게 오거나, BP에서 값이 세팅된 경우 대비
+	//  안전: 혹시 스폰 직후 InitSkillDot이 늦게 오거나, BP에서 값이 세팅된 경우 대비
 	if (IsValid(VFX))
 	{
 		if (ExplodeRadius > 0.f)
@@ -146,7 +149,7 @@ void APotatoMonsterProjectile::InitSkillDot(float InDotDps, float InDotDuration,
 	DotTickInterval = FMath::Max(0.01f, InDotTickInterval); // 0 방지
 	ExplodeRadius = FMath::Max(0.f, InExplodeRadius);
 
-	// ✅ 핵심: ExplodeRadius 기준으로 VFX 자동 스케일 조정
+	//  핵심: ExplodeRadius 기준으로 VFX 자동 스케일 조정
 	if (IsValid(VFX))
 	{
 		if (ExplodeRadius > 0.f)
@@ -296,7 +299,7 @@ void APotatoMonsterProjectile::ApplyDotToActor(AActor* Victim)
 	// DamageCauser는 “투사체”보다 “몬스터(Owner)”가 정책적으로 더 자연스러움
 	AActor* Causer = GetOwner() ? GetOwner() : this;
 
-	// ✅ 정석: 투사체 OnHit에서 DOT 부여
+	//  정석: 투사체 OnHit에서 DOT 부여
 	Dot->ApplyDot(Causer, DotDps, DotDuration, DotTickInterval, /*Row 정책*/ EMonsterDotStackPolicy::RefreshDuration);
 }
 
@@ -304,24 +307,13 @@ void APotatoMonsterProjectile::ApplyDotToActor(AActor* Victim)
 // 구조물 AoE 보강 (Overlap 미검출 대비)
 //  - Origin에서 Radius 안에 “AABB가 걸치면” 포함
 // ------------------------------------------------------------
-
-static float DistPointToAABB2D_Sq_Proj(const FVector& P3, const FVector& BoxCenter3, const FVector& BoxExtent3)
-{
-	const float Px = P3.X;
-	const float Py = P3.Y;
-
-	const float MinX = BoxCenter3.X - BoxExtent3.X;
-	const float MaxX = BoxCenter3.X + BoxExtent3.X;
-	const float MinY = BoxCenter3.Y - BoxExtent3.Y;
-	const float MaxY = BoxCenter3.Y + BoxExtent3.Y;
-
-	const float Cx = FMath::Clamp(Px, MinX, MaxX);
-	const float Cy = FMath::Clamp(Py, MinY, MaxY);
-
-	const float Dx = Px - Cx;
-	const float Dy = Py - Cy;
-	return Dx * Dx + Dy * Dy;
-}
+//
+//  기존 CPP-local DistPointToAABB2D_Sq_Proj 제거
+//  공용 Utils의 GetTargetBoundsSafe + Clamp로 동일 기능 구현(최소 helper 금지 규칙 준수)
+//
+// NOTE:
+// - 여기서는 "점(Origin)과 AABB(구조물 bounds)의 2D 거리^2"만 필요해서
+//   함수로 빼지 않고 GatherStructuresInRadius_AABB 내부에서 바로 계산한다.
 
 void APotatoMonsterProjectile::GatherStructuresInRadius_AABB(const FVector& Origin, float Radius, TArray<AActor*>& OutVictims) const
 {
@@ -343,9 +335,20 @@ void APotatoMonsterProjectile::GatherStructuresInRadius_AABB(const FVector& Orig
 		if (S->CurrentHealth <= 0.f) continue;
 
 		FVector C, E;
-		S->GetActorBounds(true, C, E);
+		GetTargetBoundsSafe(S, C, E);
 
-		const float D2 = DistPointToAABB2D_Sq_Proj(Origin, C, E);
+		const float MinX = C.X - E.X;
+		const float MaxX = C.X + E.X;
+		const float MinY = C.Y - E.Y;
+		const float MaxY = C.Y + E.Y;
+
+		const float Cx = FMath::Clamp(Origin.X, MinX, MaxX);
+		const float Cy = FMath::Clamp(Origin.Y, MinY, MaxY);
+
+		const float Dx = Origin.X - Cx;
+		const float Dy = Origin.Y - Cy;
+		const float D2 = Dx * Dx + Dy * Dy;
+
 		if (D2 <= R2)
 		{
 			OutVictims.AddUnique(S);
@@ -461,7 +464,7 @@ void APotatoMonsterProjectile::DoSweep(const FVector& From, const FVector& To)
 
 		bHitOnce = true;
 
-		// ✅ 스킬 모드(독침): DOT / 폭발 DOT
+		//  스킬 모드(독침): DOT / 폭발 DOT
 		if (bSkillDotMode)
 		{
 			// 서버만 (구조물/닷 안정)
@@ -481,7 +484,7 @@ void APotatoMonsterProjectile::DoSweep(const FVector& From, const FVector& To)
 			return;
 		}
 
-		// ✅ 기본 평타: 단일 Damage
+		//  기본 평타: 단일 Damage
 		if (HasAuthority())
 		{
 			ApplyDirectDamage(Other);
