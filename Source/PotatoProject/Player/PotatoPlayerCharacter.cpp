@@ -86,6 +86,15 @@ void APotatoPlayerCharacter::BeginPlay()
 			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
+	if (InterGuideClass)
+	{
+		InterGuideWidget = CreateWidget<UUserWidget>(GetWorld(), InterGuideClass);
+		if (InterGuideWidget)
+		{
+			InterGuideWidget->AddToViewport();
+			InterGuideWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
 	if (AnimalPopupClass)
 	{
 		AnimalPopupWidget = CreateWidget<UAnimalPopup>(GetWorld(), AnimalPopupClass);
@@ -99,15 +108,7 @@ void APotatoPlayerCharacter::BeginPlay()
 			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
-	if (InterGuideClass)
-	{
-		InterGuideWidget = CreateWidget<UUserWidget>(GetWorld(), InterGuideClass);
-		if (InterGuideWidget)
-		{
-			InterGuideWidget->AddToViewport();
-			InterGuideWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
+
 	if (NPCPopupClass)
 	{
 		NPCPopupWidget = CreateWidget<UNPCPopup>(GetWorld(), NPCPopupClass);
