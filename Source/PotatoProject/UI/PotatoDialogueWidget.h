@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "Core/PotatoDialogueData.h"
+#include "Story/PotatoDialogueData.h"
 #include "PotatoDialogueWidget.generated.h"
 
 class UTextBlock;
@@ -27,9 +27,18 @@ protected:
 	UPROPERTY(Transient, meta = (BindWidgetAnim))
 	TObjectPtr<UWidgetAnimation> PopAnimation;
 	
+	UPROPERTY(EditDefaultsOnly, Category = "Dialogue|Settings")
+	float AutoAdvanceTime = 3.0f;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Dialogue|Settings")
+	TMap<EDialogueSpeaker, TObjectPtr<UTexture2D>> SpeakerPortraits;
+	
 private:
 	void UpdateUI();
+	void TriggerAutoAdvance();
 	
-	TArray<FText> CurrentLines;
+	TArray<FPotatoDialogueLine> CurrentLines;
 	int32 CurrentLineIndex = 0;
+	
+	FTimerHandle AutoAdvanceTimerHandle;
 };

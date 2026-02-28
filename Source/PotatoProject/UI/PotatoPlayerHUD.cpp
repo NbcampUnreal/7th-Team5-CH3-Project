@@ -22,7 +22,7 @@
 #include "Player/PotatoPlayerCharacter.h"
 #include "Player/PotatoPlayerController.h"
 
-#include "Core/PotatoDialogueData.h"
+#include "Story/PotatoDialogueData.h"
 #include "PotatoDialogueWidget.h"
 #include "PotatoHitMarker.h"
 

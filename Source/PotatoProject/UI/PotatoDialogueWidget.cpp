@@ -15,16 +15,6 @@ void UPotatoDialogueWidget::StartDialogue(const FPotatoDialogueRow* DialogueRow)
 	CurrentLines = DialogueRow->DialogueLines;
 	CurrentLineIndex = 0;
 	
-	if (DialogueRow->SpeakerIcon)
-	{
-		SpeakerIcon->SetBrushFromTexture(DialogueRow->SpeakerIcon);
-		SpeakerIcon->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
-	}
-	else
-	{
-		SpeakerIcon->SetVisibility(ESlateVisibility::Collapsed);
-	}
-	
 	UpdateUI();
 	
 	if (PopAnimation)
@@ -32,14 +22,31 @@ void UPotatoDialogueWidget::StartDialogue(const FPotatoDialogueRow* DialogueRow)
 		PlayAnimation(PopAnimation);
 	}
 	
-	SetVisibility(ESlateVisibility::Visible);	
-	UE_LOG(LogTemp, Warning, TEXT("Widget Visibility Set to VISIBLE"));
+	SetVisibility(ESlateVisibility::Visible);
+	
+	// 자동 진행 타이머 시작
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().SetTimer(
+			AutoAdvanceTimerHandle,
+			this,
+			&UPotatoDialogueWidget::TriggerAutoAdvance,
+			AutoAdvanceTime,
+			false);
+	}
 }
 
 bool UPotatoDialogueWidget::AdvanceDialogue()
 {
-	CurrentLineIndex++;
+	UWorld* World = GetWorld();
+	// 중복 스킵 방지: 기존 타이머 클리어
+	if (World)
+	{
+		World->GetTimerManager().ClearTimer(AutoAdvanceTimerHandle);
+	}
 	
+	
+	CurrentLineIndex++;
 	if (CurrentLineIndex >= CurrentLines.Num())
 	{
 		// TODO: 역방향 애니메이션 추가
@@ -55,13 +62,46 @@ bool UPotatoDialogueWidget::AdvanceDialogue()
 		PlayAnimation(PopAnimation, 0.0f, 1, EUMGSequencePlayMode::Forward, 1.5f);
 	}
 	
+	if (World)
+	{
+		World->GetTimerManager().SetTimer(
+			AutoAdvanceTimerHandle,
+			this,
+			&UPotatoDialogueWidget::TriggerAutoAdvance,
+			AutoAdvanceTime,
+			false);
+	}
+	
 	return false;
 }
 
 void UPotatoDialogueWidget::UpdateUI()
 {
-	if (DialogueText && CurrentLines.IsValidIndex(CurrentLineIndex))
+	if (CurrentLines.IsValidIndex(CurrentLineIndex))
 	{
-		DialogueText->SetText(CurrentLines[CurrentLineIndex]);
+		const FPotatoDialogueLine& CurrentLine = CurrentLines[CurrentLineIndex];
+		
+		if (DialogueText)
+		{
+			DialogueText->SetText(CurrentLine.DialogueText);
+		}
+		
+		if (SpeakerIcon)
+		{
+			if (TObjectPtr<UTexture2D>* FoundTexture = SpeakerPortraits.Find(CurrentLine.Speaker))
+			{
+				SpeakerIcon->SetBrushFromTexture(*FoundTexture);
+				SpeakerIcon->SetVisibility(ESlateVisibility::SelfHitTestInvisible);
+			}
+			else
+			{
+				SpeakerIcon->SetVisibility(ESlateVisibility::Collapsed);
+			}
+		}
 	}
+}
+
+void UPotatoDialogueWidget::TriggerAutoAdvance()
+{
+	AdvanceDialogue();
 }
