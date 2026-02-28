@@ -69,20 +69,6 @@ void APotatoGameMode::StartGame()
             break;
         }
     }
-
-    UClass* WarehouseClass = StaticLoadClass(AActor::StaticClass(), nullptr, TEXT("/Game/LHW/BluePrints/BP_WareHouse.BP_WareHouse"));
-    if (!WarehouseActor)
-    {
-        for (TActorIterator<AActor> It(GetWorld(), WarehouseClass); It; ++It)
-        {
-            WarehouseActor = *It;
-            if (WarehouseActor)break;
-        }
-    }
-    if (WarehouseActor)
-    {
-        WarehouseActor->OnDestroyed.AddDynamic(this, &APotatoGameMode::OnHouseDestroyed);
-    }
     
 }
 
@@ -250,6 +236,18 @@ bool APotatoGameMode::CheckVictoryCondition()
 void APotatoGameMode::OnHouseDestroyed(AActor* DestroyedActor)
 {
     EndGame(false, NSLOCTEXT("GameOver", "Warehouse", "창고가 몬스터들에게 남김없이 약탈당했습니다..."));
+}
+
+void APotatoGameMode::RegisterWarehouse(AActor* Warehouse)
+{
+    if (!Warehouse)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("Attempted to register a null Warehouse!"));
+        return;
+    }
+ 
+    WarehouseActor = Warehouse;
+    WarehouseActor->OnDestroyed.AddDynamic(this, &APotatoGameMode::OnHouseDestroyed);
 }
 
 float APotatoGameMode::GetPhaseStartTime(EDayPhase Phase) const

@@ -46,6 +46,9 @@ protected:
     UFUNCTION()
     void OnHouseDestroyed(AActor* DestroyedActor);
     
+    UFUNCTION(BlueprintCallable, Category = "GameOver")
+    void RegisterWarehouse(AActor* Warehouse);
+
 #pragma region DayNightSystem
 private:
     UPROPERTY()

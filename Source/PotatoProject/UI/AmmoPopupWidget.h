@@ -101,7 +101,7 @@ protected:
     UPROPERTY(EditAnywhere, Category = "UI")
     TArray<TObjectPtr<UTexture2D>> AmmoTextures; // 바꿀 텍스트를 에디터에서 할당
 
-    // 탄약 종류 선택 버튼 핸들러 
+    // 탄약 종류 선택 버튼 핸들러 - BP 할당
     UFUNCTION(BlueprintCallable, Category = "AmmoPopup")
     void OnPotatoButtonClicked();
 
