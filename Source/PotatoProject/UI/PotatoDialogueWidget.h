@@ -2,7 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
-#include "PotatoDialogueData.h"
+#include "Core/PotatoDialogueData.h"
 #include "PotatoDialogueWidget.generated.h"
 
 class UTextBlock;

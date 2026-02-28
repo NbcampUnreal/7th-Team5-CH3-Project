@@ -341,7 +341,7 @@ static float DistPointToAABB2D_Sq(const FVector& P3, const FVector& BoxCenter3, 
 	return Dx * Dx + Dy * Dy;
 }
 
-static FVector ClosestPointOnAABB2D(const FVector& P3, const FVector& BoxCenter3, const FVector& BoxExtent3)
+static FVector ClosestPointOnAABB2D_Temp(const FVector& P3, const FVector& BoxCenter3, const FVector& BoxExtent3)
 {
 	FVector Out = P3;
 	Out.X = FMath::Clamp(P3.X, BoxCenter3.X - BoxExtent3.X, BoxCenter3.X + BoxExtent3.X);
@@ -711,7 +711,7 @@ static void GatherStructures_InstantAoE(
 
 			if (!bHit)
 			{
-				const FVector Closest3 = ClosestPointOnAABB2D(Origin3D, Center3, Extent3);
+				const FVector Closest3 = ClosestPointOnAABB2D_Temp(Origin3D, Center3, Extent3);
 				const FVector2D Closest2 = To2D2(Closest3);
 				if (IsPointInCone2D(Origin, FwdN, CosMin, RadiusSq, Closest2))
 				{

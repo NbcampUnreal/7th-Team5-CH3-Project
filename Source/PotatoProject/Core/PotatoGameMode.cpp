@@ -102,7 +102,7 @@ void APotatoGameMode::StartDayPhase()
         CurrentDay++;
     }
     UE_LOG(LogTemp, Log, TEXT("DayPhase %d"), CurrentDay);
-    // 게임 로직 관련 넣고싶은 기능들을
+
     OnDayPhase.Broadcast();
     if (PlayerCharacter) {
         PlayerCharacter->SetIsBuildingMode(true);
@@ -115,6 +115,22 @@ void APotatoGameMode::StartDayPhase()
     if (AnimalController)
     {
         AnimalController->SetIsAnimalPosses(true);
+    }
+    
+    // 오늘 재생할 스토리 다이얼로그가 있는지 확인하고, 있다면 재생
+    if (const FName* ScheduledDialogue = DayPhaseDialogues.Find(CurrentDay))
+    {
+        // DAY 1의 경우, 1.5초를 기다림
+        if (CurrentDay == 1)
+        {
+            FTimerHandle IntroTimerHandle;
+            FTimerDelegate IntroDelegate = FTimerDelegate::CreateUObject(
+                this,
+                &APotatoGameMode::TriggerStoryDialogue,
+                *ScheduledDialogue);
+            GetWorld()->GetTimerManager().SetTimer(IntroTimerHandle, IntroDelegate, 1.5f, false);
+        }
+        TriggerStoryDialogue(*ScheduledDialogue);
     }
 }
 
@@ -134,7 +150,6 @@ void APotatoGameMode::StartWarningPhase()
 
 void APotatoGameMode::StartNightPhase()
 {
-    // 취향껏 추가하십쇼
     OnNightPhase.Broadcast();
     if (PlayerCharacter)
     {
@@ -156,6 +171,12 @@ void APotatoGameMode::StartNightPhase()
     if (AnimalController)
     {
         AnimalController->SetIsAnimalPosses(false);
+    }
+    
+    // 오늘 재생할 스토리 다이얼로그가 있는지 확인하고, 있다면 재생
+    if (const FName* ScheduledDialogue = NightPhaseDialogues.Find(CurrentDay))
+    {
+        TriggerStoryDialogue(*ScheduledDialogue);
     }
 }
 
@@ -222,5 +243,16 @@ float APotatoGameMode::GetPhaseStartTime(EDayPhase Phase) const
         case EDayPhase::Night:   return DayDuration + EveningDuration;
         case EDayPhase::Dawn:    return DayDuration + EveningDuration + NightDuration;
         default:                 return 0.f;
+    }
+}
+
+void APotatoGameMode::TriggerStoryDialogue(FName RowName)
+{
+    if (APotatoPlayerController* PlayerController = Cast<APotatoPlayerController>(GetWorld()->GetFirstPlayerController()))
+    {
+        if (PlayerController->PlayerHUDWidget)
+        {
+            PlayerController->PlayerHUDWidget->PlayDialogue(RowName);
+        }
     }
 }

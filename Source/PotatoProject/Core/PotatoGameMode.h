@@ -144,4 +144,16 @@ private:
     TObjectPtr<AActor> WarehouseActor;
 
 #pragma endregion ResourceSystem
+    
+#pragma region DialogueSystem
+protected:
+    UPROPERTY(EditDefaultsOnly, Category = "Story|Dialogues")
+    TMap<int32, FName> DayPhaseDialogues;
+    
+    UPROPERTY(EditDefaultsOnly, Category = "Story|Dialogues")
+    TMap<int32, FName> NightPhaseDialogues;
+    
+    void TriggerStoryDialogue(FName RowName);
+    
+#pragma endregion DialogueSystem
 };

@@ -83,7 +83,7 @@ static UPrimitiveComponent* FindFirstCollisionPrimitive(AActor* Target)
 	return nullptr;
 }
 
-static FVector ClosestPointOnAABB2D(const FVector& Point, const FVector& Origin, const FVector& Extent)
+static FVector ClosestPointOnAABB2D_Temp(const FVector& Point, const FVector& Origin, const FVector& Extent)
 {
 	FVector Closest;
 	Closest.X = FMath::Clamp(Point.X, Origin.X - Extent.X, Origin.X + Extent.X);
@@ -117,7 +117,7 @@ static bool GetClosestPoint2DOnTarget(AActor* Target, const FVector& From, FVect
 	FVector Origin(0), Extent(0);
 	Target->GetActorBounds(true, Origin, Extent);
 
-	OutClosest2D = ClosestPointOnAABB2D(From, Origin, Extent);
+	OutClosest2D = ClosestPointOnAABB2D_Temp(From, Origin, Extent);
 	OutClosest2D.Z = 0.f;
 	return true;
 }
@@ -147,7 +147,7 @@ static bool ComputeApproachPoint2D(APotatoMonster* M, AActor* Target, float Extr
 	FVector Origin(0), Extent(0);
 	Target->GetActorBounds(true, Origin, Extent);
 
-	const FVector Closest = ClosestPointOnAABB2D(From, Origin, Extent);
+	const FVector Closest = ClosestPointOnAABB2D_Temp(From, Origin, Extent);
 	const FVector Dir = (From - Closest).GetSafeNormal2D();
 
 	OutPoint = Closest + Dir * ExtraOffset;
@@ -247,7 +247,7 @@ bool UBTService_UpdateAttackTarget::ComputeInAttackRange(APotatoMonster* M, AAct
 	FVector Origin(0), Extent(0);
 	Target->GetActorBounds(true, Origin, Extent);
 
-	const FVector Closest = ClosestPointOnAABB2D(From, Origin, Extent);
+	const FVector Closest = ClosestPointOnAABB2D_Temp(From, Origin, Extent);
 	return FVector::DistSquared2D(From, Closest) <= FMath::Square(EffectiveRange + BoundsRangePadding);
 }
 
