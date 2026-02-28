@@ -1,4 +1,13 @@
-﻿#include "PotatoMonster.h"
+﻿// PotatoMonster.cpp (BUILDABLE - HPBar crash guard + Safe preset/apply + AI ensure)
+//
+// 핵심:
+// - BeginPlay 이전 RefreshHPBar/UpdateHPBarLocation 차단
+// - BeginPlay에서 HPBarWidgetComp->InitWidget()로 위젯 생성 보장
+// - ApplyPresetsOnce는 "끝에서만" UI 갱신
+// - OnPossess/Spawn 타이밍에서도 안전하게 돌아가도록 가드 강화
+//
+
+#include "PotatoMonster.h"
 
 #include "AIController.h"
 #include "Animation/AnimInstance.h"
@@ -24,49 +33,15 @@
 #include "PotatoPresetApplier.h"
 #include "PotatoSplitComponent.h"
 
-//  Utils (CPP-local helper 치환)
-#include "Monster/Utils/PotatoAnimUtils.h"              // ComputeMinVisiblePlayRate, PlayMontage(선택), LoadMontageSafe(선택)
+// Utils
+#include "Monster/Utils/PotatoAnimUtils.h"              // ComputeMinVisiblePlayRate
 #include "Monster/Utils/PotatoMonsterRuntimeUtils.h"    // GetAnimInstanceSafe, DisableMovementSafe, ScheduleTimerSafe, ComputeBoundsTopLocation
+#include "Utils/PotatoActorSafety.h"
 
-// ==============================
-// (정책상 최소 helper 1개는 남겨도 됨) : UFUNCTION 존재할 때만 호출
-// - 이건 공용 Utils 정의 목록에 없으므로 여기 1개만 유지
-// ==============================
-static bool CallUFunctionIfExists(UObject* Obj, FName FuncName)
-{
-	if (!Obj) return false;
-	UFunction* Fn = Obj->FindFunction(FuncName);
-	if (!Fn) return false;
-	Obj->ProcessEvent(Fn, nullptr);
-	return true;
-}
-
-// ==============================
+// ------------------------------------------------------------
 // (Death) Ragdoll fallback은 Monster.cpp 고유 정책이므로 유지
-// ==============================
-static void EnableRagdollFallback(APotatoMonster* M)
-{
-	if (!M) return;
+// ------------------------------------------------------------
 
-	if (UCapsuleComponent* Cap = M->GetCapsuleComponent())
-	{
-		Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Cap->SetCollisionResponseToAllChannels(ECollisionResponse::ECR_Ignore);
-	}
-
-	if (USkeletalMeshComponent* Mesh = M->GetMesh())
-	{
-		Mesh->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
-		Mesh->SetCollisionProfileName(TEXT("Ragdoll"));
-
-		Mesh->SetAllBodiesSimulatePhysics(true);
-		Mesh->SetSimulatePhysics(true);
-		Mesh->WakeAllRigidBodies();
-		Mesh->bBlendPhysics = true;
-
-		Mesh->SetAnimationMode(EAnimationMode::AnimationSingleNode);
-	}
-}
 
 // ============================================================
 // UI
@@ -74,7 +49,16 @@ static void EnableRagdollFallback(APotatoMonster* M)
 
 void APotatoMonster::RefreshHPBar()
 {
-	if (!HPBarWidget) return;
+	// BeginPlay 이전에는 UI 건드리지 않음 (OnPossess/FinishSpawning 타이밍 크래시 방지)
+	if (!HasActorBegunPlay()) return;
+
+	// 위젯 생성 보장: InitWidget는 BeginPlay에서 수행하므로 여기선 "획득"만
+	if (!IsValid(HPBarWidget) && HPBarWidgetComp)
+	{
+		HPBarWidget = Cast<UHealthBar>(HPBarWidgetComp->GetUserWidgetObject());
+	}
+
+	if (!IsValid(HPBarWidget)) return;
 	if (MaxHealth <= 0.f) return;
 
 	const float Ratio = Health / MaxHealth;
@@ -83,6 +67,8 @@ void APotatoMonster::RefreshHPBar()
 
 void APotatoMonster::UpdateHPBarLocation()
 {
+	// BeginPlay 이전에는 건드리지 않음 (Bounds/Widget 초기화 타이밍 보호)
+	if (!HasActorBegunPlay()) return;
 	if (!HPBarWidgetComp) return;
 
 	float Z = 0.f;
@@ -110,7 +96,7 @@ APotatoMonster::APotatoMonster()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
-	//  Split Child도 SpawnDefaultController가 정상 동작하도록
+	// Split Child도 SpawnDefaultController가 정상 동작하도록
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
 	CombatComp = CreateDefaultSubobject<UPotatoCombatComponent>(TEXT("CombatComp"));
@@ -124,14 +110,12 @@ APotatoMonster::APotatoMonster()
 
 	SpecialSkillComp = CreateDefaultSubobject<USpecialSkillComponent>(TEXT("SpecialSkillComp"));
 
-	// HardenShell
 	HardenShellComp = CreateDefaultSubobject<UPotatoHardenShellComponent>(TEXT("HardenShellComp"));
 	if (HardenShellComp)
 	{
 		HardenShellComp->Deactivate();
 	}
 
-	// Split
 	SplitComp = CreateDefaultSubobject<UPotatoSplitComponent>(TEXT("SplitComp"));
 }
 
@@ -139,8 +123,10 @@ void APotatoMonster::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// 위젯 생성 보장 (GetUserWidgetObject()가 null인 케이스 방지)
 	if (HPBarWidgetComp)
 	{
+		HPBarWidgetComp->InitWidget();
 		HPBarWidget = Cast<UHealthBar>(HPBarWidgetComp->GetUserWidgetObject());
 	}
 
@@ -149,10 +135,7 @@ void APotatoMonster::BeginPlay()
 
 	DamageTextPool =
 		Cast<APotatoDamageTextPoolActor>(
-			UGameplayStatics::GetActorOfClass(
-				this,
-				APotatoDamageTextPoolActor::StaticClass()
-			)
+			UGameplayStatics::GetActorOfClass(this, APotatoDamageTextPoolActor::StaticClass())
 		);
 
 	// 정확한 피격지점 받기
@@ -172,30 +155,23 @@ void APotatoMonster::BeginPlay()
 }
 
 // ============================================================
-//  Split Child Context / AI Fix
+// Split Child Context / AI Fix
 // ============================================================
 
 void APotatoMonster::CopyPresetContextFrom(const APotatoMonster* Parent)
 {
 	if (!IsValid(Parent)) return;
 
-	//  테이블/컨텍스트 복사 (Split Child가 가장 자주 놓치는 부분)
 	TypePresetTable         = Parent->TypePresetTable;
 	RankPresetTable         = Parent->RankPresetTable;
 	SpecialSkillPresetTable = Parent->SpecialSkillPresetTable;
 	DefaultBehaviorTree     = Parent->DefaultBehaviorTree;
 
-	//  스탯 빌드에 필요한 값들
 	WaveBaseHP           = Parent->WaveBaseHP;
 	PlayerReferenceSpeed = Parent->PlayerReferenceSpeed;
 
-	//  정책: Split이면 보통 동일 타입/랭크 유지
 	MonsterType = Parent->MonsterType;
 	Rank        = Parent->Rank;
-
-	// (옵션) 필요하면 더 복사: LanePoints/WarehouseActor 등
-	// LanePoints = Parent->LanePoints;
-	// WarehouseActor = Parent->WarehouseActor;
 }
 
 void APotatoMonster::EnsureAIControllerAndStartLogic()
@@ -207,18 +183,15 @@ void APotatoMonster::EnsureAIControllerAndStartLogic()
 	}
 
 	AAIController* AICon = Cast<AAIController>(Controller);
-	if (!AICon)
-	{
-		return;
-	}
+	if (!AICon) return;
 
-	// 2) BT 실행 보장 (Split Child "안 움직임"의 핵심 원인 케이스)
+	// 2) BT 실행 보장
 	if (ResolvedBehaviorTree)
 	{
 		AICon->RunBehaviorTree(ResolvedBehaviorTree);
 	}
 
-	// 3) 이동 모드 보정(혹시 DisableMovement 상태로 남는 케이스)
+	// 3) 이동 모드 보정
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		if (MoveComp->MovementMode == MOVE_None)
@@ -249,9 +222,7 @@ void APotatoMonster::ApplyPresetsOnce()
 		DefaultBehaviorTree
 	);
 
-	// ----------------------------
-	// Base Stats Apply
-	// ----------------------------
+	// Base Stats
 	MaxHealth = FinalStats.MaxHP;
 	Health = MaxHealth;
 
@@ -262,17 +233,13 @@ void APotatoMonster::ApplyPresetsOnce()
 
 	ResolvedBehaviorTree = FinalStats.BehaviorTree;
 
-	// ----------------------------
 	// Combat
-	// ----------------------------
 	if (CombatComp)
 	{
 		CombatComp->InitFromStats(FinalStats);
 	}
 
-	// ----------------------------
-	// Split (스펙 주입만! PostDamageCheck 호출 금지)
-	// ----------------------------
+	// Split
 	if (SplitComp)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("[Split] Applied. Enable=%d ThresholdNum=%d MinMaxHp=%.1f MaxDepth=%d"),
@@ -282,21 +249,15 @@ void APotatoMonster::ApplyPresetsOnce()
 			FinalStats.SplitSpec.MaxDepth);
 
 		SplitComp->ApplySpecFromFinalStats(FinalStats.SplitSpec, FinalStats.bEnableSplit);
-		// Depth는 "부모가 자식에게 넘길 때" SetSplitDepth로 처리.
 	}
 
-	// ----------------------------
 	// AnimSet
-	// ----------------------------
 	SetAnimSet(FinalStats.AnimSet);
 
-	// ----------------------------
 	// HardenShell
-	// ----------------------------
 	if (HardenShellComp && FinalStats.bEnableHardenShell)
 	{
 		HardenShellComp->Activate(true);
-
 		HardenShellComp->InitFromFinalStats(
 			FinalStats,
 			GET_MEMBER_NAME_CHECKED(APotatoMonster, Health),
@@ -308,19 +269,21 @@ void APotatoMonster::ApplyPresetsOnce()
 		HardenShellComp->Deactivate();
 	}
 
-	// ----------------------------
 	// SpecialSkill
-	// ----------------------------
 	if (SpecialSkillComp)
 	{
 		SpecialSkillComp->SkillPresetTable = SpecialSkillPresetTable;
 		SpecialSkillComp->InitFromFinalStats(FinalStats);
 	}
 
-	UpdateHPBarLocation();
-	RefreshHPBar();
+	// UI는 BeginPlay 이후에만 + 마지막에만
+	if (HasActorBegunPlay())
+	{
+		UpdateHPBarLocation();
+		RefreshHPBar();
+	}
 
-	//  Split Child 포함: 프리셋 적용 후 AI/BT 보장
+	// AI/BT 보장 (Split child 포함)
 	EnsureAIControllerAndStartLogic();
 }
 
@@ -341,7 +304,7 @@ float APotatoMonster::TakeDamage(
 	float Incoming = FMath::Max(0.f, DamageAmount);
 	if (Incoming <= 0.f) return 0.f;
 
-	// (전) HardenShell 감쇠
+	// HardenShell 감쇠
 	if (HardenShellComp && HardenShellComp->IsActive())
 	{
 		Incoming = HardenShellComp->ModifyIncomingDamage(Incoming);
@@ -349,20 +312,19 @@ float APotatoMonster::TakeDamage(
 		if (Incoming <= 0.f) return 0.f;
 	}
 
-	//  BUG FIX: Applied는 DamageAmount가 아니라 Incoming을 써야 함
 	const float Applied = Incoming;
 	if (Applied <= 0.f) return 0.f;
 
 	Health = FMath::Clamp(Health - Applied, 0.f, MaxHealth);
 	RefreshHPBar();
 
-	// (후) HP% 기반 Harden 전환 체크
+	// Harden post
 	if (HardenShellComp && HardenShellComp->IsActive())
 	{
 		HardenShellComp->PostDamageCheck();
 	}
 
-	//  HP 기반 Split 체크
+	// Split post
 	if (SplitComp)
 	{
 		SplitComp->PostDamageCheck();
@@ -410,17 +372,15 @@ float APotatoMonster::TakeDamage(
 
 		LastDamageTime = Now;
 
-		float BaseZ = GetMesh()
-			? GetMesh()->Bounds.BoxExtent.Z
-			: 80.f;
+		const float BaseZ = GetMesh() ? GetMesh()->Bounds.BoxExtent.Z : 80.f;
 
 		const int32 Dir = (DamageStackIndex % 2 == 0) ? 1 : -1;
 		const float XOffset = Dir * DamageStackOffsetStep * (DamageStackIndex / 2 + 1);
 
-		// [Screen Space] 카메라 Right 벡터 기준 좌우 분산 — 카메라 방향 무관하게 항상 화면 좌우
 		APlayerCameraManager* Cam = UGameplayStatics::GetPlayerCameraManager(this, 0);
 		const FVector CamRight = Cam ? Cam->GetActorRightVector() : FVector::RightVector;
-		FVector DamageLoc =
+
+		const FVector DamageLoc =
 			GetActorLocation()
 			+ CamRight * XOffset
 			+ FVector(0.f, 0.f, BaseZ + 20.f);
@@ -447,7 +407,7 @@ float APotatoMonster::TakeDamage(
 }
 
 // ============================================================
-// 정확한 피격 위치 갱신
+// Hit location update
 // ============================================================
 
 void APotatoMonster::OnMonsterTakePointDamage(AActor* DamagedActor, float Damage,
@@ -485,7 +445,7 @@ void APotatoMonster::OnMonsterTakeRadialDamage(AActor* DamagedActor, float Damag
 }
 
 // ============================================================
-// Hit React (+ Hit VFX)
+// Hit React
 // ============================================================
 
 void APotatoMonster::TryPlayHitReact()
@@ -505,7 +465,7 @@ void APotatoMonster::TryPlayHitReact()
 	const FVector FallbackHitLoc = ComputeBoundsTopLocation(this, 0.5f, 0.f);
 	const FVector HitLoc = bHasLastHitPoint ? LastHitPointWS : FallbackHitLoc;
 
-	// A) 이미 재생 중이면: 스턴만 연장 + 제한적 SFX/VFX
+	// A) already playing
 	if (AnimInst->Montage_IsPlaying(AS->HitReactMontage))
 	{
 		DisableMovementSafe(this);
@@ -549,13 +509,13 @@ void APotatoMonster::TryPlayHitReact()
 		return;
 	}
 
-	// B) 새로 시작은 쿨타임 제한
+	// B) cooldown
 	if (Now - LastHitReactTime < HitReactCooldown) return;
 	LastHitReactTime = Now;
 
 	DisableMovementSafe(this);
 
-	// 시작 SFX 1회
+	// start SFX
 	{
 		const bool bDistanceOK = PotatoFX::PassDistanceGate(this, GetActorLocation(), HitSFXNearDistance, HitSFXFarDistance, HitSFXFarChance);
 		const bool bBudgetOK   = PotatoFX::PassGlobalBudget(Now, 0.08f, 4, PotatoFX::EGlobalBudgetChannel::HitSFX);
@@ -567,7 +527,7 @@ void APotatoMonster::TryPlayHitReact()
 		}
 	}
 
-	// 시작 VFX 1회
+	// start VFX
 	{
 		const bool bHasHitVFX = AS->HitVFX.HasAnyVFX();
 		if (bHasHitVFX && (Now - LastHitVFXTime >= HitVFXCooldown))
@@ -586,7 +546,7 @@ void APotatoMonster::TryPlayHitReact()
 		}
 	}
 
-	// 몽타주 길이 보정
+	// montage
 	const float BaseLen = AS->HitReactMontage->GetPlayLength();
 	float FinalLen = BaseLen;
 
@@ -612,7 +572,7 @@ void APotatoMonster::ResumeMovementAfterHitReact()
 }
 
 // ============================================================
-// Die (+ Death VFX + Ragdoll Fallback)
+// Die
 // ============================================================
 
 void APotatoMonster::StopAIForDead()
@@ -651,7 +611,6 @@ void APotatoMonster::Die()
 
 	const FVector DeathLoc = ComputeBoundsTopLocation(this, 0.2f, 0.f);
 
-	// Death SFX/VFX는 기존 로직 유지 (생략 가능)
 	if (const UPotatoMonsterAnimSet* AS0 = GetAnimSet())
 	{
 		const bool bDistanceOK = PotatoFX::PassDistanceGate(this, GetActorLocation(), DeathSFXNearDistance, DeathSFXFarDistance, DeathSFXFarChance);
@@ -679,7 +638,6 @@ void APotatoMonster::Die()
 		}
 	}
 
-	// 타이머 정리
 	if (World)
 	{
 		GetWorldTimerManager().ClearTimer(HitReactResumeTH);
@@ -688,13 +646,11 @@ void APotatoMonster::Die()
 	StopAIForDead();
 	DisableMovementSafe(this);
 
-	// UI 숨김
 	if (HPBarWidgetComp)
 	{
 		HPBarWidgetComp->SetHiddenInGame(true);
 	}
 
-	// 충돌 끄기
 	SetActorEnableCollision(false);
 
 	float Life = 2.f;
@@ -709,12 +665,10 @@ void APotatoMonster::Die()
 			AnimInst->StopAllMontages(0.05f);
 
 			const float BaseLen = AS->DeathMontage->GetPlayLength();
-
 			float FinalLen = BaseLen;
 			const float PlayRate = ComputeMinVisiblePlayRate(BaseLen, DeathMinVisibleTime, FinalLen);
 
 			const float PlayedLen = AnimInst->Montage_Play(AS->DeathMontage, PlayRate);
-
 			const float EffectiveLen = (PlayedLen > 0.f) ? FMath::Max(PlayedLen, FinalLen) : FinalLen;
 
 			Life = FMath::Max(Life, EffectiveLen + 0.2f);
@@ -724,7 +678,7 @@ void APotatoMonster::Die()
 		return;
 	}
 
-	// (2) Ragdoll Fallback
+	// (2) Ragdoll fallback
 	EnableRagdollFallback(this);
 
 	const float RagdollLife = 3.0f;
@@ -759,15 +713,13 @@ void APotatoMonster::SetAnimSet(UPotatoMonsterAnimSet* InSet)
 
 void APotatoMonster::OnFinalStatsApplied()
 {
-	//  "외부에서 Monster->FinalStats = AppliedStats;" 후 수동 호출하는 용도
-	// ApplyPresetsOnce 내부에서는 이미 Split/Harden/Skill/AnimSet까지 적용하므로
-	// 여기서는 최소 범위만 유지 (필요한 것만)
+	// 외부에서 FinalStats 수동 주입 후 호출하는 용도
 	if (SplitComp)
 	{
 		SplitComp->ApplySpecFromFinalStats(FinalStats.SplitSpec, FinalStats.bEnableSplit);
 	}
 
-	// (선택) 수동 주입 경로까지 커버하고 싶으면 아래를 켜도 됨
+	// 필요시 아래를 켜서 완전 경로도 커버 가능
 	// SetAnimSet(FinalStats.AnimSet);
 	// if (SpecialSkillComp) { SpecialSkillComp->SkillPresetTable = SpecialSkillPresetTable; SpecialSkillComp->InitFromFinalStats(FinalStats); }
 	// EnsureAIControllerAndStartLogic();

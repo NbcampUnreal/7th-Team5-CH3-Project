@@ -23,67 +23,9 @@
 
 #include "Building/PotatoPlaceableStructure.h"
 #include "Building/PotatoStructureData.h"
+#include "Utils/PotatoAnimUtils.h"
 
-// ============================================================
-// Anim Helpers (Override montage -> Fallback basic attack montage)
-// ============================================================
 
-static bool PlayMontage(AActor* Owner, UAnimMontage* Montage, float Rate = 1.f)
-{
-	ACharacter* C = Cast<ACharacter>(Owner);
-	if (!IsValid(C) || C->IsActorBeingDestroyed()) return false;
-
-	USkeletalMeshComponent* Mesh = C->GetMesh();
-	UAnimInstance* Anim = Mesh ? Mesh->GetAnimInstance() : nullptr;
-	if (!Anim || !Montage) return false;
-
-	return Anim->Montage_Play(Montage, Rate) > 0.f;
-}
-
-static UAnimMontage* GetFallbackBasicAttackMontage(APotatoMonster* Monster)
-{
-	if (!Monster) return nullptr;
-	if (!IsValid(Monster->CombatComp)) return nullptr;
-
-	const UPotatoMonsterAnimSet* AnimSet = Monster->CombatComp->GetAnimSet();
-	return AnimSet ? AnimSet->BasicAttackMontage : nullptr;
-}
-
-static bool IsAttackLikeSkill(const FPotatoMonsterSpecialSkillPresetRow& Row)
-{
-	// Execution이 명시되어 있으면 그게 가장 신뢰도 높음
-	if (Row.Execution != EMonsterSpecialExecution::None)
-	{
-		switch (Row.Execution)
-		{
-		case EMonsterSpecialExecution::InstantAoE:
-		case EMonsterSpecialExecution::ContactDOT:
-		case EMonsterSpecialExecution::Projectile:
-			return true;
-		default:
-			return false;
-		}
-	}
-
-	// Execution이 None이면 Shape 기반으로 추정
-	switch (Row.Shape)
-	{
-	case EMonsterSpecialShape::Projectile:
-	case EMonsterSpecialShape::Aura:
-	case EMonsterSpecialShape::Circle:
-	case EMonsterSpecialShape::Cone:
-	case EMonsterSpecialShape::Line:
-		return true;
-	default:
-		return false;
-	}
-}
-
-static UAnimMontage* LoadMontageSafe(const TSoftObjectPtr<UAnimMontage>& Soft)
-{
-	if (Soft.IsNull()) return nullptr;
-	return Soft.LoadSynchronous();
-}
 
 // ============================================================
 // USpecialSkillComponent
