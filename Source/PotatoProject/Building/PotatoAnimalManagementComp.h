@@ -5,13 +5,15 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Core/PotatoEnums.h"
+#include "Core/Interactable.h"
 #include "PotatoAnimalManagementComp.generated.h"
 
 class UBoxComponent;
 class APotatoAnimal;
+class APotatoPlayerController;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class POTATOPROJECT_API UPotatoAnimalManagementComp : public UActorComponent
+class POTATOPROJECT_API UPotatoAnimalManagementComp : public UActorComponent, public IInteractable
 {
 	GENERATED_BODY()
 
@@ -38,6 +40,11 @@ private:
     TObjectPtr<UBoxComponent> CachedBoxComp;
 
 public:
+    // IInteractable
+    virtual void OnPlayerEnter(APotatoPlayerController* PC) override;
+    virtual void OnPlayerExit(APotatoPlayerController* PC) override;
+    virtual void Interact(APotatoPlayerController* PC) override;
+
     // API
     UFUNCTION(BlueprintCallable)
     bool SpawnAnimal(EAnimalType AnimalType);

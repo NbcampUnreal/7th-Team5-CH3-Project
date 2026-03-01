@@ -7,6 +7,7 @@
 #include "Animal/PotatoAnimal.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "Core/PotatoResourceManager.h"
+#include "Player/PotatoPlayerController.h"
 
 UPotatoAnimalManagementComp::UPotatoAnimalManagementComp()
 {
@@ -130,4 +131,23 @@ void UPotatoAnimalManagementComp::RemoveAnimal(APotatoAnimal* Animal)
     // 3. 리스트에서 제거 및 Destory
     AssignedAnimals.Remove(Animal);
     Animal->Destroy();
+}
+
+void UPotatoAnimalManagementComp::OnPlayerEnter(APotatoPlayerController* PC)
+{
+	if (!PC) return;
+	PC->ShowInterGuide();
+}
+
+void UPotatoAnimalManagementComp::OnPlayerExit(APotatoPlayerController* PC)
+{
+	if (!PC) return;
+	PC->HideAnimalPopup();
+	PC->HideInterGuide();
+}
+
+void UPotatoAnimalManagementComp::Interact(APotatoPlayerController* PC)
+{
+	if (!PC) return;
+	PC->ToggleAnimalPopup(this);
 }

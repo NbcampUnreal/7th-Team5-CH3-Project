@@ -36,6 +36,8 @@ void UAmmoPopupWidget::NativeConstruct()
     {
         ChargeButton->OnClicked.AddDynamic(this, &UAmmoPopupWidget::OnChargeButtonClicked);
     }
+
+    SetIsFocusable(true);
 }
 
 void UAmmoPopupWidget::NativeDestruct()
@@ -50,15 +52,12 @@ void UAmmoPopupWidget::NativeDestruct()
 void UAmmoPopupWidget::InitPopup(UPotatoWeaponComponent* InWeaponComp)
 {
     WeaponComp = InWeaponComp;
-
-    // 기본 선택: 감자
     SelectedWeaponData = PotatoWeaponData;
 
-    //int test = SelectedWeaponData->MaxAmmoSize;
-    //GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("PotatoWeaponData: %d!"), test));
     RefreshResourceDisplay();
     RefreshAmmoDisplay();
     RefreshSelectionPanel();
+    ShowDefaultWarning();
 }
 
 void UAmmoPopupWidget::RefreshAll()
@@ -66,6 +65,7 @@ void UAmmoPopupWidget::RefreshAll()
     RefreshResourceDisplay();
     RefreshAmmoDisplay();
     RefreshSelectionPanel();
+    ShowDefaultWarning();
 }
 
 // 탄약 선택 버튼 
@@ -102,14 +102,12 @@ void UAmmoPopupWidget::OnCarrotButtonClicked()
 
 void UAmmoPopupWidget::OnCloseButtonClicked()
 {
-    APlayerController* PlayerController = Cast<APlayerController>(GetWorld()->GetFirstPlayerController());
-    if (PlayerController)
+    SetVisibility(ESlateVisibility::Hidden);
+    if (APlayerController* PC = GetOwningPlayer())
     {
-        SetVisibility(ESlateVisibility::Hidden);
-        PlayerController->bShowMouseCursor = false;
         FInputModeGameOnly InputMode;
-        PlayerController->SetInputMode(InputMode);
-        //RemoveFromParent();
+        PC->SetInputMode(InputMode);
+        PC->bShowMouseCursor = false;
     }
 }
 
@@ -119,24 +117,57 @@ void UAmmoPopupWidget::OnChargeButtonClicked()
     if (!SelectedWeaponData)   GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("SelectedWeaponData!")));
     if (!ResourceManager)   GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("ResourceManager!")));
 
-   
-    if (!WeaponComp || !SelectedWeaponData || !ResourceManager ) return;
-    if(PendingAmmoCount <= 0)
+    if (!WeaponComp || !SelectedWeaponData || !ResourceManager) return;
+
+    if (PendingAmmoCount <= 0)
     {
-        ChargeButton->SetToolTipText(FText::FromString(TEXT("교환할 자원이 없습니다.")));
+        ShowWarning(NSLOCTEXT("AmmoPopup", "NoAmount", "교환할 수량을 선택하세요."));
         return;
     }
 
-    GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("charge!1")));
     const int32 TotalCost = PendingAmmoCount * SelectedWeaponData->AmmoCraftingCost;
-    if (!ResourceManager->RemoveResource(EResourceType::Crop, TotalCost)) return;
+    if (!ResourceManager->RemoveResource(EResourceType::Crop, TotalCost))
+    {
+        ShowWarning(NSLOCTEXT("AmmoPopup", "NotEnoughRes", "자원이 부족합니다."));
+        return;
+    }
 
     WeaponComp->AddAmmoToWeapon(SelectedWeaponData, PendingAmmoCount);
 
     if (SliderValue) SliderValue->SetValue(0.f);
-    GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("charge!2")));
     RefreshAmmoDisplay();
     RefreshSelectionPanel();
+    ShowDefaultWarning();
+}
+
+void UAmmoPopupWidget::ShowWarning(const FText& Message)
+{
+    if (WarningMessage)
+    {
+        WarningMessage->SetText(Message);
+        WarningMessage->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(WarningResetTimer);
+        World->GetTimerManager().SetTimer(WarningResetTimer, [this]()
+        {
+            ShowDefaultWarning();
+        }, 2.0f, false);
+    }
+}
+
+void UAmmoPopupWidget::ShowDefaultWarning()
+{
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(WarningResetTimer);
+    }
+    if (WarningMessage)
+    {
+        WarningMessage->SetVisibility(ESlateVisibility::Collapsed);
+    }
 }
 
 // 내부 갱신
@@ -277,4 +308,16 @@ void UAmmoPopupWidget::ChangeAmmo(int index)
         break;
     }
     //RefreshSelectionPanel();
+}
+
+FReply UAmmoPopupWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+{
+    const FKey Key = InKeyEvent.GetKey();
+
+    if (Key == EKeys::One   || Key == EKeys::NumPadOne)   { ChangeAmmo(0); return FReply::Handled(); }
+    if (Key == EKeys::Two   || Key == EKeys::NumPadTwo)   { ChangeAmmo(1); return FReply::Handled(); }
+    if (Key == EKeys::Three || Key == EKeys::NumPadThree) { ChangeAmmo(2); return FReply::Handled(); }
+    if (Key == EKeys::Four  || Key == EKeys::NumPadFour)  { ChangeAmmo(3); return FReply::Handled(); }
+
+    return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
 }

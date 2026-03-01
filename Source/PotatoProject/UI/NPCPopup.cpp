@@ -63,8 +63,6 @@ void UNPCPopup::InitPopup(UPotatoNPCManagementComp* InManagementComp)
     ManagementComp = InManagementComp;
     SelectedListItem = nullptr;
 
-    // 건물에 등록된 NPCClassMap의 첫 번째 타입을 자동 결정
-    // LumberMill -> Lumberjack, Mine -> Miner 등 건물 BP에서 설정한 값 사용
     if (ManagementComp && ManagementComp->NPCClassMap.Num() > 0)
     {
         TArray<ENPCType> Keys;
@@ -85,6 +83,7 @@ void UNPCPopup::InitPopup(UPotatoNPCManagementComp* InManagementComp)
     RefreshHireCostPanel();
     RefreshTotalCost();
     RefreshEmployeeAmount();
+    ShowDefaultWarning();
 }
 
 // ============================================================
@@ -95,23 +94,27 @@ void UNPCPopup::OnHireButtonClicked()
 {
     if (!ManagementComp) return;
 
-    ManagementComp->HireNPC(CachedNPCType);
+    if (!ManagementComp->HireNPC(CachedNPCType))
+    {
+        ShowWarning(NSLOCTEXT("NPCPopup", "NotEnoughRes", "자원이 부족합니다."));
+        return;
+    }
 
     RefreshNPCList();
     RefreshHireCostPanel();
     RefreshTotalCost();
     RefreshEmployeeAmount();
+    ShowDefaultWarning();
 }
 
 void UNPCPopup::OnCloseButtonClicked()
 {
-    APlayerController* PlayerController = Cast<APlayerController>(GetWorld()->GetFirstPlayerController());
-    if (PlayerController)
+    SetVisibility(ESlateVisibility::Hidden);
+    if (APlayerController* PC = GetOwningPlayer())
     {
-        SetVisibility(ESlateVisibility::Hidden);
-        PlayerController->bShowMouseCursor = false;
         FInputModeGameOnly InputMode;
-        PlayerController->SetInputMode(InputMode);
+        PC->SetInputMode(InputMode);
+        PC->bShowMouseCursor = false;
     }
     //RemoveFromParent();
 }
@@ -265,4 +268,35 @@ void UNPCPopup::RefreshEmployeeAmount()
     const int32 Count = ManagementComp->AssignedNPCs.Num();
     EmployeeAmount->SetText(FText::Format(
         FText::FromString(TEXT("고용 현황: {0}명")), FText::AsNumber(Count)));
+}
+
+void UNPCPopup::ShowWarning(const FText& Message)
+{
+    if (WarningMessage)
+    {
+        WarningMessage->SetText(Message);
+        WarningMessage->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(WarningResetTimer);
+        World->GetTimerManager().SetTimer(WarningResetTimer, [this]()
+        {
+            ShowDefaultWarning();
+        }, 2.0f, false);
+    }
+}
+
+void UNPCPopup::ShowDefaultWarning()
+{
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(WarningResetTimer);
+    }
+    if (WarningMessage)
+    {
+        WarningMessage->SetText(NSLOCTEXT("NPCPopup", "DefaultWarning", "주의 - 유지비 미지급 시 NPC가 떠납니다."));
+        WarningMessage->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
 }

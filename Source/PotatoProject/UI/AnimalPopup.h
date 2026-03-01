@@ -118,6 +118,10 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UButton> SlaughterButton;    // 도축
 
+    /** 경고/안내 텍스트 */
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UTextBlock> WarningMessage;
+
     //instance할 class 원본
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
     TSubclassOf<UAnimalListItem> AnimalListItemClass;
@@ -146,6 +150,8 @@ private:
     void RefreshBuyCostPanel();
     void RefreshTotalProduction();
     void RefreshCattleAmount();
+    void ShowWarning(const FText& Message);
+    void ShowDefaultWarning();
 
     // 런타임 상태
     UPROPERTY()
@@ -158,4 +164,6 @@ private:
     TObjectPtr<UAnimalListItem> SelectedListItem;
 
     EAnimalType SelectedAnimalType = EAnimalType::Cow;
+
+    FTimerHandle WarningResetTimer;
 };

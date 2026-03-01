@@ -2,7 +2,6 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Core/Interactable.h"
 #include "PotatoPlaceableStructure.generated.h"
 
 class UPotatoStructureData;
@@ -13,7 +12,7 @@ class UPotatoProductionComponent;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnStructureInteracted, AActor*, Interactor);
 
 UCLASS()
-class POTATOPROJECT_API APotatoPlaceableStructure : public AActor, public IInteractable
+class POTATOPROJECT_API APotatoPlaceableStructure : public AActor
 {
 	GENERATED_BODY()
 	
@@ -49,8 +48,6 @@ public:
     UPROPERTY(EditDefaultsOnly, Category = "UI")
     float HPBarHideDelay = 2.0f;
 
-	virtual void Interact(AActor* Interactor) override;
-	
 	// 헬퍼 함수
 	/** 이 구조물이 파괴될 수 있으면 true를 반환 */
 	UFUNCTION(BlueprintCallable, Category = "Stats")

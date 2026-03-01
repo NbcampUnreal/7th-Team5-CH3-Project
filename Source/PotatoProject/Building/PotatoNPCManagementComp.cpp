@@ -10,6 +10,7 @@
 #include "Core/PotatoRewardGenerator.h"
 #include "Core/PotatoGameMode.h"
 #include "Core/PotatoNPCRegistrySubsystem.h"
+#include "Player/PotatoPlayerController.h"
 
 UPotatoNPCManagementComp::UPotatoNPCManagementComp()
 {
@@ -188,4 +189,23 @@ int32 UPotatoNPCManagementComp::ProcessNPCMaintenance(TMap<ENPCType, int32>& Out
     }
 
     return TotalPaid;
+}
+
+void UPotatoNPCManagementComp::OnPlayerEnter(APotatoPlayerController* PC)
+{
+	if (!PC) return;
+	PC->ShowInterGuide();
+}
+
+void UPotatoNPCManagementComp::OnPlayerExit(APotatoPlayerController* PC)
+{
+	if (!PC) return;
+	PC->HideNPCPopup();
+	PC->HideInterGuide();
+}
+
+void UPotatoNPCManagementComp::Interact(APotatoPlayerController* PC)
+{
+	if (!PC) return;
+	PC->ToggleNPCPopup(this);
 }

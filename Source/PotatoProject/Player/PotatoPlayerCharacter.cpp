@@ -8,15 +8,10 @@
 #include "Combat/PotatoWeaponComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "../Core/PotatoGameMode.h" 
-#include "../UI/AmmoPopupWidget.h"
-#include "../UI/AnimalPopup.h"
-#include "UI/PauseMenu.h"
 #include "Components/CapsuleComponent.h"
-#include "../Building/PotatoAnimalManagementComp.h"
-#include "../UI/NPCPopup.h"
-#include "../Building/PotatoNPCManagementComp.h"
 #include "Combat/PotatoWeaponData.h"
 #include "Core/PotatoDayNightCycle.h"
+#include "Core/Interactable.h"
 
 APotatoPlayerCharacter::APotatoPlayerCharacter()
 {
@@ -55,12 +50,6 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 	//빌드모드 가능여부
 	IsBuildingMode = true;
 
-	// 동물관리 가능 여부
-	IsBarnMode = false;
-	// NPC 관리 가능 여부
-	IsNPCMode = false;
-	//IsAmmoProduct = false;
-
 	if (GetCapsuleComponent())
 	{
 		GetCapsuleComponent()->OnComponentBeginOverlap.AddDynamic(this, &APotatoPlayerCharacter::OnOverlapBegin);
@@ -77,59 +66,6 @@ APotatoPlayerCharacter::APotatoPlayerCharacter()
 void APotatoPlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	if (AmmoPopupClass)
-	{
-		AmmoPopupWidget = CreateWidget<UAmmoPopupWidget>(GetWorld(), AmmoPopupClass);
-		AmmoPopupWidget->InitPopup(WeaponComponent);
-		if (AmmoPopupWidget)
-		{
-			AmmoPopupWidget->AddToViewport();
-			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
-	if (InterGuideClass)
-	{
-		InterGuideWidget = CreateWidget<UUserWidget>(GetWorld(), InterGuideClass);
-		if (InterGuideWidget)
-		{
-			InterGuideWidget->AddToViewport();
-			InterGuideWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
-	if (AnimalPopupClass)
-	{
-		AnimalPopupWidget = CreateWidget<UAnimalPopup>(GetWorld(), AnimalPopupClass);
-		/*if(AnimalManagementComp)
-		{
-			AnimalPopupWidget->InitPopup(AnimalManagementComp);
-		}*/
-		if (AnimalPopupWidget)
-		{
-			AnimalPopupWidget->AddToViewport();
-			AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
-
-	if (NPCPopupClass)
-	{
-		NPCPopupWidget = CreateWidget<UNPCPopup>(GetWorld(), NPCPopupClass);
-		if (NPCPopupWidget)
-		{
-			NPCPopupWidget->AddToViewport();
-			NPCPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
-
-    if (PauseMenuClass)
-    {
-        PauseMenuWidget = CreateWidget<UUserWidget>(GetWorld(), PauseMenuClass);
-        if (PauseMenuWidget)
-        {
-            PauseMenuWidget->AddToViewport();
-            PauseMenuWidget->SetVisibility(ESlateVisibility::Hidden);
-        }
-    }
-
 }
 
 void APotatoPlayerCharacter::Tick(float DeltaTime)
@@ -297,11 +233,11 @@ void APotatoPlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerIn
 			if (PlayerController->NextDialogueAction)
 			{
 				EnhancedInput->BindAction(
-					PlayerController->NextDialogueAction,
-					ETriggerEvent::Started,
-					this,
-					&APotatoPlayerCharacter::OnNextDialogue
-					);
+				 PlayerController->NextDialogueAction,
+				 ETriggerEvent::Started,
+				 this,
+				 &APotatoPlayerCharacter::OnNextDialogue
+				 );
 			}
 		}
 	}
@@ -343,15 +279,12 @@ void APotatoPlayerCharacter::StopJump(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Look(const FInputActionValue& Value)
 {
-	bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
-	bool IsAnimalWidget= AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
-	bool IsNPCWidget = NPCPopupWidget && !NPCPopupWidget->IsVisible();
-	if (GetController() != nullptr && IsAmmoWidget && IsAnimalWidget && IsNPCWidget)
-	{
-		const FVector2D LookAxisVector = Value.Get<FVector2D>();
-		AddControllerYawInput(LookAxisVector.X);
-		AddControllerPitchInput(LookAxisVector.Y);
-	}
+    if (GetController() != nullptr)
+    {
+        const FVector2D LookAxisVector = Value.Get<FVector2D>();
+        AddControllerYawInput(LookAxisVector.X);
+        AddControllerPitchInput(LookAxisVector.Y);
+    }
 }
 
 void APotatoPlayerCharacter::StartSprint(const FInputActionValue& Value)
@@ -410,13 +343,10 @@ void APotatoPlayerCharacter::CameraZoom(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::Attack(const FInputActionValue& Value)
 {
-	bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
-	bool IsAnimalWidget = AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
-	bool IsNPCWidget = NPCPopupWidget && !NPCPopupWidget->IsVisible();
-	if (WeaponComponent && IsAmmoWidget && IsAnimalWidget && IsNPCWidget)
-	{
-		WeaponComponent->Fire();
-	}
+    if (WeaponComponent)
+    {
+        WeaponComponent->Fire();
+    }
 }
 
 void APotatoPlayerCharacter::AttackHeld(const FInputActionValue& Value)
@@ -426,13 +356,7 @@ void APotatoPlayerCharacter::AttackHeld(const FInputActionValue& Value)
         return;
     }
 
-    bool IsAmmoWidget = AmmoPopupWidget && !AmmoPopupWidget->IsVisible();
-    bool IsAnimalWidget = AnimalPopupWidget && !AnimalPopupWidget->IsVisible();
-    bool IsNPCWidget = NPCPopupWidget && !NPCPopupWidget->IsVisible();
-    if (IsAmmoWidget && IsAnimalWidget && IsNPCWidget)
-    { 
-        WeaponComponent->Fire();
-    }
+    WeaponComponent->Fire();
 }
 
 void APotatoPlayerCharacter::Reload(const FInputActionValue& Value)
@@ -445,42 +369,23 @@ void APotatoPlayerCharacter::Reload(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::WeaponChange(const FInputActionValue& Value)
 {
-	if (Value.Get<bool>() )
-	{
-		APlayerController* PlayerController = Cast<APlayerController>(GetController());
-		if (!PlayerController)
-		{
-			return;
-		}
-		
-		int32 SlotIndex = 0;
-		
-		if (PlayerController->IsInputKeyDown(EKeys::One) || PlayerController->IsInputKeyDown(EKeys::NumPadOne))
-		{
-			SlotIndex = 0;
-		}
-		if (PlayerController->IsInputKeyDown(EKeys::Two) || PlayerController->IsInputKeyDown(EKeys::NumPadTwo))
-		{
-			SlotIndex = 1;
-		}
-		if (PlayerController->IsInputKeyDown(EKeys::Three) || PlayerController->IsInputKeyDown(EKeys::NumPadThree))
-		{
-			SlotIndex = 2;
-		}
-		if (PlayerController->IsInputKeyDown(EKeys::Four) || PlayerController->IsInputKeyDown(EKeys::NumPadFour))
-		{
-			SlotIndex = 3;
-		}
-		
-		if (AmmoPopupWidget ) { //&& AmmoPopupWidget->IsVisible()
-			//0 1 2 3 탄환충전할 거 선택
-			AmmoPopupWidget->ChangeAmmo(SlotIndex);
-		}
-		if(WeaponComponent){
-			WeaponComponent->EquipWeapon(SlotIndex);
-		}
-		
-	}
+    if (Value.Get<bool>())
+    {
+        APlayerController* PlayerController = Cast<APlayerController>(GetController());
+        if (!PlayerController) return;
+
+        int32 SlotIndex = 0;
+
+        if (PlayerController->IsInputKeyDown(EKeys::One)   || PlayerController->IsInputKeyDown(EKeys::NumPadOne))   SlotIndex = 0;
+        if (PlayerController->IsInputKeyDown(EKeys::Two)   || PlayerController->IsInputKeyDown(EKeys::NumPadTwo))   SlotIndex = 1;
+        if (PlayerController->IsInputKeyDown(EKeys::Three) || PlayerController->IsInputKeyDown(EKeys::NumPadThree)) SlotIndex = 2;
+        if (PlayerController->IsInputKeyDown(EKeys::Four)  || PlayerController->IsInputKeyDown(EKeys::NumPadFour))  SlotIndex = 3;
+
+        if (WeaponComponent)
+        {
+            WeaponComponent->EquipWeapon(SlotIndex);
+        }
+    }
 }
 
 void APotatoPlayerCharacter::OnToggleBuildMode(const FInputActionValue& Value)
@@ -506,52 +411,29 @@ void APotatoPlayerCharacter::SetIsBuildingMode(bool BuildingMode)
 
 void APotatoPlayerCharacter::OnAmmoMode(const FInputActionValue& Value)
 {
-    if (UPotatoDayNightCycle* DNC = GetWorld()->GetSubsystem<UPotatoDayNightCycle>())
-    {
-        if (DNC->GetCurrentPhase() == EDayPhase::Night)
-        {
-            // HUD 메시지 표시
-            if (APotatoPlayerController* PlayerController = Cast<APotatoPlayerController>(GetController()))
-            {
-                PlayerController->ShowHUDMessage(NSLOCTEXT("HUD", "NightAmmo", "밤에는 탄약을 교환할 수 없습니다"), 1.5f, true);
-                return;
-            }
-        }
-    }
-
-    APlayerController* PlayerController = Cast<APlayerController>(GetController());
-
-
-	if (AmmoPopupWidget && PlayerController)
+	if (UPotatoDayNightCycle* DNC = GetWorld()->GetSubsystem<UPotatoDayNightCycle>())
 	{
-		if (AmmoPopupWidget->IsVisible()) {
-			AmmoPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-			PlayerController->bShowMouseCursor = false;
-			FInputModeGameOnly InputMode;
-			PlayerController->SetInputMode(InputMode);
+		if (DNC->GetCurrentPhase() == EDayPhase::Night)
+		{
+			if (APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetController()))
+			{
+				PC->ShowHUDMessage(NSLOCTEXT("HUD", "NightAmmo", "밤에는 탄약을 교환할 수 없습니다"), 1.5f, true);
+			}
+			return;
 		}
-		else {
-			AmmoPopupWidget->SetVisibility(ESlateVisibility::Visible);
-			PlayerController->bShowMouseCursor = true;
-			AmmoPopupWidget->RefreshAll();
-		}
+	}
+
+	if (APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetController()))
+	{
+		PC->ToggleAmmoPopup();
 	}
 }
 
 void APotatoPlayerCharacter::OnPauseGame(const FInputActionValue& Value)
 {
-    APotatoPlayerController* PlayerController = Cast<APotatoPlayerController>(GetController());
-    if (!PlayerController && !PauseMenuClass)
+    if (APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetController()))
     {
-        return;
-    }
-
-    UPauseMenu* PauseMenu = CreateWidget<UPauseMenu>(GetWorld(), PauseMenuClass);
-    if (PauseMenu)
-    {
-        PlayerController->SetPause(true);
-        PauseMenu->AddToViewport();
-        PlayerController->SetUIMode(true, PauseMenu);
+        PC->TogglePauseMenu();
     }
 }
 
@@ -696,60 +578,27 @@ float APotatoPlayerCharacter::TakeDamage(float DamageAmount, FDamageEvent const&
 
 void APotatoPlayerCharacter::CloseAllPopups()
 {
-    APlayerController* PC = Cast<APlayerController>(GetController());
-
-    auto ClosePopup = [&](UUserWidget* Widget)
-    {
-        if (Widget && Widget->IsVisible())
-        {
-            Widget->SetVisibility(ESlateVisibility::Hidden);
-        }
-    };
-
-    ClosePopup(AmmoPopupWidget);
-    ClosePopup(AnimalPopupWidget);
-    ClosePopup(NPCPopupWidget);
-
-    // 팝업이 하나라도 열려있었으면 마우스/입력 모드 복구
-    if (PC)
-    {
-        PC->bShowMouseCursor = false;
-        FInputModeGameOnly InputMode;
-        PC->SetInputMode(InputMode);
-    }
+	if (APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetController()))
+	{
+		PC->CloseAllPopups();
+	}
 }
 
 void APotatoPlayerCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
 	bool bFromSweep, const FHitResult& SweepResult)
 {
+	if (!OtherActor || OtherActor == this) return;
 
-	bool ActorCheck = OtherActor && (OtherActor != this);
-	if (ActorCheck && OtherActor->GetName().Contains(TEXT("Barn")))
+	APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetController());
+	if (!PC) return;
+
+	TArray<UActorComponent*> Comps = OtherActor->GetComponentsByInterface(UInteractable::StaticClass());
+	for (UActorComponent* Comp : Comps)
 	{
-		UPotatoAnimalManagementComp* ManagementComp = OtherActor->FindComponentByClass<UPotatoAnimalManagementComp>();
-		if (ManagementComp)
+		if (IInteractable* Interactable = Cast<IInteractable>(Comp))
 		{
-			AnimalPopupWidget->InitPopup(ManagementComp);
-		}
-		IsBarnMode = true;
-		if (InterGuideWidget && !InterGuideWidget->IsVisible())
-		{
-			InterGuideWidget->SetVisibility(ESlateVisibility::Visible);
-		}
-	}
-	if (ActorCheck && ( OtherActor->GetName().Contains(TEXT("LumberMill"))
-	   || OtherActor->GetName().Contains(TEXT("Mine")) )
-		)
-	{
-		UPotatoNPCManagementComp* ManagementComp = OtherActor->FindComponentByClass<UPotatoNPCManagementComp>();
-		if (ManagementComp) {
-			NPCPopupWidget->InitPopup(ManagementComp);
-		}
-		IsNPCMode = true;
-		if (InterGuideWidget && !InterGuideWidget->IsVisible())
-		{
-			InterGuideWidget->SetVisibility(ESlateVisibility::Visible);
+			Interactable->OnPlayerEnter(PC);
 		}
 	}
 }
@@ -757,79 +606,37 @@ void APotatoPlayerCharacter::OnOverlapBegin(UPrimitiveComponent* OverlappedComp,
 void APotatoPlayerCharacter::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (OtherActor && OtherActor->GetName().Contains(TEXT("Barn")))
-	{
-		IsBarnMode = false;
-		APlayerController* PlayerController = Cast<APlayerController>(GetController());
-		if (AnimalPopupWidget && PlayerController)
-		{
-			if (AnimalPopupWidget->IsVisible()) {
-				AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-				PlayerController->bShowMouseCursor = false;
-				FInputModeGameOnly InputMode;
-				PlayerController->SetInputMode(InputMode);
-			}
-		}
-		if (InterGuideWidget && InterGuideWidget->IsVisible())
-		{
-			InterGuideWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
-	}
-	if (OtherActor && (OtherActor->GetName().Contains(TEXT("LumberMill"))
-		|| OtherActor->GetName().Contains(TEXT("Mine")) ) 
-		)
-	{
-		IsNPCMode = false;
-		APlayerController* PlayerController = Cast<APlayerController>(GetController());
-		if (NPCPopupWidget && PlayerController)
-		{
+	if (!OtherActor) return;
 
-			if (NPCPopupWidget->IsVisible()) {
-				NPCPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-				PlayerController->bShowMouseCursor = false;
-				FInputModeGameOnly InputMode;
-				PlayerController->SetInputMode(InputMode);
-			}
-		}
-		if (InterGuideWidget && InterGuideWidget->IsVisible())
+	APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetController());
+	if (!PC) return;
+
+	TArray<UActorComponent*> Comps = OtherActor->GetComponentsByInterface(UInteractable::StaticClass());
+	for (UActorComponent* Comp : Comps)
+	{
+		if (IInteractable* Interactable = Cast<IInteractable>(Comp))
 		{
-			InterGuideWidget->SetVisibility(ESlateVisibility::Hidden);
+			Interactable->OnPlayerExit(PC);
 		}
 	}
 }
 
 void APotatoPlayerCharacter::OnBarnMode(const FInputActionValue& Value)
 {
-	APlayerController* PlayerController = Cast<APlayerController>(GetController());
-	if (IsBarnMode){
-		if (AnimalPopupWidget && PlayerController)
-		{
-			if (AnimalPopupWidget->IsVisible()) {
-				AnimalPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-				PlayerController->bShowMouseCursor = false;
-				FInputModeGameOnly InputMode;
-				PlayerController->SetInputMode(InputMode);
-			}
-			else {
-				AnimalPopupWidget->SetVisibility(ESlateVisibility::Visible);
-				PlayerController->bShowMouseCursor = true;
-				//AnimalPopupWidget->RefreshAll();
-			}
-		}
-	}
-	if (IsNPCMode)
+	APotatoPlayerController* PC = Cast<APotatoPlayerController>(GetController());
+	if (!PC) return;
+
+	TArray<AActor*> OverlappingActors;
+	GetOverlappingActors(OverlappingActors);
+	for (AActor* Actor : OverlappingActors)
 	{
-		if (NPCPopupWidget && PlayerController)
+		if (!Actor) continue;
+		TArray<UActorComponent*> Comps = Actor->GetComponentsByInterface(UInteractable::StaticClass());
+		for (UActorComponent* Comp : Comps)
 		{
-			if (NPCPopupWidget->IsVisible()) {
-				NPCPopupWidget->SetVisibility(ESlateVisibility::Hidden);
-				PlayerController->bShowMouseCursor = false;
-				FInputModeGameOnly InputMode;
-				PlayerController->SetInputMode(InputMode);
-			}
-			else {
-				NPCPopupWidget->SetVisibility(ESlateVisibility::Visible);
-				PlayerController->bShowMouseCursor = true;
+			if (IInteractable* Interactable = Cast<IInteractable>(Comp))
+			{
+ 				Interactable->Interact(PC);
 			}
 		}
 	}

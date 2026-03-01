@@ -33,6 +33,7 @@ public:
 protected:
     virtual void NativeConstruct() override;
     virtual void NativeDestruct() override;
+    virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
     // 헤더 
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
@@ -98,10 +99,15 @@ protected:
     TObjectPtr<UButton> ChargeButton;
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UImage> AmmoImage;
+
+    /** 경고/안내 텍스트 */
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UTextBlock> WarningMessage;
+
     UPROPERTY(EditAnywhere, Category = "UI")
     TArray<TObjectPtr<UTexture2D>> AmmoTextures; // 바꿀 텍스트를 에디터에서 할당
 
-    // 탄약 종류 선택 버튼 핸들러 
+    // 탄약 종류 선택 버튼 핸들러 - BP 할당
     UFUNCTION(BlueprintCallable, Category = "AmmoPopup")
     void OnPotatoButtonClicked();
 
@@ -129,19 +135,13 @@ private:
     UFUNCTION()
     void OnResourceChanged(EResourceType Type, int32 NewValue);
 
-    // 선택된 무기 데이터로 우측 패널(비용·충전량) 갱신
     void RefreshSelectionPanel();
-
-    // 보유 자원 텍스트 갱신
     void RefreshResourceDisplay();
-
-    // 탄약 현재/최대 텍스트 전체 갱신
     void RefreshAmmoDisplay();
-
-
+    void ShowWarning(const FText& Message);
+    void ShowDefaultWarning();
 
     // 에디터에서 설정할 무기 DataAsset 레퍼런스
-    // WeaponSlots 순서: [0]=감자, [1]=옥수수, [2]=호박, [3]=당근
     UPROPERTY(EditDefaultsOnly, Category = "AmmoPopup|Setup")
     TObjectPtr<UPotatoWeaponData> PotatoWeaponData;
 
@@ -166,5 +166,5 @@ private:
 
     int32 PendingAmmoCount = 0;
 
-    FString NowAmmo = "감자";
+    FTimerHandle WarningResetTimer;
 };

@@ -51,19 +51,6 @@ void APotatoPlaceableStructure::BeginPlay()
 	}
 }
 
-void APotatoPlaceableStructure::Interact(AActor* Interactor)
-{
-	if (IsDestructible() && CurrentHealth <= 0.0f)
-	{
-		return;
-	}
-	
-	if (OnInteractedDelegate.IsBound())
-	{
-		OnInteractedDelegate.Broadcast(Interactor);
-	}
-}
-
 bool APotatoPlaceableStructure::IsDestructible() const
 {
 	if (StructureData)

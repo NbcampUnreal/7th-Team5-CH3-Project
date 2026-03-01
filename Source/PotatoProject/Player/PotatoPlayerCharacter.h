@@ -8,10 +8,6 @@ class UCameraComponent;
 class UBuildingSystemComponent;
 class USpringArmComponent;
 class UPotatoWeaponComponent;
-class UAmmoPopupWidget;
-class UAnimalPopup;
-class UNPCPopup;
-class UPotatoAnimalManagementComp;
 
 struct FInputActionValue;
 
@@ -36,8 +32,6 @@ private:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
 	UPotatoWeaponComponent* WeaponComponent;
-	//UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components", meta = (AllowPrivateAccess = "true"))
-	//UPotatoAnimalManagementComp* AnimalManagementComp;
 
 protected:
 	// Camera Settings
@@ -103,54 +97,22 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Combat|Camera")
 	TSubclassOf<UCameraShakeBase> HitCameraShakeClass;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-	TSubclassOf<UUserWidget> AmmoPopupClass;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-	TSubclassOf<UUserWidget> AnimalPopupClass;
-	
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-	TSubclassOf<UUserWidget> NPCPopupClass;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-	TSubclassOf<UUserWidget> InterGuideClass;
-	// 생성된 위젯을 참조할 변수
-	UPROPERTY()
-	UAmmoPopupWidget* AmmoPopupWidget;
-	UPROPERTY()
-	UAnimalPopup* AnimalPopupWidget;
-	UPROPERTY()
-    UNPCPopup* NPCPopupWidget;
-	
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-    TSubclassOf<UUserWidget> PauseMenuClass;
-
-    UPROPERTY()
-    TObjectPtr<UUserWidget> PauseMenuWidget;
-
-	UPROPERTY()
-	TObjectPtr<UUserWidget> InterGuideWidget;
-
 private:
 	float TargetCameraDistance;
 	bool IsBuildingMode;
-	bool IsBarnMode;
-	bool IsNPCMode;
 	float LastHitReactionTime = -10.0f;
-	//bool IsAmmoProduct;
 	FTimerHandle DeathTimerHandle;
-	
-	// Functions
     FTimerHandle RegenDelayTimerHandle;
     FTimerHandle RegenTickTimerHandle;
 
-    void StartRegenCooldown(); // TakeDamage에서 호출
-    void TickRegen(); // 반복 회복 틱
+    void StartRegenCooldown();
+    void TickRegen();
 
 public:
 	APotatoPlayerCharacter();
 	
 	void SetIsBuildingMode(bool BuildingMode);
+	UPotatoWeaponComponent* GetWeaponComponent() const { return WeaponComponent; }
 
 	float GetCurrentHP() const { return CurrentHP; }
 	float GetMaxHP() const { return MaxHP; }

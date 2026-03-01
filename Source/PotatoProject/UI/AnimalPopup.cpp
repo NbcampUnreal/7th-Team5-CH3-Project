@@ -44,20 +44,6 @@ void UAnimalPopup::NativeDestruct()
 
 void UAnimalPopup::InitPopup(UPotatoAnimalManagementComp* InManagementComp)
 {
-    
-
-    // ScrollBox 안의 AnimalListItem 자식들에 델리게이트 바인딩
-    /*if (AnimalList)
-    {
-        AnimalList->ClearChildren();
-        for (int32 i = 0; i < AnimalList->GetChildrenCount(); ++i)
-        {
-            if (UAnimalListItem* Item = Cast<UAnimalListItem>(AnimalList->GetChildAt(i)))
-            {
-                Item->OnItemSelected.AddDynamic(this, &UAnimalPopup::OnAnimalItemSelected);
-            }
-        }
-    }*/
     ManagementComp = InManagementComp;
     SelectedListItem = nullptr;
 
@@ -67,6 +53,7 @@ void UAnimalPopup::InitPopup(UPotatoAnimalManagementComp* InManagementComp)
     RefreshAnimalList();
     RefreshTotalProduction();
     RefreshCattleAmount();
+    ShowDefaultWarning();
 }
 
 // CheckBox (Radio 방식)
@@ -107,12 +94,17 @@ void UAnimalPopup::OnBuyButtonClicked()
 {
     if (!ManagementComp) return;
 
-    ManagementComp->SpawnAnimal(SelectedAnimalType);
+    if (!ManagementComp->SpawnAnimal(SelectedAnimalType))
+    {
+        ShowWarning(NSLOCTEXT("AnimalPopup", "NotEnoughRes", "자원이 부족합니다."));
+        return;
+    }
 
     RefreshAnimalList();
     RefreshTotalProduction();
     RefreshCattleAmount();
-    RefreshBuyCostPanel(); // 자원 변동 반영
+    RefreshBuyCostPanel();
+    ShowDefaultWarning();
 }
 
 // 도축
@@ -133,15 +125,13 @@ void UAnimalPopup::OnSlaughterButtonClicked()
 
 void UAnimalPopup::OnCloseButtonClicked()
 {
-    APlayerController* PlayerController = Cast<APlayerController>(GetWorld()->GetFirstPlayerController());
-    if (PlayerController)
+    SetVisibility(ESlateVisibility::Hidden);
+    if (APlayerController* PC = GetOwningPlayer())
     {
-        SetVisibility(ESlateVisibility::Hidden);
-        PlayerController->bShowMouseCursor = false;
         FInputModeGameOnly InputMode;
-        PlayerController->SetInputMode(InputMode);
+        PC->SetInputMode(InputMode);
+        PC->bShowMouseCursor = false;
     }
-    //RemoveFromParent();
 }
 
 // 리스트 아이템 선택
@@ -284,4 +274,34 @@ void UAnimalPopup::RefreshCattleAmount()
     const int32 Count = ManagementComp->AssignedAnimals.Num();
     CattleAmount->SetText(FText::Format(
         FText::FromString(TEXT("보유: {0}마리")), FText::AsNumber(Count)));
+}
+
+void UAnimalPopup::ShowWarning(const FText& Message)
+{
+    if (WarningMessage)
+    {
+        WarningMessage->SetText(Message);
+        WarningMessage->SetVisibility(ESlateVisibility::HitTestInvisible);
+    }
+
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(WarningResetTimer);
+        World->GetTimerManager().SetTimer(WarningResetTimer, [this]()
+        {
+            ShowDefaultWarning();
+        }, 2.0f, false);
+    }
+}
+
+void UAnimalPopup::ShowDefaultWarning()
+{
+    if (UWorld* World = GetWorld())
+    {
+        World->GetTimerManager().ClearTimer(WarningResetTimer);
+    }
+    if (WarningMessage)
+    {
+        WarningMessage->SetVisibility(ESlateVisibility::Collapsed);
+    }
 }

@@ -8,6 +8,7 @@
 #include "DrawDebugHelpers.h"
 #include "Core/PotatoProductionComponent.h"
 #include "Core/PotatoResourceManager.h"
+#include "Player/PotatoPlayerController.h"
 
 UBuildingSystemComponent::UBuildingSystemComponent()
 {
@@ -122,10 +123,13 @@ void UBuildingSystemComponent::OnPlaceStructure(const FInputActionValue& Value)
 		return;
 	}
 
+	APotatoPlayerController* PC = Cast<APotatoPlayerController>(
+		Cast<APawn>(GetOwner())->GetController());
+
 	if (!bIsPlacementValid || GhostActor->IsHidden())
 	{
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("이 장소에는 배치할 수 없습니다!"));
-		// TODO: 오류 사운드 재생
+		if (PC) PC->ShowHUDMessage(
+			NSLOCTEXT("Build", "InvalidPlace", "이 장소에는 배치할 수 없습니다."), 1.5f, true);
 		return;
 	}
 
@@ -146,7 +150,8 @@ void UBuildingSystemComponent::OnPlaceStructure(const FInputActionValue& Value)
 		{
 			if (!ProductionComponent->TryPurchaseWithWorld(ResourceManager))
 			{
-				GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("자원이 부족합니다!"));
+				if (PC) PC->ShowHUDMessage(
+					NSLOCTEXT("Build", "NotEnoughResources", "자원이 부족합니다."), 1.5f, true);
 				return;
 			}
 		}

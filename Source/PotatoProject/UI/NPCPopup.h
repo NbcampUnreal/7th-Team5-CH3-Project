@@ -105,6 +105,10 @@ protected:
     UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
     TObjectPtr<UImage> Image_Product;
 
+    /** 경고/안내 텍스트 */
+    UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+    TObjectPtr<UTextBlock> WarningMessage;
+
     //instance할 class 원본
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
     TSubclassOf<UNPCListItem> NPCListItemClass;
@@ -147,6 +151,12 @@ private:
     /** 고용 현황 텍스트를 갱신합니다. */
     void RefreshEmployeeAmount();
 
+    /** 경고 메시지를 표시합니다. */
+    void ShowWarning(const FText& Message);
+
+    /** 기본 경고 메시지를 표시합니다. */
+    void ShowDefaultWarning();
+
     // ---- 캐시 ----
     UPROPERTY()
     TObjectPtr<UPotatoNPCManagementComp> ManagementComp;
@@ -156,5 +166,7 @@ private:
 
     /** InitPopup 시 건물의 NPCClassMap에서 자동 결정됩니다. */
     ENPCType CachedNPCType = ENPCType::Lumberjack;
+
+    FTimerHandle WarningResetTimer;
 };
 
