@@ -17,6 +17,34 @@ void UPotatoProductionComponent::BeginPlay()
 		ResourceManager = World->GetSubsystem<UPotatoResourceManager>();
 	}
 
+	if (bSkipProductionRegistration)
+	{
+		return;
+	}
+
+	if (ResourceManager)
+	{
+		ResourceManager->RegisterProduction(
+			ProductionPerMinuteWood,
+			ProductionPerMinuteStone,
+			ProductionPerMinuteCrop,
+			ProductionPerMinuteLivestock
+		);
+	}
+}
+
+void UPotatoProductionComponent::EnableProductionRegistration()
+{
+	bSkipProductionRegistration = false;
+
+	if (!ResourceManager)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			ResourceManager = World->GetSubsystem<UPotatoResourceManager>();
+		}
+	}
+
 	if (ResourceManager)
 	{
 		ResourceManager->RegisterProduction(
@@ -30,7 +58,7 @@ void UPotatoProductionComponent::BeginPlay()
 
 void UPotatoProductionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
-	if (ResourceManager)
+	if (!bSkipProductionRegistration && ResourceManager)
 	{
 		ResourceManager->UnregisterProduction(
 			ProductionPerMinuteWood,

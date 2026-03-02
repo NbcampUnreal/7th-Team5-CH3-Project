@@ -173,7 +173,11 @@ void UBuildingSystemComponent::OnPlaceStructure(const FInputActionValue& Value)
 		NewStructure->StructureData = SelectedData;
 		UGameplayStatics::FinishSpawningActor(NewStructure, SpawnTransform);
 
-		// TODO: 설치 성공 사운드, 파티클 이펙트 재생
+		// 실제 배치 완료 후 생산량 등록 활성화
+		if (UPotatoProductionComponent* ProdComp = NewStructure->FindComponentByClass<UPotatoProductionComponent>())
+		{
+			ProdComp->EnableProductionRegistration();
+		}
 	}
 }
 
@@ -376,6 +380,13 @@ void UBuildingSystemComponent::RefreshGhostActorModel()
 	{
 		GhostActor->StructureData = SelectedData;
 		GhostActor->SetActorEnableCollision(false);
+
+		// Ghost Actor는 생산량을 등록하지 않음
+		if (UPotatoProductionComponent* ProdComp = GhostActor->FindComponentByClass<UPotatoProductionComponent>())
+		{
+			ProdComp->DisableProductionRegistration();
+		}
+
 		UGameplayStatics::FinishSpawningActor(GhostActor, SpawnTransform);
 		UpdateGhostActorTransform();
 	}

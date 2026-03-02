@@ -69,7 +69,7 @@ protected:
 public:
 	// API
 	// 구매 비용 ResourceManager에서 차감 시도, 성공 시 true
-    UFUNCTION(BlueprintCallable, Category = "Production")
+	UFUNCTION(BlueprintCallable, Category = "Production")
 	bool TryPurchase();
 
     UFUNCTION(BlueprintCallable, Category = "Production")
@@ -81,6 +81,13 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Production")
     void RefundWithWorld(UPotatoResourceManager* OuterResourceManager);
+
+	/** Ghost Actor 등 임시 스폰 시 생산량 등록을 막기 위해 호출.
+	 *  BeginPlay 전에 설정해야 하며, 실제 배치 후 EnableProductionRegistration()으로 활성화. */
+	void DisableProductionRegistration() { bSkipProductionRegistration = true; }
+
+	/** 실제 배치 완료 후 생산량을 ResourceManager에 등록. */
+	void EnableProductionRegistration();
 
     // 생산량 Getter
     UFUNCTION(BlueprintPure, Category = "Production")
@@ -105,4 +112,7 @@ public:
 protected:
 	UPROPERTY()
 	UPotatoResourceManager* ResourceManager;
+
+private:
+	bool bSkipProductionRegistration = false;
 };

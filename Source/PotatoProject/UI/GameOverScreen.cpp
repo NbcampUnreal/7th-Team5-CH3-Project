@@ -106,5 +106,5 @@ void UGameOverScreen::OnGoToTitleClicked()
 
 void UGameOverScreen::OnVictoryTitleClicked()
 {
-    UGameplayStatics::OpenLevel(this, TEXT("Potato_TitleLevel"));
+    UGameplayStatics::OpenLevel(this, TEXT("Potato_EndingLevel"));
 }
