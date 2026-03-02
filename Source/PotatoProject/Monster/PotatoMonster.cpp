@@ -133,8 +133,13 @@ APotatoMonster::APotatoMonster()
 
 	SplitComp = CreateDefaultSubobject<UPotatoSplitComponent>(TEXT("SplitComp"));
 	AuraDamageComp = CreateDefaultSubobject<UPotatoAuraDamageComponent>(TEXT("AuraDamageComp"));
+	if (AuraDamageComp)
+	{
+		AuraDamageComp->SetAutoActivate(false);
+		AuraDamageComp->StopAura();
+	}
 	// ============================================================
-	// ✅ HitCapsule (피격 전용)
+	//  HitCapsule (피격 전용)
 	// 목표:
 	// - 히트스캔/폭발(ObjectQuery ECC_Pawn)에 잘 잡히게 "Pawn ObjectType" 유지
 	// - Projectile은 보통 Pawn에 Overlap로 설계되는 경우가 많으니
@@ -158,7 +163,7 @@ APotatoMonster::APotatoMonster()
 		// 기본은 Ignore로 두고 필요한 것만 켜는 방식이 예측 가능함
 		HitCapsule->SetCollisionResponseToAllChannels(ECR_Ignore);
 
-		// ✅ 핵심: Pawn은 Overlap (Projectile OnOverlap 안정화)
+		//  핵심: Pawn은 Overlap (Projectile OnOverlap 안정화)
 		HitCapsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 
 		// 히트스캔이 ObjectQuery(ECC_Pawn)로 쏘는 경우엔 위만으로도 충분
@@ -185,7 +190,7 @@ APotatoMonster::APotatoMonster()
 
 	if (UCapsuleComponent* RootCap = GetCapsuleComponent())
 	{
-		// ✅ 핵심: 작은 루트 캡슐이 Projectile을 잡지 않도록 무시
+		//  핵심: 작은 루트 캡슐이 Projectile을 잡지 않도록 무시
 		RootCap->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Ignore);
 		RootCap->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Ignore);
 	}
@@ -199,7 +204,7 @@ void APotatoMonster::BeginPlay()
 		*GetNameSafe(GetOwner()),
 		*GetNameSafe(this));
 	// ============================================================
-	// ✅ HitCapsule 크기 보정 (Mesh Bounds 기반)
+	//  HitCapsule 크기 보정 (Mesh Bounds 기반)
 	// - 몬스터마다 메시 크기가 달라도 "적당히" 맞는 피격 범위를 자동으로 잡음
 	// - Root 캡슐은 건드리지 않음 (Nav/이동 영향 최소화)
 	// ============================================================
@@ -366,26 +371,15 @@ void APotatoMonster::ApplyPresetsOnce()
 	// =========================
 	if (AuraDamageComp)
 	{
+		AuraDamageComp->StopAura(); // 항상 초기화
+
 		if (FinalStats.bEnableAuraDamage)
 		{
-			AuraDamageComp->Activate(true);
-			AuraDamageComp->RequiredTargetTag = FinalStats.AuraRequiredTargetTag;
+			AuraDamageComp->RequiredTargetTags = FinalStats.AuraRequiredTargetTags;
+			AuraDamageComp->Configure(FinalStats.AuraRadius, FinalStats.AuraDps, FinalStats.AuraTickInterval);
 
-			AuraDamageComp->Configure(
-				FinalStats.AuraRadius,
-				FinalStats.AuraDps,
-				FinalStats.AuraTickInterval
-			);
-
-			UE_LOG(LogTemp, Warning,
-				TEXT("[AuraDmg] Applied. Radius=%.1f Dps=%.2f Tick=%.3f"),
-				FinalStats.AuraRadius,
-				FinalStats.AuraDps,
-				FinalStats.AuraTickInterval);
-		}
-		else
-		{
-			AuraDamageComp->Deactivate();
+			//  BeginPlay 전 호출돼도 PENDING으로 예약되고 BeginPlay에서 켜짐
+			AuraDamageComp->StartAura();
 		}
 	}
 	// AnimSet
@@ -856,22 +850,21 @@ void APotatoMonster::OnFinalStatsApplied()
 		SplitComp->ApplySpecFromFinalStats(FinalStats.SplitSpec, FinalStats.bEnableSplit);
 	}
 	
-	if (FinalStats.bEnableAuraDamage)
+	if (!AuraDamageComp) return;
+
+	if (AuraDamageComp)
 	{
-		if (!AuraDamageComp) return;
+		AuraDamageComp->StopAura(); // 항상 초기화
 
 		if (FinalStats.bEnableAuraDamage)
 		{
-			AuraDamageComp->RequiredTargetTag = FinalStats.AuraRequiredTargetTag;
+			AuraDamageComp->RequiredTargetTags = FinalStats.AuraRequiredTargetTags;
 			AuraDamageComp->Configure(FinalStats.AuraRadius, FinalStats.AuraDps, FinalStats.AuraTickInterval);
-			AuraDamageComp->Activate(true);
-		}
-		else
-		{
-			AuraDamageComp->Deactivate();
+
+			//  BeginPlay 전 호출돼도 PENDING으로 예약되고 BeginPlay에서 켜짐
+			AuraDamageComp->StartAura();
 		}
 	}
-
 	// 필요시 아래를 켜서 완전 경로도 커버 가능
 	// SetAnimSet(FinalStats.AnimSet);
 	// if (SpecialSkillComp) { SpecialSkillComp->SkillPresetTable = SpecialSkillPresetTable; SpecialSkillComp->InitFromFinalStats(FinalStats); }

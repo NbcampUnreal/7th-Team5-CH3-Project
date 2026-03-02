@@ -80,7 +80,7 @@ public:
 	void CancelSkill(ESpecialSkillCancelReason Reason);
 
 	// Attack Proc gate (OnAttack)
-	bool PassAttackProcGate();
+	/*bool PassAttackProcGate();*/
 
 public:
 	// ============================================================
@@ -101,8 +101,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Potato|SpecialSkill|Trigger")
 	bool TryStartOnDeath(AActor* Target);
 
-	UFUNCTION(BlueprintCallable, Category="Potato|SpecialSkill|Trigger")
-	bool TryStartOnAttackProc(AActor* Target);
+	/*UFUNCTION(BlueprintCallable, Category="Potato|SpecialSkill|Trigger")
+	bool TryStartOnAttackProc(AActor* Target);*/
 
 	// ============================================================
 	// Low-level API (엔진): SkillId 직접 호출 (가능하면 래퍼 사용 권장)
@@ -157,7 +157,7 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Potato|SpecialSkill|Injected")
 	float DefaultBaseDamage = 10.f;
 
-	// OnAttack Proc (Injected)
+	/*// OnAttack Proc (Injected)
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Potato|SpecialSkill|Injected|Proc")
 	bool bEnableOnAttackProc = true;
 
@@ -165,7 +165,7 @@ public:
 	float OnAttackProcChance = 0.20f;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Potato|SpecialSkill|Injected|Proc")
-	float OnAttackProcCooldown = 1.50f;
+	float OnAttackProcCooldown = 1.50f;*/
 
 	// -----------------------------
 	// Timers / queues

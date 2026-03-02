@@ -129,8 +129,31 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 		Out.AuraRadius             = TypeRow->AuraRadius;
 		Out.AuraDps                = TypeRow->AuraDps;
 		Out.AuraTickInterval       = TypeRow->AuraTickInterval;
-		Out.AuraRequiredTargetTag  = TypeRow->AuraRequiredTargetTag;
+		Out.AuraRequiredTargetTags = TypeRow->AuraRequiredTargetTags;
 
+		// None 제거
+		Out.AuraRequiredTargetTags.RemoveAll([](const FName& N){ return N.IsNone(); });
+
+		// 정렬(※ comparator 필수)
+		Out.AuraRequiredTargetTags.Sort([](const FName& A, const FName& B)
+		{
+			return A.LexicalLess(B);
+		});
+
+		// 인접 중복 제거(정렬 기반)
+		for (int32 i = Out.AuraRequiredTargetTags.Num() - 1; i > 0; --i)
+		{
+			if (Out.AuraRequiredTargetTags[i] == Out.AuraRequiredTargetTags[i - 1])
+			{
+				Out.AuraRequiredTargetTags.RemoveAt(i, 1, /*bAllowShrinking*/false);
+			}
+		}
+
+		// 정책: 태그 비어있으면 "아무도 안 때림"이면 오라 자체도 꺼버리기(추천)
+		if (Out.AuraRequiredTargetTags.Num() == 0)
+		{
+			Out.bEnableAuraDamage = false;
+		}
 		//  단일 DefaultSpecialSkillId
 		TypeDefaultSkillId = TypeRow->DefaultSpecialSkillId;
 
@@ -275,16 +298,16 @@ FPotatoMonsterFinalStats UPotatoPresetApplier::BuildFinalStats(
 	Out.SpecialDamageScale = FMath::Max(0.0f, RankRow->SpecialDamageScale);
 
 	// Proc
-	Out.bEnableOnAttackSpecialProc = RankRow->bEnableOnAttackSpecialProc;
+	/*Out.bEnableOnAttackSpecialProc = RankRow->bEnableOnAttackSpecialProc;
 	Out.OnAttackSpecialChance = RankRow->OnAttackSpecialChance;
-	Out.OnAttackSpecialProcCooldown = RankRow->OnAttackSpecialProcCooldown;
+	Out.OnAttackSpecialProcCooldown = RankRow->OnAttackSpecialProcCooldown;*/
 
-	if (TypeRow && TypeRow->bOverrideOnAttackSpecialProc)
+	/*if (TypeRow && TypeRow->bOverrideOnAttackSpecialProc)
 	{
 		Out.bEnableOnAttackSpecialProc = TypeRow->bEnableOnAttackSpecialProc;
 		Out.OnAttackSpecialChance = TypeRow->OnAttackSpecialChance;
 		Out.OnAttackSpecialProcCooldown = TypeRow->OnAttackSpecialProcCooldown;
-	}
+	}*/
 
 	Out.OnAttackSpecialChance = FMath::Clamp(Out.OnAttackSpecialChance, 0.f, 1.f);
 	Out.OnAttackSpecialProcCooldown = FMath::Max(0.f, Out.OnAttackSpecialProcCooldown);

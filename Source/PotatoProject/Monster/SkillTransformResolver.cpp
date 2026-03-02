@@ -28,7 +28,8 @@ FVector FSkillTransformResolver::ResolveOrigin(
 		}
 		return Owner->GetActorLocation()
 			+ Owner->GetActorForwardVector()
-			* FMath::Max(0.f, Row.Range);
+		* FMath::Max(0.f, 0.f);
+			/** FMath::Max(0.f, Row.Range);*/
 
 	default:
 		return IsValid(Target)

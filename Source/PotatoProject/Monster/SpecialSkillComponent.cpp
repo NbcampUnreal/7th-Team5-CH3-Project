@@ -224,7 +224,8 @@ bool USpecialSkillComponent::TryPlaySkillAttackMontage(const FPotatoMonsterSpeci
 	}
 
 	// 2) 오버라이드 없으면 기본 공격 몽타주 폴백(옵션)
-	if (Row.bFallbackToBasicAttackMontage)
+	/*if (Row.bFallbackToBasicAttackMontage)*/
+	if (true)
 	{
 		APotatoMonster* Monster = Cast<APotatoMonster>(Owner);
 		UAnimMontage* Fallback = GetFallbackBasicAttackMontage(Monster);
@@ -282,12 +283,12 @@ void USpecialSkillComponent::InitFromFinalStats(const FPotatoMonsterFinalStats& 
 	DefaultBaseDamage = Stats.AttackDamage;
 
 	// Proc
-	bEnableOnAttackProc   = Stats.bEnableOnAttackSpecialProc;
+	/*bEnableOnAttackProc   = Stats.bEnableOnAttackSpecialProc;
 	OnAttackProcChance    = FMath::Clamp(Stats.OnAttackSpecialChance, 0.f, 1.f);
 	OnAttackProcCooldown  = FMath::Max(0.f, Stats.OnAttackSpecialProcCooldown);
 
 	// reset attack proc gate
-	NextAttackProcReadyTime = 0.0;
+	NextAttackProcReadyTime = 0.0;*/
 }
 
 // -----------------------------
@@ -311,7 +312,7 @@ bool USpecialSkillComponent::TryStartOnDeath(AActor* Target)
 	return TryStartSkill(DefaultSkillId, Target);
 }
 
-bool USpecialSkillComponent::PassAttackProcGate()
+/*bool USpecialSkillComponent::PassAttackProcGate()
 {
 	if (!bEnableOnAttackProc) return false;
 
@@ -326,14 +327,14 @@ bool USpecialSkillComponent::PassAttackProcGate()
 	// consume cooldown
 	NextAttackProcReadyTime = T + OnAttackProcCooldown;
 	return true;
-}
+}*/
 
-bool USpecialSkillComponent::TryStartOnAttackProc(AActor* Target)
+/*bool USpecialSkillComponent::TryStartOnAttackProc(AActor* Target)
 {
 	if (DefaultSkillId.IsNone()) return false;
-	if (!PassAttackProcGate()) return false;
+	/*if (!PassAttackProcGate()) return false;#1#
 	return TryStartSkill(DefaultSkillId, Target);
-}
+}*/
 
 // -----------------------------
 // Public API (low-level engine)
@@ -493,7 +494,8 @@ void USpecialSkillComponent::BeginCast(const FPotatoMonsterSpecialSkillPresetRow
 	//  공격형 스킬 몽타주 정책 (Override -> Fallback)
 	// - Row.bPlayMontageAtCastBegin == true 일 때만 시도
 	// - 세션당 1회만 재생됨
-	if (Row.bPlayMontageAtCastBegin)
+	/*if (Row.bPlayMontageAtCastBegin)*/
+	if (true)
 	{
 		TryPlaySkillAttackMontage(Row);
 	}

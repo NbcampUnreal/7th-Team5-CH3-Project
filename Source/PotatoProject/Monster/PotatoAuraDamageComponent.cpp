@@ -1,14 +1,14 @@
-// PotatoAuraDamageComponent.cpp (DEBUG BUILDABLE + PointDamage 옵션)
+// PotatoAuraDamageComponent.cpp (BUILDABLE - Tags Array + None/Empty means "damage nobody" + optional monster exclude)
 //
-// 핵심:
-// - 플레이어쪽 수정 없이 데미지가 "확실히" 들어가게 하려면 ApplyDamage보다 ApplyPointDamage가 안전한 케이스가 많음
-// - BeginOverlap에서 HitResult를 캐시해서 PointDamage의 HitInfo로 넣어줌
-// - Hit이 없으면(혹은 오래되면) 간단히 라인트레이스로 HitResult를 만든 뒤 넣어줌
+// 정책:
+// - RequiredTargetTags가 비어있으면(=Empty/None) 오라는 켜져 있어도 "아무도 때리지 않음" (StartAura/TickAura에서 즉시 StopAura)
+// - RequiredTargetTags 중 하나라도 가진 Pawn만 데미지
+// - 기본: 몬스터끼리 데미지 금지(bAllowDamageToMonsters=false면 APotatoMonster 제외)
 //
 // CVars:
 // - potato.AuraDmgDebug 0/1
 // - potato.AuraDmgDraw 0/1
-// - potato.AuraUsePointDamage 0/1  (기본 1: PointDamage 우선)
+// - potato.AuraUsePointDamage 0/1
 
 #include "PotatoAuraDamageComponent.h"
 
@@ -21,32 +21,31 @@
 
 #include "DrawDebugHelpers.h"
 #include "HAL/IConsoleManager.h"
-#include "Engine/EngineTypes.h" // FHitResult
+#include "Engine/EngineTypes.h"
 #include "CollisionQueryParams.h"
+
+#include "Monster/PotatoMonster.h"
 
 const FName UPotatoAuraDamageComponent::AuraSphereName(TEXT("PotatoAuraSphere"));
 
 // ------------------------------------------------------------
-// Debug / Behavior CVars
+// CVars
 // ------------------------------------------------------------
 static TAutoConsoleVariable<int32> CVarAuraDmgDebug(
-	TEXT("potato.AuraDmgDebug"),
-	1,
+	TEXT("potato.AuraDmgDebug"), 1,
 	TEXT("0=off, 1=log aura damage overlaps and apply"),
 	ECVF_Default
 );
 
 static TAutoConsoleVariable<int32> CVarAuraDmgDraw(
-	TEXT("potato.AuraDmgDraw"),
-	0,
+	TEXT("potato.AuraDmgDraw"), 0,
 	TEXT("0=off, 1=draw debug sphere radius"),
 	ECVF_Default
 );
 
 static TAutoConsoleVariable<int32> CVarAuraUsePointDamage(
-	TEXT("potato.AuraUsePointDamage"),
-	1,
-	TEXT("0=Use ApplyDamage, 1=Prefer ApplyPointDamage (recommended when target ignores AnyDamage)"),
+	TEXT("potato.AuraUsePointDamage"), 1,
+	TEXT("0=Use ApplyDamage, 1=Prefer ApplyPointDamage"),
 	ECVF_Default
 );
 
@@ -55,11 +54,56 @@ static FORCEINLINE bool AuraDbgOn()
 	return CVarAuraDmgDebug.GetValueOnGameThread() != 0;
 }
 
+// ------------------------------------------------------------
+// Helpers (cpp-local)
+// ------------------------------------------------------------
+static FString TagsToString(const TArray<FName>& Tags)
+{
+	if (Tags.Num() == 0) return TEXT("Empty");
+
+	FString S;
+	for (int32 i = 0; i < Tags.Num(); ++i)
+	{
+		const FName T = Tags[i];
+		S += T.IsNone() ? TEXT("None") : T.ToString();
+		if (i != Tags.Num() - 1) S += TEXT(",");
+	}
+	return S;
+}
+
+static bool HasAnyRequiredTag(AActor* A, const TArray<FName>& Tags)
+{
+	if (!A) return false;
+
+	for (const FName& T : Tags)
+	{
+		if (T.IsNone()) continue;
+		if (A->ActorHasTag(T)) return true;
+	}
+	return false;
+}
+
+static bool HasAnyNonNoneTag(const TArray<FName>& Tags)
+{
+	for (const FName& T : Tags)
+	{
+		if (!T.IsNone()) return true;
+	}
+	return false;
+}
+
+// ------------------------------------------------------------
+// Ctor
+// ------------------------------------------------------------
 UPotatoAuraDamageComponent::UPotatoAuraDamageComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+	bAutoActivate = false; // ✅ 기본 자동 활성화 방지
 }
 
+// ------------------------------------------------------------
+// Public API
+// ------------------------------------------------------------
 void UPotatoAuraDamageComponent::Configure(float InRadius, float InDps, float InTickInterval)
 {
 	Radius = FMath::Max(0.f, InRadius);
@@ -68,78 +112,53 @@ void UPotatoAuraDamageComponent::Configure(float InRadius, float InDps, float In
 
 	if (Sphere)
 	{
-		Sphere->SetSphereRadius(Radius, true);  // 반드시 true
-		Sphere->UpdateOverlaps();               //  이미 근처에 있는 대상 즉시 반영
+		Sphere->SetSphereRadius(Radius, true);
+		if (Sphere->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
+		{
+			Sphere->UpdateOverlaps();
+		}
 	}
 
 	if (AuraDbgOn())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] Configure Owner=%s Radius=%.1f Dps=%.2f Tick=%.3f Tag=%s UsePoint=%d"),
+		UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] Configure Owner=%s R=%.1f Dps=%.2f Tick=%.3f Tags=[%s] AllowMonster=%d UsePoint=%d"),
 			*GetNameSafe(GetOwner()),
 			Radius, Dps, TickInterval,
-			RequiredTargetTag.IsNone() ? TEXT("None") : *RequiredTargetTag.ToString(),
+			*TagsToString(RequiredTargetTags),
+			bAllowDamageToMonsters ? 1 : 0,
 			CVarAuraUsePointDamage.GetValueOnGameThread()
 		);
 	}
 }
 
+// ------------------------------------------------------------
+// Lifecycle
+// ------------------------------------------------------------
 void UPotatoAuraDamageComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
+	bBegunPlay = true;
+
 	CachedOwner = GetOwner();
 	if (!CachedOwner) return;
 
-	for (UActorComponent* C : CachedOwner->GetComponents())
-	{
-		if (USphereComponent* S = Cast<USphereComponent>(C))
-		{
-			if (S->GetFName() == AuraSphereName)
-			{
-				Sphere = S;
-				break;
-			}
-		}
-	}
-
-	if (!Sphere)
-	{
-		Sphere = NewObject<USphereComponent>(CachedOwner, USphereComponent::StaticClass(), AuraSphereName);
-		if (Sphere)
-		{
-			Sphere->RegisterComponent();
-			if (USceneComponent* Root = CachedOwner->GetRootComponent())
-			{
-				Sphere->AttachToComponent(Root, FAttachmentTransformRules::KeepRelativeTransform);
-			}
-		}
-	}
+	EnsureSphereCreated();
 	if (!Sphere) return;
 
-	Sphere->SetSphereRadius(Radius);
-	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	Sphere->SetCollisionObjectType(ECC_WorldDynamic);
-	Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
-	Sphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-	Sphere->SetGenerateOverlapEvents(true);
-
-	Sphere->OnComponentBeginOverlap.AddDynamic(this, &UPotatoAuraDamageComponent::HandleBeginOverlap);
-	Sphere->OnComponentEndOverlap.AddDynamic(this, &UPotatoAuraDamageComponent::HandleEndOverlap);
-
-	if (AuraDbgOn())
+	// ✅ 여기서 "무조건 OFF" 하지 말고
+	//    StartAura가 이미 요청된 상태면 바로 켠다.
+	if (bPendingStart || IsActive())
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] BeginPlay Owner=%s Sphere=%s Radius=%.1f Dps=%.2f Tick=%.3f ObjType=%d"),
-			*GetNameSafe(CachedOwner),
-			*GetNameSafe(Sphere),
-			Radius, Dps, TickInterval,
-			(int32)Sphere->GetCollisionObjectType()
-		);
+		bPendingStart = false;
+		StartAuraInternal(); // 실제 ON + 타이머 시작
+	}
+	else
+	{
+		ApplySphereOffState();
 	}
 
-	if (UWorld* W = GetWorld())
-	{
-		W->GetTimerManager().SetTimer(AuraTickTH, this, &UPotatoAuraDamageComponent::TickAura, TickInterval, true);
-	}
+	// (디버그 로그는 원하면 유지)
 }
 
 void UPotatoAuraDamageComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -152,26 +171,140 @@ void UPotatoAuraDamageComponent::EndPlay(const EEndPlayReason::Type EndPlayReaso
 		);
 	}
 
+	StopAura();
+	Super::EndPlay(EndPlayReason);
+}
+
+// ------------------------------------------------------------
+// Internals
+// ------------------------------------------------------------
+void UPotatoAuraDamageComponent::EnsureSphereCreated()
+{
+	if (!CachedOwner) return;
+
+	// 기존에 같은 이름으로 붙어있는 Sphere가 있으면 재사용
+	for (UActorComponent* C : CachedOwner->GetComponents())
+	{
+		if (USphereComponent* S = Cast<USphereComponent>(C))
+		{
+			if (S->GetFName() == AuraSphereName)
+			{
+				Sphere = S;
+				break;
+			}
+		}
+	}
+
+	// 없으면 생성
+	if (!Sphere)
+	{
+		Sphere = NewObject<USphereComponent>(CachedOwner, USphereComponent::StaticClass(), AuraSphereName);
+		if (Sphere)
+		{
+			Sphere->RegisterComponent();
+			if (USceneComponent* Root = CachedOwner->GetRootComponent())
+			{
+				Sphere->AttachToComponent(Root, FAttachmentTransformRules::KeepRelativeTransform);
+			}
+		}
+	}
+
+	if (!Sphere) return;
+
+	// 공통 세팅(ON/OFF는 별도 함수에서)
+	Sphere->SetSphereRadius(Radius);
+	Sphere->SetCollisionObjectType(ECC_WorldDynamic);
+	Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Sphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+	Sphere->OnComponentBeginOverlap.RemoveAll(this);
+	Sphere->OnComponentEndOverlap.RemoveAll(this);
+	Sphere->OnComponentBeginOverlap.AddDynamic(this, &UPotatoAuraDamageComponent::HandleBeginOverlap);
+	Sphere->OnComponentEndOverlap.AddDynamic(this, &UPotatoAuraDamageComponent::HandleEndOverlap);
+}
+
+void UPotatoAuraDamageComponent::ApplySphereOffState()
+{
+	if (!Sphere) return;
+
+	Sphere->SetGenerateOverlapEvents(false);
+	Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// OFF 전환 시 중복 오버랩 정리
+	Sphere->UpdateOverlaps();
+}
+
+void UPotatoAuraDamageComponent::ApplySphereOnState()
+{
+	if (!Sphere) return;
+
+	Sphere->SetSphereRadius(Radius, true);
+	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Sphere->SetGenerateOverlapEvents(true);
+
+	// ON 전환 즉시 주변 대상 반영
+	Sphere->UpdateOverlaps();
+}
+
+void UPotatoAuraDamageComponent::StartAura()
+{
+	if (!CachedOwner) CachedOwner = GetOwner();
+	if (!CachedOwner) return;
+
+	// ✅ BeginPlay 전이면 실제 ON은 예약만
+	if (!bBegunPlay)
+	{
+		bPendingStart = true;
+		if (AuraDbgOn())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] StartAura (PENDING) Owner=%s"), *GetNameSafe(CachedOwner));
+		}
+		return;
+	}
+
+	StartAuraInternal();
+}
+void UPotatoAuraDamageComponent::StopAura()
+{
 	if (UWorld* W = GetWorld())
 	{
 		W->GetTimerManager().ClearTimer(AuraTickTH);
 	}
 
 	OverlappingTargets.Reset();
-
-	// ✅ 추가: 캐시된 히트도 정리(헤더에 아래 Map 추가 필요)
 	LastSweepHitByTarget.Reset();
 
-	Super::EndPlay(EndPlayReason);
+	ApplySphereOffState();
+
+	if (AuraDbgOn())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] StopAura Owner=%s"), *GetNameSafe(GetOwner()));
+	}
 }
 
 bool UPotatoAuraDamageComponent::IsValidTarget(AActor* A) const
 {
-	return IsValid(A)
-		&& !A->IsActorBeingDestroyed()
-		&& (RequiredTargetTag.IsNone() || A->ActorHasTag(RequiredTargetTag));
+	if (!IsValid(A) || A->IsActorBeingDestroyed()) return false;
+	if (A == CachedOwner) return false;
+
+	// ✅ 정책: 태그 배열이 비어있으면 "아무도 때리지 않음"
+	if (!HasAnyNonNoneTag(RequiredTargetTags)) return false;
+
+	// ✅ 태그 중 하나라도 만족해야 타겟
+	if (!HasAnyRequiredTag(A, RequiredTargetTags)) return false;
+
+	// 기본: 몬스터끼리 데미지 금지
+	if (!bAllowDamageToMonsters && A->IsA(APotatoMonster::StaticClass()))
+	{
+		return false;
+	}
+
+	return true;
 }
 
+// ------------------------------------------------------------
+// Overlaps
+// ------------------------------------------------------------
 void UPotatoAuraDamageComponent::HandleBeginOverlap(
 	UPrimitiveComponent* OverlappedComp,
 	AActor* OtherActor,
@@ -184,46 +317,28 @@ void UPotatoAuraDamageComponent::HandleBeginOverlap(
 	{
 		if (AuraDbgOn())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] BeginOverlap IGNORE Owner=%s Other=%s TagReq=%s"),
+			UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] BeginOverlap IGNORE Owner=%s Other=%s"),
 				*GetNameSafe(GetOwner()),
-				*GetNameSafe(OtherActor),
-				RequiredTargetTag.IsNone() ? TEXT("None") : *RequiredTargetTag.ToString()
+				*GetNameSafe(OtherActor)
 			);
 		}
 		return;
 	}
 
-	if (OtherActor == CachedOwner) return;
-
-	const int32 Before = OverlappingTargets.Num();
 	OverlappingTargets.Add(OtherActor);
-	const int32 After = OverlappingTargets.Num();
 
-	// ✅ PointDamage용 HitResult 캐시
 	if (bFromSweep)
 	{
 		LastSweepHitByTarget.Add(OtherActor, SweepResult);
 	}
 	else
 	{
-		// Sweep이 아니면 간단히 "소유자->타겟 방향"으로 더미 히트 만들기
 		FHitResult Dummy;
-		Dummy.Location     = OtherActor->GetActorLocation();
-		Dummy.ImpactPoint  = Dummy.Location;
-		Dummy.TraceStart   = CachedOwner ? CachedOwner->GetActorLocation() : Dummy.Location;
-		Dummy.TraceEnd     = Dummy.Location;
+		Dummy.Location    = OtherActor->GetActorLocation();
+		Dummy.ImpactPoint = Dummy.Location;
+		Dummy.TraceStart  = CachedOwner ? CachedOwner->GetActorLocation() : Dummy.Location;
+		Dummy.TraceEnd    = Dummy.Location;
 		LastSweepHitByTarget.Add(OtherActor, Dummy);
-	}
-
-	if (AuraDbgOn())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] BeginOverlap ADD Owner=%s Other=%s Comp=%s Count %d->%d bSweep=%d"),
-			*GetNameSafe(CachedOwner),
-			*GetNameSafe(OtherActor),
-			*GetNameSafe(OtherComp),
-			Before, After,
-			bFromSweep ? 1 : 0
-		);
 	}
 }
 
@@ -235,23 +350,13 @@ void UPotatoAuraDamageComponent::HandleEndOverlap(
 {
 	if (!OtherActor) return;
 
-	const int32 Before = OverlappingTargets.Num();
 	OverlappingTargets.Remove(OtherActor);
-	const int32 After = OverlappingTargets.Num();
-
 	LastSweepHitByTarget.Remove(OtherActor);
-
-	if (AuraDbgOn())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] EndOverlap REM Owner=%s Other=%s Comp=%s Count %d->%d"),
-			*GetNameSafe(CachedOwner),
-			*GetNameSafe(OtherActor),
-			*GetNameSafe(OtherComp),
-			Before, After
-		);
-	}
 }
 
+// ------------------------------------------------------------
+// Tick
+// ------------------------------------------------------------
 void UPotatoAuraDamageComponent::TickAura()
 {
 	if (!CachedOwner || !GetWorld()) return;
@@ -261,12 +366,18 @@ void UPotatoAuraDamageComponent::TickAura()
 		DrawDebugSphere(GetWorld(), CachedOwner->GetActorLocation(), Radius, 20, FColor::Green, false, TickInterval, 0, 1.5f);
 	}
 
-	if (Dps <= 0.f)
+	// ✅ 잘못된 설정이면 즉시 중지
+	if (Radius <= 0.f || Dps <= 0.f || !HasAnyNonNoneTag(RequiredTargetTags))
 	{
 		if (AuraDbgOn())
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] Tick SKIP (Dps<=0) Owner=%s Dps=%.2f"), *GetNameSafe(CachedOwner), Dps);
+			UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] Tick STOP (invalid) Owner=%s R=%.1f Dps=%.2f Tags=[%s]"),
+				*GetNameSafe(CachedOwner),
+				Radius, Dps,
+				*TagsToString(RequiredTargetTags)
+			);
 		}
+		StopAura();
 		return;
 	}
 
@@ -281,17 +392,6 @@ void UPotatoAuraDamageComponent::TickAura()
 
 	const bool bUsePoint = (CVarAuraUsePointDamage.GetValueOnGameThread() != 0);
 
-	if (AuraDbgOn())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] Tick Owner=%s Targets=%d Damage=%.2f Instigator=%s Mode=%s"),
-			*GetNameSafe(CachedOwner),
-			OverlappingTargets.Num(),
-			DamageThisTick,
-			*GetNameSafe(InstigatorController),
-			bUsePoint ? TEXT("PointDamage") : TEXT("AnyDamage")
-		);
-	}
-
 	TArray<TWeakObjectPtr<AActor>> ToRemove;
 
 	for (const TWeakObjectPtr<AActor>& W : OverlappingTargets)
@@ -303,11 +403,11 @@ void UPotatoAuraDamageComponent::TickAura()
 			continue;
 		}
 
-		TSubclassOf<UDamageType> DT = DamageTypeClass ? *DamageTypeClass : UDamageType::StaticClass();
+		// ✅ UClass*로 정규화(구버전/신버전 TSubclassOf 혼동 방지)
+		UClass* DTClass = DamageTypeClass ? DamageTypeClass.Get() : UDamageType::StaticClass();
 
 		if (bUsePoint)
 		{
-			// ✅ 캐시 히트 우선, 없으면 라인 트레이스로 갱신
 			FHitResult Hit;
 			if (const FHitResult* CachedHit = LastSweepHitByTarget.Find(T))
 			{
@@ -315,19 +415,21 @@ void UPotatoAuraDamageComponent::TickAura()
 			}
 			else
 			{
-				Hit.Location = T->GetActorLocation();
+				Hit.Location    = T->GetActorLocation();
 				Hit.ImpactPoint = Hit.Location;
-				Hit.TraceStart = CachedOwner->GetActorLocation();
-				Hit.TraceEnd = Hit.Location;
+				Hit.TraceStart  = CachedOwner->GetActorLocation();
+				Hit.TraceEnd    = Hit.Location;
 			}
 
-			// (선택) 라인트레이스로 더 정확한 Hit 확보
+			// 라인트레이스로 보정(선택)
 			{
 				FCollisionQueryParams Params(SCENE_QUERY_STAT(AuraPointDamageTrace), false, CachedOwner);
 				Params.AddIgnoredActor(CachedOwner);
+
 				FHitResult TraceHit;
 				const FVector Start = CachedOwner->GetActorLocation();
-				const FVector End = T->GetActorLocation();
+				const FVector End   = T->GetActorLocation();
+
 				if (GetWorld()->LineTraceSingleByChannel(TraceHit, Start, End, ECC_Visibility, Params))
 				{
 					if (TraceHit.GetActor() == T)
@@ -339,16 +441,6 @@ void UPotatoAuraDamageComponent::TickAura()
 
 			const FVector ShotDir = (T->GetActorLocation() - CachedOwner->GetActorLocation()).GetSafeNormal();
 
-			if (AuraDbgOn())
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[AuraDmg]  - ApplyPointDamage -> %s Amount=%.2f DT=%s Impact=%s"),
-					*GetNameSafe(T),
-					DamageThisTick,
-					*GetNameSafe(DT),
-					*Hit.ImpactPoint.ToString()
-				);
-			}
-
 			UGameplayStatics::ApplyPointDamage(
 				T,
 				DamageThisTick,
@@ -356,26 +448,17 @@ void UPotatoAuraDamageComponent::TickAura()
 				Hit,
 				InstigatorController,
 				CachedOwner,
-				DT
+				DTClass
 			);
 		}
 		else
 		{
-			if (AuraDbgOn())
-			{
-				UE_LOG(LogTemp, Warning, TEXT("[AuraDmg]  - ApplyDamage -> %s Amount=%.2f DT=%s"),
-					*GetNameSafe(T),
-					DamageThisTick,
-					*GetNameSafe(DT)
-				);
-			}
-
 			UGameplayStatics::ApplyDamage(
 				T,
 				DamageThisTick,
 				InstigatorController,
 				CachedOwner,
-				DT
+				DTClass
 			);
 		}
 	}
@@ -383,9 +466,30 @@ void UPotatoAuraDamageComponent::TickAura()
 	for (const auto& R : ToRemove)
 	{
 		OverlappingTargets.Remove(R);
-		if (AActor* Dead = R.Get())
-		{
-			LastSweepHitByTarget.Remove(Dead);
-		}
+		LastSweepHitByTarget.Remove(R);
+	}
+}
+
+void UPotatoAuraDamageComponent::StartAuraInternal()
+{
+	if (!CachedOwner) CachedOwner = GetOwner();
+	if (!CachedOwner) return;
+
+	EnsureSphereCreated();
+	if (!Sphere) return;
+
+	// None/빈배열이면 "아무도 안 때림" 정책
+	if (RequiredTargetTags.Num() == 0 || Radius <= 0.f || Dps <= 0.f)
+	{
+		StopAura();
+		return;
+	}
+
+	ApplySphereOnState();
+
+	if (UWorld* W = GetWorld())
+	{
+		W->GetTimerManager().ClearTimer(AuraTickTH);
+		W->GetTimerManager().SetTimer(AuraTickTH, this, &UPotatoAuraDamageComponent::TickAura, TickInterval, true);
 	}
 }

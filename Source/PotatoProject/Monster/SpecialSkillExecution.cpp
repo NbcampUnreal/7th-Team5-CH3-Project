@@ -172,7 +172,8 @@ static FTransform ResolveSpawnTransform(
 	case EPotatoSkillSpawnMode::ForwardOffset:
 		{
 			Loc = Owner->GetActorLocation() +
-				  Owner->GetActorForwardVector() * FMath::Max(0.f, Row.Range);
+				Owner->GetActorForwardVector() * FMath::Max(0.f, 0);
+				  /*Owner->GetActorForwardVector() * FMath::Max(0.f, Row.Range);*/
 
 			Rot = Owner->GetActorRotation();
 			Loc += Rot.RotateVector(Row.SpawnOffset);
@@ -192,6 +193,7 @@ static FTransform ResolveSpawnTransform(
 	return FTransform(Rot, Loc);
 }
 
+/*
 static bool PassesFxDistanceGate(UWorld* World, const FVector& SpawnLoc, const FPotatoMonsterSpecialSkillPresetRow& Row)
 {
 	if (!World) return true;
@@ -202,6 +204,7 @@ static bool PassesFxDistanceGate(UWorld* World, const FVector& SpawnLoc, const F
 
 	return FVector::Dist(PlayerPawn->GetActorLocation(), SpawnLoc) <= Row.MaxFxDistance;
 }
+*/
 
 static UClass* ResolveClassSync(const TSoftClassPtr<AActor>& SoftClass)
 {
@@ -252,10 +255,10 @@ static AActor* SpawnActorFromPreset(USpecialSkillComponent* Comp, const FPotatoM
 
 	const FTransform SpawnXf = ResolveSpawnTransform(Owner, TargetForInit, Row);
 
-	if (!PassesFxDistanceGate(World, SpawnXf.GetLocation(), Row))
+	/*if (!PassesFxDistanceGate(World, SpawnXf.GetLocation(), Row))
 	{
 		return nullptr;
-	}
+	}*/
 
 	FActorSpawnParameters Params;
 	Params.Owner = Owner;
@@ -301,7 +304,8 @@ static AActor* SpawnActorFromPreset(USpecialSkillComponent* Comp, const FPotatoM
 		const float Life      = (Row.SpawnedLifeTime > 0.f) ? Row.SpawnedLifeTime : 5.f;
 		const float MoveSpeed = (Row.SpawnedMoveSpeed > 0.f) ? Row.SpawnedMoveSpeed : 220.f;
 		const float Wander    = (Row.SpawnedWanderRadius > 0.f) ? Row.SpawnedWanderRadius : 500.f;
-		const float Repath    = (Row.SpawnedRepathInterval > 0.f) ? Row.SpawnedRepathInterval : 0.8f;
+		/*const float Repath    = (Row.SpawnedRepathInterval > 0.f) ? Row.SpawnedRepathInterval : 0.8f;*/
+		const float Repath = 0.f;
 
 		Pillar->InitPillar(
 			Owner,
@@ -345,13 +349,15 @@ static void GatherStructures_InstantAoE(
 	const FVector2D FwdN = To2D2(Fwd3D).GetSafeNormal();
 
 	const float Radius = FMath::Max(0.f, Row.Radius);
-	const float Range  = FMath::Max(0.f, Row.Range);
+	/*const float Range  = FMath::Max(0.f, Row.Range);*/
+	const float Range  = FMath::Max(0.f, 0.f);
 	const float Width  = FMath::Max(30.f, Row.Radius);
 
 	const float RadiusSq = Radius * Radius;
 	const float WidthSq  = Width * Width;
 
-	const float HalfRad = FMath::DegreesToRadians(FMath::Max(0.f, Row.AngleDeg) * 0.5f);
+	/*const float HalfRad = FMath::DegreesToRadians(FMath::Max(0.f, Row.AngleDeg) * 0.5f);*/
+	const float HalfRad = FMath::DegreesToRadians(FMath::Max(0.f, 0.f) * 0.5f);
 	const float CosMin  = FMath::Cos(HalfRad);
 
 	const FVector2D LineA = Origin;
@@ -468,7 +474,8 @@ static void Exec_InstantAoE(USpecialSkillComponent* Comp, const FPotatoMonsterSp
 	// 1) Pawn overlap
 	{
 		const float R = (Row.Shape == EMonsterSpecialShape::Line)
-			? FMath::Max(0.f, Row.Range)
+			/*? FMath::Max(0.f, Row.Range)*/
+			? FMath::Max(0.f, 0.f)
 			: FMath::Max(0.f, Row.Radius);
 
 		if (R > 0.f)
@@ -506,13 +513,15 @@ static void Exec_InstantAoE(USpecialSkillComponent* Comp, const FPotatoMonsterSp
 						const FVector Fwd2D = To2D(Fwd3D).GetSafeNormal();
 						const float Dot = FVector::DotProduct(Fwd2D, To.GetSafeNormal());
 
-						const float HalfRad = FMath::DegreesToRadians(FMath::Max(0.f, Row.AngleDeg) * 0.5f);
+						/*const float HalfRad = FMath::DegreesToRadians(FMath::Max(0.f, Row.AngleDeg) * 0.5f);*/
+						const float HalfRad = FMath::DegreesToRadians(FMath::Max(0.f, 0.f) * 0.5f);
 						const float CosMin = FMath::Cos(HalfRad);
 						if (Dot < CosMin) continue;
 					}
 					else if (Row.Shape == EMonsterSpecialShape::Line)
 					{
-						const float Range = FMath::Max(0.f, Row.Range);
+						/*const float Range = FMath::Max(0.f, Row.Range);*/
+						const float Range = FMath::Max(0.f, 0.f);
 						const float Width = FMath::Max(30.f, Row.Radius);
 						if (Range <= 0.f) continue;
 

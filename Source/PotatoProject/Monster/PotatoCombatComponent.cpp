@@ -77,6 +77,7 @@ static bool IsAllowedAttackTarget(const APotatoMonster* Monster, const AActor* T
 // ------------------------------------------------------------
 // Proc: OnAttack Special (FinalStats 기반)
 // ------------------------------------------------------------
+/*
 void UPotatoCombatComponent::TryProcOnAttackSpecial(APotatoMonster* Monster, AActor* Target, double Now)
 {
 	if (!Monster || !Target) return;
@@ -90,8 +91,9 @@ void UPotatoCombatComponent::TryProcOnAttackSpecial(APotatoMonster* Monster, AAc
 	// - Busy / per-skill cooldown
 	// - Trigger validation
 	// 전부 처리한다.
-	SkillComp->TryStartOnAttackProc(Target);
+	SkillComp->TryStartOnAttackProc(Target);#1#
 }
+*/
 
 // ------------------------------------------------------------
 // 몽타주 종료 시 공격상태 해제 보장
@@ -176,7 +178,7 @@ bool UPotatoCombatComponent::RequestBasicAttack(AActor* Target)
 	bIsAttacking = true;
 
 	//  OnAttack 스페셜: Stats.OnAttackProcSkillId 기반 Proc
-	TryProcOnAttackSpecial(Monster, Target, Now);
+	/*TryProcOnAttackSpecial(Monster, Target, Now);*/
 
 	// AttackStart SFX
 	if (Now - LastAttackStartSFXTime >= AttackStartSFXCooldown)

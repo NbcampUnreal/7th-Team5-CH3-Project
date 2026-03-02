@@ -214,11 +214,11 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shape", meta=(ClampMin="0"))
 	float Radius = 0.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shape", meta=(ClampMin="0"))
+	/*UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shape", meta=(ClampMin="0"))
 	float AngleDeg = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shape", meta=(ClampMin="0"))
-	float Range = 0.f;
+	float Range = 0.f;*/
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Shape")
 	bool bHitOncePerTarget = true;
@@ -241,8 +241,8 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	EMonsterDotStackPolicy DotStackPolicy = EMonsterDotStackPolicy::RefreshDuration;
 
 	// CC
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Effect|CC", meta=(ClampMin="0"))
-	float StunDuration = 0.f;
+	/*UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Effect|CC", meta=(ClampMin="0"))
+	float StunDuration = 0.f;*/
 
 	// ============================================================
 	// ✅ NEW: Projectile(독침) / SpawnActor(불기둥) 공용 스폰 세팅
@@ -373,18 +373,20 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|Move", meta=(ClampMin="0"))
 	float SpawnedWanderRadius = 500.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|Move", meta=(ClampMin="0.01"))
-	float SpawnedRepathInterval = 0.8f;
+	/*UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="SpawnedActor|Move", meta=(ClampMin="0.01"))
+	float SpawnedRepathInterval = 0.8f;*/
 
-	// Budget / FX Gate
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Budget", meta=(ClampMin="0"))
-	float MaxFxDistance = 0.f;
 
+	/*
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Budget", meta=(ClampMin="0"))
 	int32 VfxCost = 0;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Budget", meta=(ClampMin="0"))
-	int32 SfxCost = 0;
+	int32 SfxCost = 0;*/
+		
+		// Budget / FX Gate
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Budget", meta=(ClampMin="0"))
+	float MaxFxDistance = 0.f;
 
 	// Presentation
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Presentation")
@@ -394,11 +396,11 @@ struct POTATOPROJECT_API FPotatoMonsterSpecialSkillPresetRow : public FTableRowB
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Skill|Anim")
 	TSoftObjectPtr<UAnimMontage> AttackMontageOverride;
 
-	// 기본 공격 몽타주로 폴백할지(공격형 스킬만 true 추천)
+	/*// 기본 공격 몽타주로 폴백할지(공격형 스킬만 true 추천)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Skill|Anim")
 	bool bFallbackToBasicAttackMontage = true;
 
 	// 텔레/캐스트/실행 중 언제 몽타주를 틀지 (기본: 캐스트 시작)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Skill|Anim")
-	bool bPlayMontageAtCastBegin = true;
+	bool bPlayMontageAtCastBegin = true;*/
 };

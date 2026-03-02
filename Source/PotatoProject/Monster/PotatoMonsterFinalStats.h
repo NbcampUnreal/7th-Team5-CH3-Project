@@ -158,5 +158,5 @@ struct FPotatoMonsterFinalStats
 
 	// 특정 태그만(비우면 전체)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AuraDamage")
-	FName AuraRequiredTargetTag = NAME_None;
+	TArray<FName> AuraRequiredTargetTags;
 };

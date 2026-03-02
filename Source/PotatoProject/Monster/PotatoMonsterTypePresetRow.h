@@ -63,7 +63,7 @@ struct POTATOPROJECT_API FPotatoMonsterTypePresetRow : public FTableRowBase
 	// -----------------------------
 	// OnAttack Proc override (Type)
 	// -----------------------------
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Special Proc")
+	/*UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Special Proc")
 	bool bOverrideOnAttackSpecialProc = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Special Proc")
@@ -73,7 +73,7 @@ struct POTATOPROJECT_API FPotatoMonsterTypePresetRow : public FTableRowBase
 	float OnAttackSpecialChance = 0.20f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Special Proc", meta=(ClampMin="0.0"))
-	float OnAttackSpecialProcCooldown = 1.50f;
+	float OnAttackSpecialProcCooldown = 1.50f;*/
 	
 	// =========================
 	// Gimmick: Harden Shell
@@ -113,5 +113,5 @@ struct POTATOPROJECT_API FPotatoMonsterTypePresetRow : public FTableRowBase
 	float AuraTickInterval = 0.25f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AuraDamage")
-	FName AuraRequiredTargetTag = NAME_None;
+	TArray<FName> AuraRequiredTargetTags;
 };

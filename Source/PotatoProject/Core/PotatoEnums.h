@@ -68,7 +68,7 @@ enum class EMonsterSpecialTrigger : uint8
 	None UMETA(DisplayName = "None"),
 	OnCooldown   UMETA(DisplayName = "OnCooldown"),    // 쿨마다 시도
 	OnHit        UMETA(DisplayName = "OnHit"),         // 피격 시
-	OnAttack     UMETA(DisplayName = "OnAttack"),      // 공격 시 (※ 현재 설계에선 Proc 경로에서만 TryStart)
+	/*OnAttack     UMETA(DisplayName = "OnAttack"),   */   // 공격 시 (※ 현재 설계에선 Proc 경로에서만 TryStart)/**/
 	OnDeath      UMETA(DisplayName = "OnDeath"),       // 사망 시
 	OnNearTarget UMETA(DisplayName = "OnNearTarget"),  // 근접 시(거리 조건)
 };
