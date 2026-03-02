@@ -273,6 +273,24 @@ void UPotatoPlayerHUD::PlayDialogue(FName RowName)
 	}
 }
 
+void UPotatoPlayerHUD::SetCinematicMode(bool bInCinematicMode)
+{
+	const ESlateVisibility TargetVisibility = bInCinematicMode ? ESlateVisibility::Hidden : ESlateVisibility::SelfHitTestInvisible;
+	const int32 ChildCount = RootCanvas->GetChildrenCount();
+	
+	for (int32 i = 0; i < ChildCount; ++i)
+	{
+		UWidget* ChildWidget = RootCanvas->GetChildAt(i);
+
+		if (!ChildWidget)
+		{
+			continue;
+		}
+		
+		ChildWidget->SetVisibility(TargetVisibility);
+	}
+}
+
 // ============================================================
 // Event Handler
 // ============================================================

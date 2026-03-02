@@ -51,6 +51,9 @@ protected:
 	// BindWidgets
 	// ================================================================
 public:
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
+	TObjectPtr<UPanelWidget> RootCanvas;
+	
 	// ---- 자원 텍스트 ----
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UTextBlock> ResourceWood;
@@ -167,7 +170,7 @@ public:
 	FLinearColor BuildSlotDefaultColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.15f);
 
 protected:
-	// TODO: WBP_PlayerHUD 내부에 자식으로 추가하기
+	// WBP_PlayerHUD 내부에 자식으로 추가
 	UPROPERTY(BlueprintReadWrite, meta = (BindWidget), Category = "UI")
 	TObjectPtr<UPotatoDialogueWidget> DialogueWidget;
 
@@ -279,6 +282,9 @@ public:
 	
 	UFUNCTION(BlueprintCallable, Category = "Dialogue")
 	void PlayDialogue(FName RowName);
+	
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void SetCinematicMode(bool bInCinematicMode);
 
     UPotatoHitMarker* GetHitMarkerWidget() const { return HitMarkerInstance; }
 
