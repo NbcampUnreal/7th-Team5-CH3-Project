@@ -10,6 +10,7 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "DrawDebugHelpers.h"
 #include "Player/PotatoPlayerCharacter.h"
+#include "Player/PotatoPlayerController.h"
 
 UPotatoWeaponComponent::UPotatoWeaponComponent()
 {
@@ -36,6 +37,11 @@ void UPotatoWeaponComponent::AddAmmoToWeapon(UPotatoWeaponData* TargetWeapon, in
 
 	FWeaponAmmoState& State = AmmoMap[TargetWeapon];
 	State.ReserveAmmo += Amount;
+
+	if (TargetWeapon == CurrentWeaponData)
+	{
+		BroadcastAmmoState();
+	}
 }
 
 void UPotatoWeaponComponent::InitializeAmmoMap()
@@ -46,7 +52,7 @@ void UPotatoWeaponComponent::InitializeAmmoMap()
 		{
 			FWeaponAmmoState NewState;
 			NewState.CurrentAmmo = Data->MaxAmmoSize; // 탄약 가득 채우고 시작
-			NewState.ReserveAmmo = 100; // 테스트를 위한 예비 탄약 100개
+            NewState.ReserveAmmo = Data->BuiltinAmmo; // 예비 탄약은 DataAsset에 설정된 값으로 초기화
 			AmmoMap.Add(Data, NewState);
 		}
 	}
@@ -294,17 +300,24 @@ void UPotatoWeaponComponent::StartReload()
 
 	FWeaponAmmoState& State = AmmoMap[CurrentWeaponData];
 
+	auto ShowMsg = [this](const FText& Msg)
+	{
+		if (APotatoPlayerCharacter* Char = Cast<APotatoPlayerCharacter>(GetOwner()))
+			if (APotatoPlayerController* PC = Cast<APotatoPlayerController>(Char->GetController()))
+				PC->ShowHUDMessage(Msg, 1.5f, true);
+	};
+
 	// 이미 가득 차 있는지 확인
 	if (State.CurrentAmmo >= CurrentWeaponData->MaxAmmoSize)
 	{
-		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Yellow, TEXT("탄창이 꽉 찼습니다!"));
+		ShowMsg(NSLOCTEXT("Weapon", "MagazineFull", "탄창이 가득 찼습니다"));
 		return;
 	}
 
 	// 예비 탄약이 있는지 확인
 	if (State.ReserveAmmo <= 0)
 	{
-		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("예비 탄약이 없습니다!"));
+		ShowMsg(NSLOCTEXT("Weapon", "NoReserveAmmo", "예비 탄약이 없습니다"));
 		return;
 	}
 

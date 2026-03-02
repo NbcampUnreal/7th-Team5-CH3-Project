@@ -332,7 +332,9 @@ void APotatoPlayerCharacter::StopSprint(const FInputActionValue& Value)
 
 void APotatoPlayerCharacter::CameraZoom(const FInputActionValue& Value)
 {
-	float CameraZoomValue = Value.Get<float>();
+    if (BuildingComponent && BuildingComponent->bIsBuildMode) return;
+
+    float CameraZoomValue = Value.Get<float>();
 
 	if (CameraBoom && CameraZoomValue != 0.0f)
 	{

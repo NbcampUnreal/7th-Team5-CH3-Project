@@ -50,6 +50,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	int32 MaxAmmoSize = 30;
 	
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
+    int32 BuiltinAmmo = 0; // 기본 예비 탄약
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Stats")
 	float FireRate = 0.5f;
 	
