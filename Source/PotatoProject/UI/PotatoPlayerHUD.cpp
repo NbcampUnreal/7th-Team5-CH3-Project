@@ -364,6 +364,10 @@ void UPotatoPlayerHUD::HandleBuildModeToggled(bool bIsBuildMode)
 	{
 		CostBox->SetVisibility(NewVisibility);
 	}
+	if (BuildModeKeyInfo)
+	{
+		BuildModeKeyInfo->SetVisibility(NewVisibility);
+	}
 }
 
 void UPotatoPlayerHUD::HandleBuildSlotChanged(int32 SlotIndex, const UPotatoStructureData* SelectedData)

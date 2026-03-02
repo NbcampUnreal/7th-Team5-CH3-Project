@@ -143,6 +143,9 @@ public:
 	
 	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI|BuildSlots")
 	TObjectPtr<UBorder> BuildBorder_8; // 슬롯 8
+	
+	UPROPERTY(BlueprintReadOnly, meta = (BindWidget), Category = "UI|BuildSlots")
+	TObjectPtr<UWidget> BuildModeKeyInfo;
 
 	// ---- 무기 선택 박스 ----
 	/** 무기 슬롯 Border 배열 (HorizontalBox_0 내부: 감자/옥수수/호박/당근) */
