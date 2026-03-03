@@ -7,6 +7,7 @@
 
 class USphereComponent;
 class UPotatoWeaponData;
+class UNiagaraComponent;
 
 UCLASS()
 class POTATOPROJECT_API APotatoProjectile : public AActor
@@ -28,6 +29,9 @@ public:
 	
 	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Projectile")
 	TObjectPtr<UProjectileMovementComponent> ProjectileMovement;
+	
+	UPROPERTY(VisibleDefaultsOnly, BlueprintReadOnly, Category = "Projectile")
+	TObjectPtr<UNiagaraComponent> TrailComponent;
 	
 	float Damage = 0.0f;
 	int32 PierceCount = 0;

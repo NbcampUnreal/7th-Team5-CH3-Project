@@ -156,6 +156,18 @@ private:
     UPROPERTY(EditAnywhere, Category = "Spawner")
     TObjectPtr<AActor> WarehouseActor;
 
+    // 재생할 사운드 에셋 (에디터에서 할당)
+    UPROPERTY(EditAnywhere, Category = "Audio")
+    USoundBase* DayBGM;
+    UPROPERTY(EditAnywhere, Category = "Audio")
+    USoundBase* NightBGM;
+
+    // 현재 재생 중인 오디오 컴포넌트 관리용
+    UPROPERTY()
+    UAudioComponent* DayAudioComponent;
+    UPROPERTY()
+    UAudioComponent* NightAudioComponent;
+
 #pragma endregion ResourceSystem
     
 #pragma region DialogueSystem

@@ -35,7 +35,7 @@ public:
 	FText WeaponName;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
-	UTexture2D* Icon;
+	TObjectPtr<UTexture2D> Icon;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "UI")
 	ECrosshairType CrosshairType;
@@ -80,22 +80,22 @@ public:
 	// =================================================================
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animations")
-	UAnimMontage* FireMontage;
+	TObjectPtr<UAnimMontage> FireMontage;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animations")
-	UAnimMontage* ReloadMontage;
+	TObjectPtr<UAnimMontage> ReloadMontage;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Animations")
-	UAnimMontage* EquipMontage;
+	TObjectPtr<UAnimMontage> EquipMontage;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
-	USoundBase* FireSound;
+	TObjectPtr<USoundBase> FireSound;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
-	USoundBase* ReloadSound;
+	TObjectPtr<USoundBase> ReloadSound;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
-	USoundBase* EquipSound;
+	TObjectPtr<USoundBase> EquipSound;
 	
 	/** 발사 사운드 랜덤 피치 변화 범위: 0.0은 변화 없음, 0.1은 0.9에서 1.1사이 무작위 값 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects", meta = (ClampMin = "0.0", ClampMax = "1.0"))
@@ -105,20 +105,26 @@ public:
 	float EquipSoundPitchRandomness = 0.1f;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
-	UNiagaraSystem* MuzzleFlash;
+	TObjectPtr<UNiagaraSystem> MuzzleFlash;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
 	TSubclassOf<UCameraShakeBase> FireCameraShake;
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
-	UNiagaraSystem* ImpactEffect;
+	TObjectPtr<UNiagaraSystem> ImpactEffect;
 
 	/** 나이아가라 파티클 크기 스케일링: 2.0 = 두 배 커짐 */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
 	FVector ImpactEffectScale = FVector(1.0f, 1.0f, 1.0f);
 	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
-	USoundBase* ImpactSound;
+	TObjectPtr<UNiagaraSystem> TrailEffect;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
+	TObjectPtr<USoundBase> ImpactSound;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Effects")
+	TObjectPtr<USoundAttenuation> ImpactSoundAttenuation;
 	
 	// =================================================================
 	// Game Feel

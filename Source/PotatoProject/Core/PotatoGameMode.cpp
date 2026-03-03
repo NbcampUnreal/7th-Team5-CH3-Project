@@ -1,4 +1,4 @@
-﻿#include "PotatoGameMode.h"
+#include "PotatoGameMode.h"
 #include "PotatoDayNightCycle.h"
 #include "PotatoResourceManager.h"
 #include "PotatoRewardGenerator.h"
@@ -13,6 +13,7 @@
 #include "UI/GameOverScreen.h"
 #include "Player/PotatoPlayerController.h"
 #include "UI/PotatoPlayerHUD.h"
+#include "Components/AudioComponent.h"
 
 APotatoGameMode::APotatoGameMode()
 {
@@ -132,6 +133,12 @@ void APotatoGameMode::StartDayPhase()
 		}
 		TriggerStoryDialogue(*ScheduledDialogue);
 	}
+
+	//낮 BGM 재생
+	if (DayBGM)
+	{
+		DayAudioComponent = UGameplayStatics::SpawnSound2D(this, DayBGM);
+	}
 }
 
 void APotatoGameMode::StartWarningPhase()
@@ -145,6 +152,11 @@ void APotatoGameMode::StartWarningPhase()
 			PC->PlayerHUDWidget->ShowMessageWithDuration(
 				NSLOCTEXT("HUD", "EveningWarning", "밤이 찾아옵니다..."), 3.0f, true);
 		}
+	}
+	//낮 음악 fadeout
+	if (DayAudioComponent && DayAudioComponent->IsPlaying())
+	{
+		DayAudioComponent->FadeOut(5.0f, 0.0f);
 	}
 }
 
@@ -184,10 +196,18 @@ void APotatoGameMode::StartNightPhase()
 	{
 		TriggerStoryDialogue(*ScheduledDialogue);
 	}
+
+
+	//밤 BGM 재생
+	if (NightBGM)
+	{
+		NightAudioComponent = UGameplayStatics::SpawnSound2D(this, NightBGM);
+	}
 }
 
 void APotatoGameMode::StartResultPhase()
 {
+
 	// ✅ DayNightCycle 타이머 + SpawnerRoundFinished로 중복 진입 가능 → 가드
 	if (bResultPhaseTriggered)
 	{
@@ -217,6 +237,11 @@ void APotatoGameMode::StartResultPhase()
 				})
 			);
 		}
+	}
+	//밤 음악 fadeout
+	if (NightAudioComponent && NightAudioComponent->IsPlaying())
+	{
+		NightAudioComponent->FadeOut(5.0f, 0.0f);
 	}
 }
 

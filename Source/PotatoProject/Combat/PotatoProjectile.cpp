@@ -6,6 +6,7 @@
 #include "PotatoWeaponData.h"
 #include "Engine/OverlapResult.h"
 #include "NiagaraFunctionLibrary.h"
+#include "NiagaraComponent.h"
 
 APotatoProjectile::APotatoProjectile()
 {
@@ -19,6 +20,10 @@ APotatoProjectile::APotatoProjectile()
 	ProjectileMesh = CreateDefaultSubobject<UStaticMeshComponent>(FName("ProjectileMesh"));
 	ProjectileMesh->SetupAttachment(CollisionComp);
 	ProjectileMesh->SetCollisionProfileName(TEXT("NoCollision"));
+	
+	TrailComponent = CreateDefaultSubobject<UNiagaraComponent>(FName("TrailComponent"));
+	TrailComponent->SetupAttachment(CollisionComp);
+	TrailComponent->SetAutoActivate(false);
 
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(FName("ProjectileMovement"));
 	ProjectileMovement->UpdatedComponent = CollisionComp;
@@ -51,7 +56,13 @@ void APotatoProjectile::InitializeProjectile(UPotatoWeaponData* WeaponData)
 	Damage = WeaponData->BaseDamage;
 	PierceCount = WeaponData->MaxPierceCount;
 	ExplosionRadius = WeaponData->ExplosionRadius;
-
+	
+	if (TrailComponent && WeaponData->TrailEffect)
+	{
+		TrailComponent->SetAsset(WeaponData->TrailEffect);
+		TrailComponent->Activate();
+	}
+	
 	if (ProjectileMovement)
 	{
 		ProjectileMovement->InitialSpeed = WeaponData->ProjectileSpeed;
@@ -73,7 +84,13 @@ void APotatoProjectile::InitializeProjectileWithBallistics(UPotatoWeaponData* We
     Damage = WeaponData->BaseDamage;
     PierceCount = WeaponData->MaxPierceCount;;
     ExplosionRadius = WeaponData->ExplosionRadius;
-
+	
+	if (TrailComponent && WeaponData->TrailEffect)
+	{
+		TrailComponent->SetAsset(WeaponData->TrailEffect);
+		TrailComponent->Activate();
+	}
+	
     if (ProjectileMovement)
     {
         ProjectileMovement->InitialSpeed = WeaponData->ProjectileSpeed;
@@ -242,6 +259,14 @@ void APotatoProjectile::PlayImpactEffects(const FVector& ImpactLocation)
 			float MaxPitch = 1.0f + CachedWeaponData->FireSoundPitchRandomness;
 			RandomPitch = FMath::RandRange(MinPitch, MaxPitch);
 		}
-		UGameplayStatics::PlaySoundAtLocation(this, CachedWeaponData->ImpactSound, ImpactLocation, RandomPitch);
+		UGameplayStatics::PlaySoundAtLocation(
+			this,
+			CachedWeaponData->ImpactSound,
+			ImpactLocation,
+			1.0f,
+			RandomPitch,
+			0.0f,
+			CachedWeaponData->ImpactSoundAttenuation
+			);
 	}
 }
