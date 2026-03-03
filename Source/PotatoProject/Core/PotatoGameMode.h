@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/GameMode.h"
 #include "Core/PotatoEnums.h"
+#include "TimerManager.h"
 #include "PotatoGameMode.generated.h"
 
 class UPotatoDayNightCycle;
@@ -58,6 +59,10 @@ private:
 
     // 게임 시작 직 후 첫 번째 StartDayPhase이 호출 될 때 CurrentDay 증가 시키지 않음
     bool bIsFirstDay = true;
+    
+private:
+    FTimerHandle TH_ResultPanel;
+    bool bResultPanelOpened = false;
 
 public:
     // -- Day-night cycle BP 설정용입니다. --

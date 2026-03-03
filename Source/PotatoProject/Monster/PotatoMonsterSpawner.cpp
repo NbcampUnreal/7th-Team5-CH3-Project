@@ -260,7 +260,20 @@ void APotatoMonsterSpawner::EndWave(EPotatoWaveEndReason Reason, bool bClearMons
 		}
 
 		UE_LOG(LogTemp, Warning, TEXT("[Spawner] Round %d finished (no more waves)"), ActiveRound);
-		OnRoundFinished.Broadcast(ActiveRound);
+		if (!GetWorld()) return;
+
+		const int32 RoundToSend = ActiveRound;
+
+		FTimerHandle DelayHandle;
+		GetWorld()->GetTimerManager().SetTimer(
+			DelayHandle,
+			FTimerDelegate::CreateLambda([this, RoundToSend]()
+			{
+				OnRoundFinished.Broadcast(RoundToSend);
+			}),
+			5.0f,   // 5초 딜레이
+			false   // 반복 아님
+		);
 		bRoundAutoProgress = false;
 		ActiveRound = INDEX_NONE;
 		ActiveSubWave = INDEX_NONE;

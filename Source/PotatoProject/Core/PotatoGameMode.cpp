@@ -37,6 +37,10 @@ void APotatoGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		DayNightSystem->OnDawnStarted.Clear();
 		DayNightSystem = nullptr;
 	}
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(TH_ResultPanel);
+	}
 
 	// Spawner 델리게이트 정리(안전)
 	if (MonsterSpawner)
@@ -90,7 +94,7 @@ void APotatoGameMode::StartDayPhase()
 {
 	// ✅ 새 Day로 들어오면 ResultPhase 중복 가드 해제
 	bResultPhaseTriggered = false;
-
+	bResultPanelOpened = false;
 	if (bIsFirstDay)
 	{
 		bIsFirstDay = false;
@@ -207,17 +211,33 @@ void APotatoGameMode::StartNightPhase()
 
 void APotatoGameMode::StartResultPhase()
 {
-
-	// ✅ DayNightCycle 타이머 + SpawnerRoundFinished로 중복 진입 가능 → 가드
-	if (bResultPhaseTriggered)
-	{
-		UE_LOG(LogTemp, Verbose, TEXT("[GM] StartResultPhase skipped (already triggered)"));
-		return;
-	}
+	if (bResultPhaseTriggered) return;
 	bResultPhaseTriggered = true;
 
 	OnResultPhase.Broadcast();
 
+	auto OpenResultPanelOnce = [this]()
+	{
+		if (!GetWorld()) return;
+		if (bResultPanelOpened) return;   // ✅ 중복 방지
+		bResultPanelOpened = true;
+
+		// 보험 타이머 살아있으면 여기서도 제거(추가 안전)
+		GetWorld()->GetTimerManager().ClearTimer(TH_ResultPanel);
+
+		OnShowResultPanel.Broadcast();
+	};
+
+	// ✅ 보험 타이머(3초)
+	GetWorld()->GetTimerManager().ClearTimer(TH_ResultPanel);
+	GetWorld()->GetTimerManager().SetTimer(
+		TH_ResultPanel,
+		FTimerDelegate::CreateLambda([OpenResultPanelOnce]() { OpenResultPanelOnce(); }),
+		3.0f,
+		false
+	);
+
+	// ✅ 메시지 콜백에서도 “열기”는 동일 함수로만
 	if (APotatoPlayerController* PC = GetWorld()->GetFirstPlayerController<APotatoPlayerController>())
 	{
 		if (PC->PlayerHUDWidget)
@@ -226,19 +246,15 @@ void APotatoGameMode::StartResultPhase()
 				NSLOCTEXT("HUD", "DawnMessage", "날이 밝아옵니다!"),
 				3.0f,
 				true,
-				FSimpleDelegate::CreateLambda([this]()
+				FSimpleDelegate::CreateLambda([this, OpenResultPanelOnce]()
 				{
-					if (MonsterSpawner)
-					{
-						MonsterSpawner->NotifyTimeExpired();
-					}
-
-					OnShowResultPanel.Broadcast();
+					if (MonsterSpawner) MonsterSpawner->NotifyTimeExpired();
+					OpenResultPanelOnce();
 				})
 			);
 		}
 	}
-	//밤 음악 fadeout
+
 	if (NightAudioComponent && NightAudioComponent->IsPlaying())
 	{
 		NightAudioComponent->FadeOut(5.0f, 0.0f);
