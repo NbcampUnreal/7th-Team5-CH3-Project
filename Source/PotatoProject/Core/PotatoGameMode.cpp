@@ -139,7 +139,7 @@ void APotatoGameMode::StartDayPhase()
 	}
 
 	//낮 BGM 재생
-	if (DayBGM)
+	if (DayBGM && IsBGM)
 	{
 		DayAudioComponent = UGameplayStatics::SpawnSound2D(this, DayBGM);
 	}
@@ -160,7 +160,7 @@ void APotatoGameMode::StartWarningPhase()
 	//낮 음악 fadeout
 	if (DayAudioComponent && DayAudioComponent->IsPlaying())
 	{
-		DayAudioComponent->FadeOut(5.0f, 0.0f);
+		DayAudioComponent->FadeOut(EveningDuration, 0.0f);
 	}
 }
 
@@ -203,7 +203,7 @@ void APotatoGameMode::StartNightPhase()
 
 
 	//밤 BGM 재생
-	if (NightBGM)
+	if (NightBGM && IsBGM)
 	{
 		NightAudioComponent = UGameplayStatics::SpawnSound2D(this, NightBGM);
 	}
@@ -257,7 +257,7 @@ void APotatoGameMode::StartResultPhase()
 
 	if (NightAudioComponent && NightAudioComponent->IsPlaying())
 	{
-		NightAudioComponent->FadeOut(5.0f, 0.0f);
+		NightAudioComponent->FadeOut(DawnDuration, 0.0f);
 	}
 }
 

@@ -172,6 +172,8 @@ private:
     UAudioComponent* DayAudioComponent;
     UPROPERTY()
     UAudioComponent* NightAudioComponent;
+    UPROPERTY(EditAnywhere, Category = "Audio")
+    bool IsBGM = true; 
 
 #pragma endregion ResourceSystem
     
