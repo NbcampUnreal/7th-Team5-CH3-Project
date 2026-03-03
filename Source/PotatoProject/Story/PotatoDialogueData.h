@@ -11,9 +11,11 @@ enum class EDialogueSpeaker : uint8
 {
 	None,
 	Player,
+	Rat,
+	Snake,
 	Skeleton,
 	Cactus,
-	MushroomAngry,
+	Mushroom,
 	Stingray,
 	Slime,
 	TurtleShell,
