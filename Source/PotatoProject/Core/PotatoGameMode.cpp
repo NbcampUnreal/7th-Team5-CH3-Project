@@ -1,18 +1,32 @@
+// ============================================================================
+// PotatoGameMode.cpp (FINAL) - Victory blocks ResultPhase + clean shutdown guard
+// - VictoryCondition 충족 시 ResultPhase(보상/결과)로 진입하지 않음
+// - RoundFinished(웨이브 종료 스킵)에서도 Victory 먼저 체크
+// - Game 종료 후 페이즈/타이머 재진입 방지(bGameEnded)
+// - ResultPanel 보험 타이머/메시지 콜백 중복 방지 유지
+// ============================================================================
+
 #include "PotatoGameMode.h"
+
 #include "PotatoDayNightCycle.h"
 #include "PotatoResourceManager.h"
 #include "PotatoRewardGenerator.h"
 #include "Subsystems/WorldSubsystem.h"
+
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
+
 #include "../Player/PotatoPlayerCharacter.h"
 #include "../Monster/PotatoMonsterSpawner.h"
 #include "../Animal/PotatoAnimalController.h"
 #include "../Core/PotatoEnums.h"
+
 #include "Core/PotatoGameStateBase.h"
+
 #include "UI/GameOverScreen.h"
 #include "Player/PotatoPlayerController.h"
 #include "UI/PotatoPlayerHUD.h"
+
 #include "Components/AudioComponent.h"
 
 APotatoGameMode::APotatoGameMode()
@@ -37,6 +51,7 @@ void APotatoGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		DayNightSystem->OnDawnStarted.Clear();
 		DayNightSystem = nullptr;
 	}
+
 	if (UWorld* World = GetWorld())
 	{
 		World->GetTimerManager().ClearTimer(TH_ResultPanel);
@@ -54,6 +69,8 @@ void APotatoGameMode::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void APotatoGameMode::StartGame()
 {
+	bGameEnded = false;
+
 	// DayNight System 접근 및 초기화
 	DayNightSystem = GetWorld()->GetSubsystem<UPotatoDayNightCycle>();
 	if (!DayNightSystem) return;
@@ -70,6 +87,7 @@ void APotatoGameMode::StartGame()
 	if (!ResourceManager) return;
 
 	ResourceManager->StartSystem(InitialWood, InitialStone, InitialCrop, InitialLivestock);
+
 	PlayerCharacter = Cast<APotatoPlayerCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
 
 	// Spawner 찾기
@@ -82,7 +100,7 @@ void APotatoGameMode::StartGame()
 		}
 	}
 
-	// ✅ Spawner RoundFinished 바인딩
+	//  Spawner RoundFinished 바인딩
 	if (MonsterSpawner)
 	{
 		MonsterSpawner->OnRoundFinished.RemoveDynamic(this, &APotatoGameMode::HandleRoundFinished);
@@ -92,26 +110,32 @@ void APotatoGameMode::StartGame()
 
 void APotatoGameMode::StartDayPhase()
 {
-	// ✅ 새 Day로 들어오면 ResultPhase 중복 가드 해제
+	if (bGameEnded) return;
+
+	//  새 Day로 들어오면 ResultPhase 중복 가드 해제
 	bResultPhaseTriggered = false;
 	bResultPanelOpened = false;
+
 	if (bIsFirstDay)
 	{
 		bIsFirstDay = false;
 	}
 	else
 	{
+		//  Day 진입 시점 승리 체크(기존 유지)
 		if (CheckVictoryCondition())
 		{
 			EndGame(true);
 			return;
 		}
+
 		CurrentDay++;
 	}
 
 	UE_LOG(LogTemp, Log, TEXT("DayPhase %d"), CurrentDay);
 
 	OnDayPhase.Broadcast();
+
 	if (PlayerCharacter)
 	{
 		PlayerCharacter->SetIsBuildingMode(true);
@@ -138,7 +162,7 @@ void APotatoGameMode::StartDayPhase()
 		TriggerStoryDialogue(*ScheduledDialogue);
 	}
 
-	//낮 BGM 재생
+	// 낮 BGM 재생
 	if (DayBGM && IsBGM)
 	{
 		DayAudioComponent = UGameplayStatics::SpawnSound2D(this, DayBGM);
@@ -147,6 +171,8 @@ void APotatoGameMode::StartDayPhase()
 
 void APotatoGameMode::StartWarningPhase()
 {
+	if (bGameEnded) return;
+
 	OnWarningPhase.Broadcast();
 
 	if (APotatoPlayerController* PC = GetWorld()->GetFirstPlayerController<APotatoPlayerController>())
@@ -154,10 +180,14 @@ void APotatoGameMode::StartWarningPhase()
 		if (PC->PlayerHUDWidget)
 		{
 			PC->PlayerHUDWidget->ShowMessageWithDuration(
-				NSLOCTEXT("HUD", "EveningWarning", "밤이 찾아옵니다..."), 3.0f, true);
+				NSLOCTEXT("HUD", "EveningWarning", "밤이 찾아옵니다..."),
+				3.0f,
+				true
+			);
 		}
 	}
-	//낮 음악 fadeout
+
+	// 낮 음악 fadeout
 	if (DayAudioComponent && DayAudioComponent->IsPlaying())
 	{
 		DayAudioComponent->FadeOut(EveningDuration, 0.0f);
@@ -166,6 +196,8 @@ void APotatoGameMode::StartWarningPhase()
 
 void APotatoGameMode::StartNightPhase()
 {
+	if (bGameEnded) return;
+
 	OnNightPhase.Broadcast();
 
 	if (PlayerCharacter)
@@ -183,12 +215,12 @@ void APotatoGameMode::StartNightPhase()
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("start Wave!")));
 
 		FString WaveString = FString::FromInt(CurrentDay);
-		FName s = FName(*WaveString);
+		FName WaveId(*WaveString);
 
-		MonsterSpawner->StartWave(s);
+		MonsterSpawner->StartWave(WaveId);
 
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan,
-			FString::Printf(TEXT("start Wave: %s"), *s.ToString()));
+			FString::Printf(TEXT("start Wave: %s"), *WaveId.ToString()));
 	}
 
 	if (AnimalController)
@@ -201,8 +233,7 @@ void APotatoGameMode::StartNightPhase()
 		TriggerStoryDialogue(*ScheduledDialogue);
 	}
 
-
-	//밤 BGM 재생
+	// 밤 BGM 재생
 	if (NightBGM && IsBGM)
 	{
 		NightAudioComponent = UGameplayStatics::SpawnSound2D(this, NightBGM);
@@ -211,6 +242,17 @@ void APotatoGameMode::StartNightPhase()
 
 void APotatoGameMode::StartResultPhase()
 {
+	//  게임이 이미 끝났으면 어떤 이유로든 ResultPhase 진입 금지
+	if (bGameEnded) return;
+
+	//  VictoryCondition이면 ResultPhase(보상/결과)로 넘어가지 않음
+	//    - 특히 RoundFinished에서 ForceToDawn으로 들어오는 케이스를 여기서도 차단
+	if (CheckVictoryCondition())
+	{
+		EndGame(true);
+		return;
+	}
+
 	if (bResultPhaseTriggered) return;
 	bResultPhaseTriggered = true;
 
@@ -219,7 +261,8 @@ void APotatoGameMode::StartResultPhase()
 	auto OpenResultPanelOnce = [this]()
 	{
 		if (!GetWorld()) return;
-		if (bResultPanelOpened) return;   // ✅ 중복 방지
+		if (bGameEnded) return;
+		if (bResultPanelOpened) return;   //  중복 방지
 		bResultPanelOpened = true;
 
 		// 보험 타이머 살아있으면 여기서도 제거(추가 안전)
@@ -228,7 +271,7 @@ void APotatoGameMode::StartResultPhase()
 		OnShowResultPanel.Broadcast();
 	};
 
-	// ✅ 보험 타이머(3초)
+	//  보험 타이머(3초)
 	GetWorld()->GetTimerManager().ClearTimer(TH_ResultPanel);
 	GetWorld()->GetTimerManager().SetTimer(
 		TH_ResultPanel,
@@ -237,7 +280,7 @@ void APotatoGameMode::StartResultPhase()
 		false
 	);
 
-	// ✅ 메시지 콜백에서도 “열기”는 동일 함수로만
+	//  메시지 콜백에서도 “열기”는 동일 함수로만
 	if (APotatoPlayerController* PC = GetWorld()->GetFirstPlayerController<APotatoPlayerController>())
 	{
 		if (PC->PlayerHUDWidget)
@@ -248,6 +291,9 @@ void APotatoGameMode::StartResultPhase()
 				true,
 				FSimpleDelegate::CreateLambda([this, OpenResultPanelOnce]()
 				{
+					if (!GetWorld()) return;
+					if (bGameEnded) return;
+
 					if (MonsterSpawner) MonsterSpawner->NotifyTimeExpired();
 					OpenResultPanelOnce();
 				})
@@ -261,17 +307,26 @@ void APotatoGameMode::StartResultPhase()
 	}
 }
 
-// ✅ Spawner에서 Round(=CurrentDay) 웨이브 묶음이 끝났을 때 호출됨
+//  Spawner에서 Round(=CurrentDay) 웨이브 묶음이 끝났을 때 호출됨
 void APotatoGameMode::HandleRoundFinished(int32 Round)
 {
 	UE_LOG(LogTemp, Warning, TEXT("[GM] HandleRoundFinished Round=%d CurrentDay=%d"), Round, CurrentDay);
+
+	if (bGameEnded) return;
 
 	if (Round != CurrentDay)
 	{
 		return;
 	}
 
-	// ✅ "진짜로" Night 타이머 끊고 Dawn(=ResultPhase)으로 즉시 스킵
+	//  웨이브가 끝났을 때도 Victory 먼저 체크해서 Dawn/ResultPhase 스킵 방지
+	if (CheckVictoryCondition())
+	{
+		EndGame(true);
+		return;
+	}
+
+	//  "진짜로" Night 타이머 끊고 Dawn(=ResultPhase)으로 즉시 스킵
 	if (DayNightSystem)
 	{
 		DayNightSystem->ForceToDawn(true); // 또는 DayNightSystem->SkipToPhase(EDayPhase::Dawn, true);
@@ -282,8 +337,18 @@ void APotatoGameMode::HandleRoundFinished(int32 Round)
 		StartResultPhase();
 	}
 }
+
 void APotatoGameMode::EndGame(bool IsGameClear, FText Message)
 {
+	if (bGameEnded) return;
+	bGameEnded = true;
+
+	// ResultPanel 보험 타이머가 남아있으면 즉시 제거
+	if (UWorld* World = GetWorld())
+	{
+		World->GetTimerManager().ClearTimer(TH_ResultPanel);
+	}
+
 	if (MonsterSpawner)
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Cyan, FString::Printf(TEXT("Stop Wave!")));
@@ -312,6 +377,9 @@ void APotatoGameMode::EndGame(bool IsGameClear, FText Message)
 
 	PlayerController->SetPause(true);
 	PlayerController->SetUIMode(true, GameOverScreen);
+
+	// (선택) DayNightSystem이 계속 tick/타이머를 돌린다면 여기서 Stop 함수가 있으면 호출 추천
+	// if (DayNightSystem) DayNightSystem->StopSystem();
 }
 
 bool APotatoGameMode::CheckVictoryCondition()
