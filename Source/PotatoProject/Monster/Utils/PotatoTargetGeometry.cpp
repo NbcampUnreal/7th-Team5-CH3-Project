@@ -63,32 +63,63 @@ void GetTargetBoundsSafe(AActor* Target, FVector& OutOrigin, FVector& OutExtent)
 	}
 }
 
+static const FName TAG_DamageArea(TEXT("DamageArea"));
+
 bool GetClosestPoint2DOnTarget(AActor* Target, const FVector& From, FVector& OutClosest2D)
 {
 	if (!IsValid(Target)) return false;
 
-	// Prim 기반 (가능하면)
-	if (UPrimitiveComponent* Prim = FindFirstCollisionPrimitive(Target))
+	UPrimitiveComponent* BestPrim = nullptr;
+	FVector BestPoint = FVector::ZeroVector;
+	float BestDistSq = BIG_NUMBER;
+
+	TArray<UPrimitiveComponent*> Prims;
+	Target->GetComponents<UPrimitiveComponent>(Prims);
+
+	for (UPrimitiveComponent* Prim : Prims)
 	{
-		if (IsValid(Prim) && Prim->IsRegistered())
+		if (!IsValid(Prim)) continue;
+
+		// ✅ 1) DamageArea 컴포넌트는 타겟팅/사거리 계산에서 제외
+		if (Prim->ComponentHasTag(TAG_DamageArea))
 		{
-			FVector Closest3D = FVector::ZeroVector;
-			const float Dist = Prim->GetClosestPointOnCollision(From, Closest3D);
-			if (Dist >= 0.f)
-			{
-				OutClosest2D = Closest3D;
-				OutClosest2D.Z = 0.f;
-				return true;
-			}
+			continue;
+		}
+
+		// ✅ 2) 콜리전이 꺼진 컴포넌트는 제외
+		if (Prim->GetCollisionEnabled() == ECollisionEnabled::NoCollision)
+		{
+			continue;
+		}
+
+		// (선택) 시각효과/트리거류 제외 강화하고 싶으면 추가 가능
+		// if (!Prim->IsQueryCollisionEnabled()) continue;  // 버전에 따라 함수명 다를 수 있음
+
+		FVector Closest;
+		float Dist = Prim->GetClosestPointOnCollision(From, Closest);
+
+		if (Dist <= 0.f)
+		{
+			continue;
+		}
+
+		const float D2 = FVector::DistSquared2D(From, Closest);
+		if (D2 < BestDistSq)
+		{
+			BestDistSq = D2;
+			BestPrim = Prim;
+			BestPoint = Closest;
 		}
 	}
 
-	// fallback: Bounds
-	FVector Origin(0), Extent(0);
-	GetTargetBoundsSafe(Target, Origin, Extent);
+	if (BestPrim)
+	{
+		OutClosest2D = FVector(BestPoint.X, BestPoint.Y, From.Z);
+		return true;
+	}
 
-	OutClosest2D = ClosestPointOnAABB2D_Local(From, Origin, Extent);
-	OutClosest2D.Z = 0.f;
+	// fallback: bounds 중심
+	OutClosest2D = FVector(Target->GetActorLocation().X, Target->GetActorLocation().Y, From.Z);
 	return true;
 }
 
