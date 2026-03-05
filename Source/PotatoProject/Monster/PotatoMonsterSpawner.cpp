@@ -1,5 +1,5 @@
 ﻿// ===============================
-// PotatoMonsterSpawner.cpp (StartWave 수정 포함 빌드 가능한 전체)
+// PotatoMonsterSpawner.cpp (SHIPPING CLEAN + TIMER SAFE)
 // ===============================
 #include "PotatoMonsterSpawner.h"
 
@@ -9,6 +9,8 @@
 #include "Engine/World.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/UnrealType.h"
+
+#include "TimerManager.h"
 
 // Utils
 #include "Utils/PotatoWaveIdUtils.h" // IsRoundOnlyName, MakeRoundWaveId, ParseRoundWaveId
@@ -59,14 +61,15 @@ void APotatoMonsterSpawner::RegisterSpawnedMonster(APotatoMonster* Monster)
 	AliveCount++;
 	SpawnedMonsters.Add(Monster);
 
-	Monster->OnDestroyed.AddDynamic(this, &APotatoMonsterSpawner::HandleSpawnedMonsterDestroyed);
-
-	UE_LOG(LogTemp, Warning, TEXT("[Spawner] Register OK | Alive=%d | Monster=%s"),
-		AliveCount, *GetNameSafe(Monster));
+	// ✅ Shipping 크래시 예방 포인트:
+	// - 이 AddDynamic 대상 함수는 반드시 헤더에서 UFUNCTION() 이어야 함.
+	// - (아래 "검토 포인트" 참고)
+	Monster->OnDestroyed.AddUniqueDynamic(this, &APotatoMonsterSpawner::HandleSpawnedMonsterDestroyed);
 }
 
 void APotatoMonsterSpawner::HandleSpawnedMonsterDestroyed(AActor* DestroyedActor)
 {
+	// StopWave/EndWave(clear)에서 Destroy() 호출 시 중복 감소 방지
 	if (!bWaveActive) return;
 
 	AliveCount = FMath::Max(0, AliveCount - 1);
@@ -89,7 +92,6 @@ void APotatoMonsterSpawner::StartWave(FName WaveId)
 	{
 		if (!WaveMetaTable || !WaveSpawnTable)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Spawner] Wave tables missing"));
 			return;
 		}
 
@@ -98,7 +100,6 @@ void APotatoMonsterSpawner::StartWave(FName WaveId)
 
 		if (!ResolveFirstWaveForRound(Round, ResolvedWaveId, ResolvedSub))
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[Spawner] No wave found for Round=%d"), Round);
 			return;
 		}
 
@@ -107,15 +108,10 @@ void APotatoMonsterSpawner::StartWave(FName WaveId)
 		bRoundAutoProgress = true;
 
 		WaveId = ResolvedWaveId;
-
-		UE_LOG(LogTemp, Log, TEXT("[Spawner] Round input resolved | Round=%d -> WaveId=%s"),
-			Round, *WaveId.ToString());
 	}
 	else
 	{
-		// ===== 핵심 수정 =====
-		// 기존: "1-2" 같은 실제 WaveId로 StartWave가 호출되면 자동진행 컨텍스트를 꺼버렸음.
-		// 해결: "1-2" 형태면 Round/Sub를 복원(또는 유지)하고 bRoundAutoProgress를 유지.
+		// ===== 핵심 수정 유지 =====
 		int32 ParsedRound = INDEX_NONE;
 		int32 ParsedSub = INDEX_NONE;
 
@@ -137,17 +133,14 @@ void APotatoMonsterSpawner::StartWave(FName WaveId)
 
 	if (!WaveMetaTable || !WaveSpawnTable)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Spawner] Wave tables missing"));
 		return;
 	}
 
 	const FPotatoWaveMetaRow* Meta = WaveMetaTable->FindRow<FPotatoWaveMetaRow>(
 		WaveId, TEXT("StartWave:Meta")
 	);
-
 	if (!Meta)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Spawner] Meta not found for WaveId=%s"), *WaveId.ToString());
 		return;
 	}
 
@@ -163,25 +156,29 @@ void APotatoMonsterSpawner::StartWave(FName WaveId)
 
 	const float PreDelay = FMath::Max(0.f, Meta->PreDelay);
 
-	GetWorldTimerManager().SetTimer(
-		SpawnTickHandle,
-		this,
-		&APotatoMonsterSpawner::TickSpawn,
-		CurrentSpawnInterval,
-		true,
-		PreDelay
-	);
-
-	UE_LOG(LogTemp, Warning, TEXT("[Spawner] Wave %s started | Interval=%.2f | PreDelay=%.2f | QueueItems=%d | Auto=%d | Round=%d Sub=%d"),
-		*WaveId.ToString(), CurrentSpawnInterval, PreDelay, PendingQueue.Num(),
-		bRoundAutoProgress ? 1 : 0, ActiveRound, ActiveSubWave);
+	if (UWorld* W = GetWorld())
+	{
+		W->GetTimerManager().SetTimer(
+			SpawnTickHandle,
+			this,
+			&APotatoMonsterSpawner::TickSpawn,
+			CurrentSpawnInterval,
+			true,
+			PreDelay
+		);
+	}
 }
 
 void APotatoMonsterSpawner::StopWave()
 {
-	GetWorldTimerManager().ClearTimer(SpawnTickHandle);
+	if (UWorld* W = GetWorld())
+	{
+		W->GetTimerManager().ClearTimer(SpawnTickHandle);
+	}
+
 	PendingQueue.Reset();
 
+	// Destroy() 중 OnDestroyed 콜백에서 AliveCount 감소되지 않게 먼저 false 처리
 	bWaveActive = false;
 	bSpawnFinished = false;
 
@@ -210,16 +207,22 @@ void APotatoMonsterSpawner::NotifyTimeExpired()
 
 void APotatoMonsterSpawner::EndWave(EPotatoWaveEndReason Reason, bool bClearMonsters)
 {
+	// 둘 다 비활성이면 종료
 	if (!bWaveActive && CurrentWaveId.IsNone())
 	{
 		return;
 	}
 
-	GetWorldTimerManager().ClearTimer(SpawnTickHandle);
+	if (UWorld* W = GetWorld())
+	{
+		W->GetTimerManager().ClearTimer(SpawnTickHandle);
+	}
+
 	PendingQueue.Reset();
 
 	const FName EndedWave = CurrentWaveId;
 
+	// 먼저 inactive 처리 (Destroy 중 콜백 방지)
 	bWaveActive = false;
 	bSpawnFinished = false;
 	CurrentWaveId = NAME_None;
@@ -237,10 +240,7 @@ void APotatoMonsterSpawner::EndWave(EPotatoWaveEndReason Reason, bool bClearMons
 		AliveCount = 0;
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("[Spawner] Wave %s ended | Reason=%d | ClearMonsters=%d | Auto=%d | Round=%d Sub=%d"),
-		*EndedWave.ToString(), (int32)Reason, bClearMonsters ? 1 : 0,
-		bRoundAutoProgress ? 1 : 0, ActiveRound, ActiveSubWave);
-
+	// ---- 자동 진행 ----
 	if (bRoundAutoProgress && Reason == EPotatoWaveEndReason::Cleared && ActiveRound > 0)
 	{
 		int32& NextIdx = NextSubWaveIndexByRound.FindOrAdd(ActiveRound);
@@ -252,28 +252,28 @@ void APotatoMonsterSpawner::EndWave(EPotatoWaveEndReason Reason, bool bClearMons
 		if (ResolveNextWaveForActiveRound(NextWaveId, NextSub))
 		{
 			ActiveSubWave = NextSub;
-			UE_LOG(LogTemp, Warning, TEXT("[Spawner] Auto progress -> NextWave=%s (Round=%d Sub=%d)"),
-				*NextWaveId.ToString(), ActiveRound, ActiveSubWave);
-
 			StartWave(NextWaveId);
 			return;
 		}
 
-		UE_LOG(LogTemp, Warning, TEXT("[Spawner] Round %d finished (no more waves)"), ActiveRound);
-		if (!GetWorld()) return;
+		// Round 종료: 5초 후 Broadcast
+		if (UWorld* W = GetWorld())
+		{
+			const int32 RoundToSend = ActiveRound;
 
-		const int32 RoundToSend = ActiveRound;
+			FTimerHandle DelayHandle;
+			W->GetTimerManager().SetTimer(
+				DelayHandle,
+				FTimerDelegate::CreateWeakLambda(this, [this, RoundToSend]()
+				{
+					// ✅ Spawner가 이미 파괴되었으면 WeakLambda가 실행 자체를 막아줌
+					OnRoundFinished.Broadcast(RoundToSend);
+				}),
+				5.0f,
+				false
+			);
+		}
 
-		FTimerHandle DelayHandle;
-		GetWorld()->GetTimerManager().SetTimer(
-			DelayHandle,
-			FTimerDelegate::CreateLambda([this, RoundToSend]()
-			{
-				OnRoundFinished.Broadcast(RoundToSend);
-			}),
-			5.0f,   // 5초 딜레이
-			false   // 반복 아님
-		);
 		bRoundAutoProgress = false;
 		ActiveRound = INDEX_NONE;
 		ActiveSubWave = INDEX_NONE;
@@ -317,10 +317,11 @@ void APotatoMonsterSpawner::TickSpawn()
 	if (PendingQueue.Num() == 0)
 	{
 		bSpawnFinished = true;
-		GetWorldTimerManager().ClearTimer(SpawnTickHandle);
 
-		UE_LOG(LogTemp, Warning, TEXT("[Spawner] Spawn finished | Wave=%s | Alive=%d"),
-			*CurrentWaveId.ToString(), AliveCount);
+		if (UWorld* W = GetWorld())
+		{
+			W->GetTimerManager().ClearTimer(SpawnTickHandle);
+		}
 
 		if (AliveCount <= 0)
 		{
@@ -335,15 +336,18 @@ void APotatoMonsterSpawner::TickSpawn()
 	{
 		Cur.bEntryDelayConsumed = true;
 
-		GetWorldTimerManager().ClearTimer(SpawnTickHandle);
-		GetWorldTimerManager().SetTimer(
-			SpawnTickHandle,
-			this,
-			&APotatoMonsterSpawner::TickSpawn,
-			CurrentSpawnInterval,
-			true,
-			Cur.EntryDelay
-		);
+		if (UWorld* W = GetWorld())
+		{
+			W->GetTimerManager().ClearTimer(SpawnTickHandle);
+			W->GetTimerManager().SetTimer(
+				SpawnTickHandle,
+				this,
+				&APotatoMonsterSpawner::TickSpawn,
+				CurrentSpawnInterval,
+				true,
+				Cur.EntryDelay
+			);
+		}
 		return;
 	}
 
@@ -355,15 +359,18 @@ void APotatoMonsterSpawner::TickSpawn()
 		{
 			PendingQueue.RemoveAt(0);
 
-			GetWorldTimerManager().ClearTimer(SpawnTickHandle);
-			GetWorldTimerManager().SetTimer(
-				SpawnTickHandle,
-				this,
-				&APotatoMonsterSpawner::TickSpawn,
-				CurrentSpawnInterval,
-				true,
-				CurrentSpawnInterval
-			);
+			if (UWorld* W = GetWorld())
+			{
+				W->GetTimerManager().ClearTimer(SpawnTickHandle);
+				W->GetTimerManager().SetTimer(
+					SpawnTickHandle,
+					this,
+					&APotatoMonsterSpawner::TickSpawn,
+					CurrentSpawnInterval,
+					true,
+					CurrentSpawnInterval
+				);
+			}
 		}
 	}
 }
@@ -374,16 +381,12 @@ void APotatoMonsterSpawner::TickSpawn()
 
 APotatoMonster* APotatoMonsterSpawner::SpawnOne(EMonsterType Type, EMonsterRank Rank, FName SpawnGroup)
 {
-	if (!GetWorld())
-	{
-		return nullptr;
-	}
+	UWorld* W = GetWorld();
+	if (!W) return nullptr;
 
 	TSubclassOf<APotatoMonster>* ClassPtr = MonsterClassByType.Find(Type);
 	if (!ClassPtr || !(*ClassPtr))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Spawner] No monster class for Type=%s (%d)"),
-			*UEnum::GetValueAsString(Type), (int32)Type);
 		return nullptr;
 	}
 
@@ -404,7 +407,7 @@ APotatoMonster* APotatoMonsterSpawner::SpawnOne(EMonsterType Type, EMonsterRank 
 
 	const FTransform Xform(FRotator::ZeroRotator, SpawnLoc);
 
-	APotatoMonster* Monster = GetWorld()->SpawnActorDeferred<APotatoMonster>(
+	APotatoMonster* Monster = W->SpawnActorDeferred<APotatoMonster>(
 		*ClassPtr,
 		Xform,
 		nullptr,
@@ -448,7 +451,6 @@ APotatoMonster* APotatoMonsterSpawner::SpawnOne(EMonsterType Type, EMonsterRank 
 	Monster->ApplyPresetsOnce();
 
 	RegisterSpawnedMonster(Monster);
-
 	return Monster;
 }
 
@@ -464,7 +466,11 @@ APotatoMonster* APotatoMonsterSpawner::SpawnSplitChildFromParent(
 	float SpawnZOffset)
 {
 	if (!bWaveActive) return nullptr;
-	if (!IsValid(Parent) || !GetWorld()) return nullptr;
+
+	UWorld* W = GetWorld();
+	if (!W) return nullptr;
+
+	if (!IsValid(Parent)) return nullptr;
 
 	const float R = FMath::Max(0.f, SpawnJitterRadius);
 
@@ -486,7 +492,7 @@ APotatoMonster* APotatoMonsterSpawner::SpawnSplitChildFromParent(
 	TSubclassOf<APotatoMonster> ChildClass = Parent->GetClass();
 	if (!ChildClass) return nullptr;
 
-	APotatoMonster* Child = GetWorld()->SpawnActorDeferred<APotatoMonster>(
+	APotatoMonster* Child = W->SpawnActorDeferred<APotatoMonster>(
 		ChildClass,
 		Xform,
 		nullptr,
@@ -521,7 +527,6 @@ APotatoMonster* APotatoMonsterSpawner::SpawnSplitChildFromParent(
 	}
 
 	RegisterSpawnedMonster(Child);
-
 	return Child;
 }
 

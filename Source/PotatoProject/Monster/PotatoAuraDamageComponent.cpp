@@ -1,9 +1,14 @@
-// PotatoAuraDamageComponent.cpp (BUILDABLE - Tags Array + None/Empty means "damage nobody" + optional monster exclude)
+// PotatoAuraDamageComponent.cpp (BUILDABLE - Shipping-safe teardown guards + overlap safety + tags policy)
 //
 // 정책:
-// - RequiredTargetTags가 비어있으면(=Empty/None) 오라는 켜져 있어도 "아무도 때리지 않음" (StartAura/TickAura에서 즉시 StopAura)
+// - RequiredTargetTags가 비어있으면(=Empty/None) Aura가 켜져 있어도 "아무도 때리지 않음" (StartAuraInternal/TickAura에서 즉시 StopAura)
 // - RequiredTargetTags 중 하나라도 가진 Pawn만 데미지
 // - 기본: 몬스터끼리 데미지 금지(bAllowDamageToMonsters=false면 APotatoMonster 제외)
+//
+// 패키징/Shipping 크래시 방지 포인트:
+// - World teardown(EndPlay/맵 전환/종료) 중에는 Sphere의 UpdateOverlaps/Collision 토글을 가급적 하지 않음
+// - Sphere가 Unregister/BeginDestroyed/IsBeingDestroyed 상태면 절대 건드리지 않음
+// - EndPlay에서 delegate 먼저 해제 -> StopAura로 정리
 //
 // CVars:
 // - potato.AuraDmgDebug 0/1
@@ -92,6 +97,21 @@ static bool HasAnyNonNoneTag(const TArray<FName>& Tags)
 	return false;
 }
 
+static FORCEINLINE bool WorldSafeForOverlaps(const UWorld* W)
+{
+	// 월드 없으면 당연히 위험
+	if (!W) return false;
+
+	// 게임 월드가 아니거나(PIE 프리뷰/에디터 월드 등) 종료 흐름이면 보수적으로 막기
+	if (!W->IsGameWorld()) return false;
+
+	// 엔드플레이/맵 전환/종료 중 흔하게 들어오는 안전 체크들
+	// (심볼 안정성이 높음)
+	return (W->WorldType == EWorldType::Game
+		 || W->WorldType == EWorldType::PIE
+		 || W->WorldType == EWorldType::GamePreview);
+}
+
 // ------------------------------------------------------------
 // Ctor
 // ------------------------------------------------------------
@@ -99,6 +119,17 @@ UPotatoAuraDamageComponent::UPotatoAuraDamageComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 	bAutoActivate = false; // ✅ 기본 자동 활성화 방지
+}
+
+// ------------------------------------------------------------
+// Safety
+// ------------------------------------------------------------
+bool UPotatoAuraDamageComponent::IsSphereSafeToTouch() const
+{
+	return IsValid(Sphere)
+		&& Sphere->IsRegistered()
+		&& !Sphere->IsBeingDestroyed()
+		&& !Sphere->HasAnyFlags(RF_BeginDestroyed);
 }
 
 // ------------------------------------------------------------
@@ -110,12 +141,17 @@ void UPotatoAuraDamageComponent::Configure(float InRadius, float InDps, float In
 	Dps = FMath::Max(0.f, InDps);
 	TickInterval = FMath::Max(0.01f, InTickInterval);
 
-	if (Sphere)
+	if (IsSphereSafeToTouch())
 	{
 		Sphere->SetSphereRadius(Radius, true);
+
+		// UpdateOverlaps는 teardown 아닐 때만
 		if (Sphere->GetCollisionEnabled() != ECollisionEnabled::NoCollision)
 		{
-			Sphere->UpdateOverlaps();
+			if (WorldSafeForOverlaps(GetWorld()))
+			{
+				Sphere->UpdateOverlaps();
+			}
 		}
 	}
 
@@ -146,19 +182,16 @@ void UPotatoAuraDamageComponent::BeginPlay()
 	EnsureSphereCreated();
 	if (!Sphere) return;
 
-	// ✅ 여기서 "무조건 OFF" 하지 말고
-	//    StartAura가 이미 요청된 상태면 바로 켠다.
+	// ✅ BeginPlay 전에 StartAura()가 들어온 경우 처리
 	if (bPendingStart || IsActive())
 	{
 		bPendingStart = false;
-		StartAuraInternal(); // 실제 ON + 타이머 시작
+		StartAuraInternal();
 	}
 	else
 	{
 		ApplySphereOffState();
 	}
-
-	// (디버그 로그는 원하면 유지)
 }
 
 void UPotatoAuraDamageComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -169,6 +202,13 @@ void UPotatoAuraDamageComponent::EndPlay(const EEndPlayReason::Type EndPlayReaso
 			*GetNameSafe(GetOwner()),
 			OverlappingTargets.Num()
 		);
+	}
+
+	// ✅ 콜백 재진입/teardown 중 호출 방지: delegate 먼저 해제
+	if (IsValid(Sphere))
+	{
+		Sphere->OnComponentBeginOverlap.RemoveAll(this);
+		Sphere->OnComponentEndOverlap.RemoveAll(this);
 	}
 
 	StopAura();
@@ -201,7 +241,9 @@ void UPotatoAuraDamageComponent::EnsureSphereCreated()
 		Sphere = NewObject<USphereComponent>(CachedOwner, USphereComponent::StaticClass(), AuraSphereName);
 		if (Sphere)
 		{
+			Sphere->SetCanEverAffectNavigation(false);
 			Sphere->RegisterComponent();
+
 			if (USceneComponent* Root = CachedOwner->GetRootComponent())
 			{
 				Sphere->AttachToComponent(Root, FAttachmentTransformRules::KeepRelativeTransform);
@@ -211,39 +253,54 @@ void UPotatoAuraDamageComponent::EnsureSphereCreated()
 
 	if (!Sphere) return;
 
-	// 공통 세팅(ON/OFF는 별도 함수에서)
+	// 공통 세팅(ON/OFF는 별도)
 	Sphere->SetSphereRadius(Radius);
 	Sphere->SetCollisionObjectType(ECC_WorldDynamic);
 	Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	Sphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 
+	// 바인딩 초기화/재바인딩
 	Sphere->OnComponentBeginOverlap.RemoveAll(this);
 	Sphere->OnComponentEndOverlap.RemoveAll(this);
+
+	// ✅ 주의: HandleBeginOverlap/HandleEndOverlap 는 반드시 UFUNCTION() 이어야 함
 	Sphere->OnComponentBeginOverlap.AddDynamic(this, &UPotatoAuraDamageComponent::HandleBeginOverlap);
 	Sphere->OnComponentEndOverlap.AddDynamic(this, &UPotatoAuraDamageComponent::HandleEndOverlap);
 }
 
 void UPotatoAuraDamageComponent::ApplySphereOffState()
 {
-	if (!Sphere) return;
+	if (!IsSphereSafeToTouch()) return;
+
+	UWorld* W = GetWorld();
+	const bool bCanUpdate = WorldSafeForOverlaps(W);
 
 	Sphere->SetGenerateOverlapEvents(false);
 	Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
-	// OFF 전환 시 중복 오버랩 정리
-	Sphere->UpdateOverlaps();
+	// OFF 전환 시 중복 오버랩 정리 (월드 안전할 때만)
+	if (bCanUpdate)
+	{
+		Sphere->UpdateOverlaps();
+	}
 }
 
 void UPotatoAuraDamageComponent::ApplySphereOnState()
 {
-	if (!Sphere) return;
+	if (!IsSphereSafeToTouch()) return;
+
+	UWorld* W = GetWorld();
+	const bool bCanUpdate = WorldSafeForOverlaps(W);
 
 	Sphere->SetSphereRadius(Radius, true);
 	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	Sphere->SetGenerateOverlapEvents(true);
 
-	// ON 전환 즉시 주변 대상 반영
-	Sphere->UpdateOverlaps();
+	// ON 전환 즉시 주변 대상 반영 (월드 안전할 때만)
+	if (bCanUpdate)
+	{
+		Sphere->UpdateOverlaps();
+	}
 }
 
 void UPotatoAuraDamageComponent::StartAura()
@@ -264,8 +321,10 @@ void UPotatoAuraDamageComponent::StartAura()
 
 	StartAuraInternal();
 }
+
 void UPotatoAuraDamageComponent::StopAura()
 {
+	// Timer 정리
 	if (UWorld* W = GetWorld())
 	{
 		W->GetTimerManager().ClearTimer(AuraTickTH);
@@ -274,7 +333,21 @@ void UPotatoAuraDamageComponent::StopAura()
 	OverlappingTargets.Reset();
 	LastSweepHitByTarget.Reset();
 
-	ApplySphereOffState();
+	// teardown/파괴 중엔 Sphere를 안전하게만 OFF
+	if (IsSphereSafeToTouch())
+	{
+		UWorld* W = GetWorld();
+		const bool bCanUpdate = WorldSafeForOverlaps(W);
+
+		Sphere->SetGenerateOverlapEvents(false);
+		Sphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		// ✅ teardown 중엔 UpdateOverlaps 금지
+		if (bCanUpdate)
+		{
+			Sphere->UpdateOverlaps();
+		}
+	}
 
 	if (AuraDbgOn())
 	{
@@ -313,6 +386,9 @@ void UPotatoAuraDamageComponent::HandleBeginOverlap(
 	bool bFromSweep,
 	const FHitResult& SweepResult)
 {
+	// teardown 중엔 콜백 들어와도 무시
+	if (!WorldSafeForOverlaps(GetWorld())) return;
+
 	if (!IsValidTarget(OtherActor))
 	{
 		if (AuraDbgOn())
@@ -348,6 +424,7 @@ void UPotatoAuraDamageComponent::HandleEndOverlap(
 	UPrimitiveComponent* OtherComp,
 	int32 OtherBodyIndex)
 {
+	if (!WorldSafeForOverlaps(GetWorld())) return;
 	if (!OtherActor) return;
 
 	OverlappingTargets.Remove(OtherActor);
@@ -359,11 +436,16 @@ void UPotatoAuraDamageComponent::HandleEndOverlap(
 // ------------------------------------------------------------
 void UPotatoAuraDamageComponent::TickAura()
 {
-	if (!CachedOwner || !GetWorld()) return;
+	UWorld* W = GetWorld();
+	if (!CachedOwner || !WorldSafeForOverlaps(W))
+	{
+		StopAura();
+		return;
+	}
 
 	if (CVarAuraDmgDraw.GetValueOnGameThread() != 0)
 	{
-		DrawDebugSphere(GetWorld(), CachedOwner->GetActorLocation(), Radius, 20, FColor::Green, false, TickInterval, 0, 1.5f);
+		DrawDebugSphere(W, CachedOwner->GetActorLocation(), Radius, 20, FColor::Green, false, TickInterval, 0, 1.5f);
 	}
 
 	// ✅ 잘못된 설정이면 즉시 중지
@@ -394,16 +476,16 @@ void UPotatoAuraDamageComponent::TickAura()
 
 	TArray<TWeakObjectPtr<AActor>> ToRemove;
 
-	for (const TWeakObjectPtr<AActor>& W : OverlappingTargets)
+	for (const TWeakObjectPtr<AActor>& WeakT : OverlappingTargets)
 	{
-		AActor* T = W.Get();
+		AActor* T = WeakT.Get();
 		if (!IsValidTarget(T))
 		{
-			ToRemove.Add(W);
+			ToRemove.Add(WeakT);
 			continue;
 		}
 
-		// ✅ UClass*로 정규화(구버전/신버전 TSubclassOf 혼동 방지)
+		// ✅ UClass*로 정규화
 		UClass* DTClass = DamageTypeClass ? DamageTypeClass.Get() : UDamageType::StaticClass();
 
 		if (bUsePoint)
@@ -430,7 +512,7 @@ void UPotatoAuraDamageComponent::TickAura()
 				const FVector Start = CachedOwner->GetActorLocation();
 				const FVector End   = T->GetActorLocation();
 
-				if (GetWorld()->LineTraceSingleByChannel(TraceHit, Start, End, ECC_Visibility, Params))
+				if (W->LineTraceSingleByChannel(TraceHit, Start, End, ECC_Visibility, Params))
 				{
 					if (TraceHit.GetActor() == T)
 					{
@@ -475,11 +557,17 @@ void UPotatoAuraDamageComponent::StartAuraInternal()
 	if (!CachedOwner) CachedOwner = GetOwner();
 	if (!CachedOwner) return;
 
+	// teardown 중에는 시작/토글 금지
+	if (!WorldSafeForOverlaps(GetWorld()))
+	{
+		return;
+	}
+
 	EnsureSphereCreated();
 	if (!Sphere) return;
 
 	// None/빈배열이면 "아무도 안 때림" 정책
-	if (RequiredTargetTags.Num() == 0 || Radius <= 0.f || Dps <= 0.f)
+	if (!HasAnyNonNoneTag(RequiredTargetTags) || Radius <= 0.f || Dps <= 0.f)
 	{
 		StopAura();
 		return;
@@ -491,5 +579,14 @@ void UPotatoAuraDamageComponent::StartAuraInternal()
 	{
 		W->GetTimerManager().ClearTimer(AuraTickTH);
 		W->GetTimerManager().SetTimer(AuraTickTH, this, &UPotatoAuraDamageComponent::TickAura, TickInterval, true);
+	}
+
+	if (AuraDbgOn())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] StartAuraInternal Owner=%s R=%.1f Dps=%.2f Tick=%.3f Tags=[%s]"),
+			*GetNameSafe(CachedOwner),
+			Radius, Dps, TickInterval,
+			*TagsToString(RequiredTargetTags)
+		);
 	}
 }

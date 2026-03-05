@@ -1,16 +1,7 @@
-// PotatoMonster.cpp (BUILDABLE - HPBar crash guard + Safe preset/apply + AI ensure + HitCapsule for wider hits)
-//
-// 핵심:
-// - BeginPlay 이전 RefreshHPBar/UpdateHPBarLocation 차단
-// - BeginPlay에서 HPBarWidgetComp->InitWidget()로 위젯 생성 보장
-// - ApplyPresetsOnce는 "끝에서만" UI 갱신
-// - OnPossess/Spawn 타이밍에서도 안전하게 돌아가도록 가드 강화
-//
-// + 추가(이번 반영):
-// - 무기/투사체/폭발이 ECC_Pawn ObjectQuery로 판정하는 구조를 그대로 두고,
-//   Monster에서만 "피격 전용 HitCapsule"을 크게 만들어 맞추기 쉽게 함
-// - HitCapsule: QueryOnly + ObjectType=Pawn + Nav 영향 X
-// - Root 캡슐(이동/NavAgent)은 건드리지 않음(=이동 막힘/경로 영향 최소화)
+// PotatoMonster.cpp (BUILDABLE - SHIPPING CLEAN)
+// - 패키징(Shipping)에서 불필요한 로그/디버그 바인딩을 전부 제거(또는 컴파일 제외)
+// - AI/BT 보장은 서버에서만 + 유효성 체크 강화
+// - Shipping에서 UE_LOG/Dbg_OnRootHit 바인딩/디버그 출력 없음
 //
 
 #include "PotatoMonster.h"
@@ -39,20 +30,15 @@
 #include "PotatoPresetApplier.h"
 #include "PotatoSplitComponent.h"
 #include "PotatoAuraDamageComponent.h"
+
 // Utils
 #include "Monster/Utils/PotatoAnimUtils.h"              // ComputeMinVisiblePlayRate
 #include "Monster/Utils/PotatoMonsterRuntimeUtils.h"    // GetAnimInstanceSafe, DisableMovementSafe, ScheduleTimerSafe, ComputeBoundsTopLocation
 #include "Utils/PotatoActorSafety.h"
 
-// ------------------------------------------------------------
-// (Death) Ragdoll fallback은 Monster.cpp 고유 정책이므로 유지
-// ------------------------------------------------------------
-
 // ============================================================
 // (LOCAL) HitCapsule tuning
 // ============================================================
-// - "몬스터만 수정" 조건이라 UPROPERTY를 추가로 늘리지 않고,
-//   기본값은 여기 로컬 상수로 둠(원하면 나중에 헤더에 UPROPERTY로 빼도 됨)
 static float G_HitCapsule_MinRadius     = 30.f;
 static float G_HitCapsule_MaxRadius     = 220.f;
 static float G_HitCapsule_MinHalfHeight = 50.f;
@@ -64,10 +50,8 @@ static float G_HitCapsule_MaxHalfHeight = 320.f;
 
 void APotatoMonster::RefreshHPBar()
 {
-	// BeginPlay 이전에는 UI 건드리지 않음 (OnPossess/FinishSpawning 타이밍 크래시 방지)
 	if (!HasActorBegunPlay()) return;
 
-	// 위젯 생성 보장: InitWidget는 BeginPlay에서 수행하므로 여기선 "획득"만
 	if (!IsValid(HPBarWidget) && HPBarWidgetComp)
 	{
 		HPBarWidget = Cast<UHealthBar>(HPBarWidgetComp->GetUserWidgetObject());
@@ -82,7 +66,6 @@ void APotatoMonster::RefreshHPBar()
 
 void APotatoMonster::UpdateHPBarLocation()
 {
-	// BeginPlay 이전에는 건드리지 않음 (Bounds/Widget 초기화 타이밍 보호)
 	if (!HasActorBegunPlay()) return;
 	if (!HPBarWidgetComp) return;
 
@@ -110,8 +93,7 @@ void APotatoMonster::UpdateHPBarLocation()
 APotatoMonster::APotatoMonster()
 {
 	PrimaryActorTick.bCanEverTick = false;
-	
-	// Split Child도 SpawnDefaultController가 정상 동작하도록
+
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
 	CombatComp = CreateDefaultSubobject<UPotatoCombatComponent>(TEXT("CombatComp"));
@@ -132,29 +114,42 @@ APotatoMonster::APotatoMonster()
 	}
 
 	SplitComp = CreateDefaultSubobject<UPotatoSplitComponent>(TEXT("SplitComp"));
+
 	AuraDamageComp = CreateDefaultSubobject<UPotatoAuraDamageComponent>(TEXT("AuraDamageComp"));
 	if (AuraDamageComp)
 	{
 		AuraDamageComp->SetAutoActivate(false);
 		AuraDamageComp->StopAura();
 	}
+
 	// ============================================================
-	//  HitCapsule (피격 전용)
-	// 목표:
-	// - 히트스캔/폭발(ObjectQuery ECC_Pawn)에 잘 잡히게 "Pawn ObjectType" 유지
-	// - Projectile은 보통 Pawn에 Overlap로 설계되는 경우가 많으니
-	//   HitCapsule에서 Pawn 응답은 Overlap로 두어 OnOverlap가 안정적으로 뜨게
-	// - QueryOnly + Nav 영향 X 유지
+	// HitCapsule (피격 전용)
 	// ============================================================
 	HitCapsule = CreateDefaultSubobject<UCapsuleComponent>(TEXT("HitCapsule"));
 	if (HitCapsule)
 	{
 		HitCapsule->SetupAttachment(RootComponent);
-		HitCapsule->SetCollisionProfileName(TEXT("MonsterHit"));
-		HitCapsule->SetGenerateOverlapEvents(true);
+
 		HitCapsule->SetCanEverAffectNavigation(false);
+
+		HitCapsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		HitCapsule->SetCollisionObjectType(ECC_Pawn);
+
+		HitCapsule->SetCollisionResponseToAllChannels(ECR_Ignore);
+		HitCapsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+
+		// 히트스캔/트레이스가 쓰는 경우만 Block
+		HitCapsule->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+		HitCapsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
+
+		HitCapsule->SetGenerateOverlapEvents(true);
+
 		HitCapsule->InitCapsuleSize(60.f, 90.f);
 		HitCapsule->SetRelativeLocation(FVector(0.f, 0.f, 0.f));
+
+		// Projectile(대부분 WorldDynamic)도 잡아주기
+		HitCapsule->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+		HitCapsule->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
 	}
 }
 
@@ -162,13 +157,8 @@ void APotatoMonster::BeginPlay()
 {
 	Super::BeginPlay();
 
-	UE_LOG(LogTemp, Warning, TEXT("[AuraDmg] BeginPlay ENTER Owner=%s Comp=%s"),
-		*GetNameSafe(GetOwner()),
-		*GetNameSafe(this));
 	// ============================================================
-	//  HitCapsule 크기 보정 (Mesh Bounds 기반)
-	// - 몬스터마다 메시 크기가 달라도 "적당히" 맞는 피격 범위를 자동으로 잡음
-	// - Root 캡슐은 건드리지 않음 (Nav/이동 영향 최소화)
+	// HitCapsule 크기 보정 (Mesh Bounds 기반)
 	// ============================================================
 	if (HitCapsule)
 	{
@@ -176,22 +166,15 @@ void APotatoMonster::BeginPlay()
 		float HH = 90.f;
 		float Z = 0.f;
 
-		if (USkeletalMeshComponent* MeshComp  = GetMesh())
+		if (USkeletalMeshComponent* MeshComp = GetMesh())
 		{
-			// Mesh Bounds는 BeginPlay 이후 안정적
-			const FVector Ext = MeshComp ->Bounds.BoxExtent;
+			const FVector Ext = MeshComp->Bounds.BoxExtent;
 
-			// XY 중 큰 값 = 대략적인 반경
-			R = FMath::Max(Ext.X, Ext.Y);
-
-			// Z 기준(키 높이 느낌)
+			R  = FMath::Max(Ext.X, Ext.Y);
 			HH = FMath::Max(Ext.Z, R + 5.f);
+			Z  = 0.f;
 
-			// 너무 과한 바닥 히트 방지 등 필요하면 조정
-			Z = 0.f;
-
-			// Nav 영향 확실히 차단(혹시 BP에서 건드렸을 때 방어)
-			MeshComp ->SetCanEverAffectNavigation(false);
+			MeshComp->SetCanEverAffectNavigation(false);
 		}
 
 		R  = FMath::Clamp(R,  G_HitCapsule_MinRadius,     G_HitCapsule_MaxRadius);
@@ -201,7 +184,7 @@ void APotatoMonster::BeginPlay()
 		HitCapsule->SetRelativeLocation(FVector(0.f, 0.f, Z));
 	}
 
-	// 위젯 생성 보장 (GetUserWidgetObject()가 null인 케이스 방지)
+	// 위젯 생성 보장
 	if (HPBarWidgetComp)
 	{
 		HPBarWidgetComp->InitWidget();
@@ -223,29 +206,27 @@ void APotatoMonster::BeginPlay()
 	bHasLastHitPoint = false;
 	LastHitPointWS = FVector::ZeroVector;
 	LastHitBoneName = NAME_None;
+
+	// Root collision profile (이동/Nav 캡슐)
 	if (UCapsuleComponent* RootCap = GetCapsuleComponent())
 	{
 		RootCap->SetCollisionProfileName(TEXT("MonsterRoot"));
-		//RootCap->OnComponentHit.AddDynamic(this, &APotatoMonster::Dbg_OnRootHit);
+
+		// ✅ 패키징/Shipping 포함 "모든 빌드"에서 디버그 히트 바인딩 제거
+		// RootCap->OnComponentHit.AddDynamic(this, &APotatoMonster::Dbg_OnRootHit);
 	}
+
 	if (UCharacterMovementComponent* Move = GetCharacterMovement())
 	{
 		Move->bUseRVOAvoidance = false;
 	}
-}
-void APotatoMonster::Dbg_OnRootHit(UPrimitiveComponent* HitComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
-{
-	if (!OtherActor || OtherActor == this) return;
 
-	UE_LOG(LogTemp, Warning, TEXT("[STOP] Hit %s / %s  Profile=%s ObjType=%s"),
-		*GetNameSafe(OtherActor),
-		*GetNameSafe(OtherComp),
-		OtherComp ? *OtherComp->GetCollisionProfileName().ToString() : TEXT("None"),
-		OtherComp ? *UEnum::GetValueAsString(OtherComp->GetCollisionObjectType()) : TEXT("None"));
+	// BeginPlay 이후 시점에만, 서버에서만 AI/BT 보장
+	EnsureAIControllerAndStartLogic();
 }
+
 // ============================================================
-// Split Child Context / AI Fix
+// Split Child Context / AI Fix (SHIPPING SAFE)
 // ============================================================
 
 void APotatoMonster::CopyPresetContextFrom(const APotatoMonster* Parent)
@@ -266,22 +247,35 @@ void APotatoMonster::CopyPresetContextFrom(const APotatoMonster* Parent)
 
 void APotatoMonster::EnsureAIControllerAndStartLogic()
 {
-	// 1) Possess 보장
-	if (!Controller)
+	// ✅ 서버에서만 (클라에서 SpawnDefaultController/RunBT로 인한 불일치/크래시 방지)
+	if (!HasAuthority()) return;
+
+	if (bIsDead) return;
+	if (IsActorBeingDestroyed()) return;
+	if (!GetWorld()) return;
+
+	// Controller 보장
+	if (!IsValid(Controller))
 	{
 		SpawnDefaultController();
+		if (!IsValid(Controller)) return;
 	}
 
 	AAIController* AICon = Cast<AAIController>(Controller);
-	if (!AICon) return;
+	if (!IsValid(AICon)) return;
 
-	// 2) BT 실행 보장
+	// BT 실행 보장 (중복 실행 방지)
 	if (ResolvedBehaviorTree)
 	{
-		AICon->RunBehaviorTree(ResolvedBehaviorTree);
+		UBrainComponent* Brain = AICon->BrainComponent;
+		const bool bAlreadyRunning = (Brain && Brain->IsRunning());
+		if (!bAlreadyRunning)
+		{
+			AICon->RunBehaviorTree(ResolvedBehaviorTree);
+		}
 	}
 
-	// 3) 이동 모드 보정
+	// 이동 모드 보정
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
 		if (MoveComp->MovementMode == MOVE_None)
@@ -332,30 +326,22 @@ void APotatoMonster::ApplyPresetsOnce()
 	// Split
 	if (SplitComp)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Split] Applied. Enable=%d ThresholdNum=%d MinMaxHp=%.1f MaxDepth=%d"),
-			FinalStats.bEnableSplit ? 1 : 0,
-			FinalStats.SplitSpec.ThresholdPercents.Num(),
-			FinalStats.SplitSpec.MinMaxHpToAllowSplit,
-			FinalStats.SplitSpec.MaxDepth);
-
 		SplitComp->ApplySpecFromFinalStats(FinalStats.SplitSpec, FinalStats.bEnableSplit);
 	}
-	// =========================
-	// AuraDamage (Cactus contact damage)
-	// =========================
+
+	// AuraDamage
 	if (AuraDamageComp)
 	{
-		AuraDamageComp->StopAura(); // 항상 초기화
+		AuraDamageComp->StopAura();
 
 		if (FinalStats.bEnableAuraDamage)
 		{
 			AuraDamageComp->RequiredTargetTags = FinalStats.AuraRequiredTargetTags;
 			AuraDamageComp->Configure(FinalStats.AuraRadius, FinalStats.AuraDps, FinalStats.AuraTickInterval);
-
-			//  BeginPlay 전 호출돼도 PENDING으로 예약되고 BeginPlay에서 켜짐
 			AuraDamageComp->StartAura();
 		}
 	}
+
 	// AnimSet
 	SetAnimSet(FinalStats.AnimSet);
 
@@ -386,10 +372,10 @@ void APotatoMonster::ApplyPresetsOnce()
 	{
 		UpdateHPBarLocation();
 		RefreshHPBar();
-	}
 
-	// AI/BT 보장 (Split child 포함)
-	EnsureAIControllerAndStartLogic();
+		// ✅ 여기서도 AI 보장은 "BeginPlay 이후" + "서버"에서만
+		EnsureAIControllerAndStartLogic();
+	}
 }
 
 // ============================================================
@@ -823,24 +809,20 @@ void APotatoMonster::OnFinalStatsApplied()
 	{
 		SplitComp->ApplySpecFromFinalStats(FinalStats.SplitSpec, FinalStats.bEnableSplit);
 	}
-	
+
 	if (!AuraDamageComp) return;
 
-	if (AuraDamageComp)
+	AuraDamageComp->StopAura();
+
+	if (FinalStats.bEnableAuraDamage)
 	{
-		AuraDamageComp->StopAura(); // 항상 초기화
-
-		if (FinalStats.bEnableAuraDamage)
-		{
-			AuraDamageComp->RequiredTargetTags = FinalStats.AuraRequiredTargetTags;
-			AuraDamageComp->Configure(FinalStats.AuraRadius, FinalStats.AuraDps, FinalStats.AuraTickInterval);
-
-			//  BeginPlay 전 호출돼도 PENDING으로 예약되고 BeginPlay에서 켜짐
-			AuraDamageComp->StartAura();
-		}
+		AuraDamageComp->RequiredTargetTags = FinalStats.AuraRequiredTargetTags;
+		AuraDamageComp->Configure(FinalStats.AuraRadius, FinalStats.AuraDps, FinalStats.AuraTickInterval);
+		AuraDamageComp->StartAura();
 	}
-	// 필요시 아래를 켜서 완전 경로도 커버 가능
+
+	// 필요시:
 	// SetAnimSet(FinalStats.AnimSet);
 	// if (SpecialSkillComp) { SpecialSkillComp->SkillPresetTable = SpecialSkillPresetTable; SpecialSkillComp->InitFromFinalStats(FinalStats); }
-	// EnsureAIControllerAndStartLogic();
+	// if (HasActorBegunPlay()) { EnsureAIControllerAndStartLogic(); }
 }
