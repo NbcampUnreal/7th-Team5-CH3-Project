@@ -12,6 +12,7 @@
 #include "Player/PotatoPlayerCharacter.h"
 #include "Player/PotatoPlayerController.h"
 #include "NiagaraComponent.h"
+#include "Components/PrimitiveComponent.h"
 
 UPotatoWeaponComponent::UPotatoWeaponComponent()
 {
@@ -793,11 +794,22 @@ void UPotatoWeaponComponent::SpawnHitscanVisual(const FHitResult& HitResult, con
         SpawnParams
     );
 
-    if (VisualActor)
-    {
-        VisualActor->AttachToComponent(HitResult.GetComponent(), FAttachmentTransformRules::KeepWorldTransform);
-        VisualActor->SetLifeSpan(10.0f);
-    }
+	if (VisualActor)
+	{
+		VisualActor->AttachToComponent(HitResult.GetComponent(), FAttachmentTransformRules::KeepWorldTransform);
+		VisualActor->SetActorEnableCollision(false);
+
+		TInlineComponentArray<UPrimitiveComponent*> PrimComps(VisualActor);
+		for (UPrimitiveComponent* Prim : PrimComps)
+		{
+			if (!Prim) continue;
+			Prim->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Prim->SetCollisionResponseToAllChannels(ECR_Ignore);
+			Prim->SetGenerateOverlapEvents(false);
+		}
+
+		VisualActor->SetLifeSpan(5.0f);
+	}
 
     if (!CurrentWeaponData)
     {
