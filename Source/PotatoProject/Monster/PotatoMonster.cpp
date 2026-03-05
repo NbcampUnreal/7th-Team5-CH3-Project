@@ -150,42 +150,11 @@ APotatoMonster::APotatoMonster()
 	if (HitCapsule)
 	{
 		HitCapsule->SetupAttachment(RootComponent);
-
-		// Nav 영향 차단
-		HitCapsule->SetCanEverAffectNavigation(false);
-
-		// 물리로 막지 않고 "쿼리/이벤트"만
-		HitCapsule->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-
-		// ECC_Pawn ObjectQuery(폭발/히트스캔)에 잡히도록
-		HitCapsule->SetCollisionObjectType(ECC_Pawn);
-
-		// 기본은 Ignore로 두고 필요한 것만 켜는 방식이 예측 가능함
-		HitCapsule->SetCollisionResponseToAllChannels(ECR_Ignore);
-
-		//  핵심: Pawn은 Overlap (Projectile OnOverlap 안정화)
-		HitCapsule->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-
-		// 히트스캔이 ObjectQuery(ECC_Pawn)로 쏘는 경우엔 위만으로도 충분
-		// 혹시 다른 트레이스(Visibility/Camera)도 쓰면 아래 두 줄 켜도 됨(선택)
-		HitCapsule->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-		HitCapsule->SetCollisionResponseToChannel(ECC_Camera, ECR_Block);
-
-		// 오버랩 이벤트를 실제로 받게 켬 (상대 Projectile이 OnOverlap 바인딩 중)
+		HitCapsule->SetCollisionProfileName(TEXT("MonsterHit"));
 		HitCapsule->SetGenerateOverlapEvents(true);
-
-		// 임시 기본값(실제 크기는 BeginPlay에서 Mesh Bounds로 보정)
+		HitCapsule->SetCanEverAffectNavigation(false);
 		HitCapsule->InitCapsuleSize(60.f, 90.f);
 		HitCapsule->SetRelativeLocation(FVector(0.f, 0.f, 0.f));
-	}
-	if (HitCapsule)
-	{
-		// Projectile(대부분 WorldDynamic)을 큰 캡슐이 받게
-		HitCapsule->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
-		HitCapsule->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Overlap);
-
-		// Overlap 이벤트가 나게
-		HitCapsule->SetGenerateOverlapEvents(true);
 	}
 }
 
